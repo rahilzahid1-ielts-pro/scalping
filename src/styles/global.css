@@ -167,6 +167,12 @@ button.active {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.refresh-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  border-color: rgba(196, 163, 90, 0.45);
+}
+
 .layout {
   display: grid;
   grid-template-columns: 1.35fr 1fr;
@@ -946,6 +952,24 @@ button.active {
 }
 
 .tone-enter-sell .action-now-headline {
+  color: var(--sell);
+}
+
+.tone-active-buy {
+  border-color: rgba(61, 186, 138, 0.55);
+  background: linear-gradient(160deg, var(--buy-soft), transparent 50%), var(--bg-elevated);
+}
+
+.tone-active-buy .action-now-headline {
+  color: var(--buy);
+}
+
+.tone-active-sell {
+  border-color: rgba(226, 92, 92, 0.55);
+  background: linear-gradient(160deg, var(--sell-soft), transparent 50%), var(--bg-elevated);
+}
+
+.tone-active-sell .action-now-headline {
   color: var(--sell);
 }
 

@@ -13,6 +13,7 @@ export type NowAction =
   | "WAIT_SETUP"
   | "WAIT_ENTRY"
   | "ENTER_NOW"
+  | "TRADE_ACTIVE"
   | "PLAN_DEAD"
   | "TOO_LATE"
   | "LOW_CONFIDENCE";
@@ -45,8 +46,12 @@ export function computeNowAction(
 ): NowActionResult {
   const decimals = asset.decimals;
   const p = roundPrice(livePrice, decimals);
-  const conf = signal.confidence;
-  const winProb = signal.rangePrediction.winProbability;
+  // A locked plan must keep the scores the user saw when it fired. A later
+  // refresh may lean WAIT/opposite, but that is not a new instruction for an
+  // already-entered trade.
+  const conf = plan?.lockedConfidence ?? signal.confidence;
+  const winProb =
+    plan?.lockedWinProbability ?? signal.rangePrediction.winProbability;
   const tol = entryTolerance(asset, signal.mode, p);
 
   const conflict = signal.diagnostics?.conflictingSignals ?? false;
@@ -78,6 +83,30 @@ export function computeNowAction(
       entry: plan.levels.entry,
       stopLoss: plan.levels.stopLoss,
       takeProfit: plan.levels.takeProfit1,
+    };
+  }
+
+  if (plan?.status === "IN_TRADE_HINT") {
+    const tp1Reached =
+      (plan.side === "BUY" && p >= plan.levels.takeProfit1) ||
+      (plan.side === "SELL" && p <= plan.levels.takeProfit1);
+    return {
+      action: "TRADE_ACTIVE",
+      headline: `${plan.side} TRADE ACTIVE`,
+      headlineUr: `${plan.side} TRADE CHAL RAHI HAI`,
+      detail: tp1Reached
+        ? `TP1 ${plan.levels.takeProfit1} reach ho gaya. Remaining position ko plan ke mutabiq manage karo; SL ${plan.levels.stopLoss}.`
+        : `Entered ${plan.side} @ ${plan.levels.entry}. Fresh signal is trade ko cancel nahi karta. SL ${plan.levels.stopLoss} · TP1 ${plan.levels.takeProfit1}.`,
+      confidence: conf,
+      winProbability: winProb,
+      side: plan.side,
+      entry: plan.levels.entry,
+      stopLoss: plan.levels.stopLoss,
+      takeProfit: plan.levels.takeProfit1,
+      livePrice: p,
+      distanceToEntry: roundPrice(p - plan.levels.entry, decimals),
+      inEntryZone: false,
+      conflictingSignals: conflict,
     };
   }
 

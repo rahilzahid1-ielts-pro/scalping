@@ -18,6 +18,10 @@ export function ActionNow({ now, assetId, alertsOn, onToggleAlerts, onTestSound 
       ? now.side === "BUY"
         ? "enter-buy"
         : "enter-sell"
+      : now.action === "TRADE_ACTIVE"
+        ? now.side === "BUY"
+          ? "active-buy"
+          : "active-sell"
       : now.action === "WAIT_ENTRY"
         ? "wait-entry"
         : now.action === "PLAN_DEAD" || now.action === "TOO_LATE"
@@ -72,6 +76,10 @@ export function ActionNow({ now, assetId, alertsOn, onToggleAlerts, onTestSound 
 
       {now.action === "ENTER_NOW" && (
         <div className="alert-banner">🔔 ENTRY ZONE — ALERT ON</div>
+      )}
+
+      {now.action === "TRADE_ACTIVE" && (
+        <div className="alert-banner">🔒 ACTIVE TRADE — PLAN CHANGE BLOCKED</div>
       )}
 
       {now.action === "WAIT_ENTRY" && now.distanceToEntry != null && (

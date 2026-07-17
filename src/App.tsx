@@ -90,7 +90,16 @@ export default function App() {
       ) {
         // Only create when there is NO active locked plan
         if (!current || current.status === "INVALIDATED" || current.assetId !== assetId || current.mode !== mode) {
-          setPlan(createFrozenPlan(assetId, mode, next.side, next.levels));
+          setPlan(
+            createFrozenPlan(
+              assetId,
+              mode,
+              next.side,
+              next.levels,
+              next.confidence,
+              next.rangePrediction.winProbability,
+            ),
+          );
           void logSignalViaApi(next);
         }
       }
@@ -162,6 +171,22 @@ export default function App() {
     return computeNowAction(signal, plan, livePrice, asset, quote);
   }, [signal, plan, livePrice, asset, quote]);
 
+  // Once the app instructed ENTER NOW, persist an active-trade state. From this
+  // point a refresh/New plan must not turn that instruction into WAIT/opposite.
+  useEffect(() => {
+    if (nowAction?.action !== "ENTER_NOW") return;
+    setPlan((current) => {
+      if (!current || current.status !== "WAITING_ENTRY") return current;
+      const active: FrozenPlan = {
+        ...current,
+        status: "IN_TRADE_HINT",
+        note: `Entry hit @ ${current.levels.entry}. Trade active; manage original SL/TP.`,
+      };
+      planRef.current = active;
+      return active;
+    });
+  }, [nowAction?.action]);
+
   // Key ONLY on locked entry — refresh must not reset alert arming wrongly
   const planKey = plan
     ? `${plan.assetId}-${plan.mode}-${plan.side}-${plan.levels.entry}-${plan.lockedAt}`
@@ -175,7 +200,47 @@ export default function App() {
     setAlertsOn((a) => !a);
   };
 
-  const requestNewPlan = () => setForceNewPlan((n) => n + 1);
+  const requestNewPlan = () => {
+    const current = planRef.current;
+    if (current?.status === "IN_TRADE_HINT") {
+      window.alert(
+        `${current.side} trade @ ${current.levels.entry} ACTIVE hai. ` +
+          `New plan blocked — original SL/TP manage karo.`,
+      );
+      return;
+    }
+    if (
+      current?.status === "WAITING_ENTRY" &&
+      !window.confirm(
+        `${current.side} waiting plan @ ${current.levels.entry} cancel karke fresh plan banana hai?`,
+      )
+    ) {
+      return;
+    }
+    setForceNewPlan((n) => n + 1);
+  };
+
+  const requestAssetChange = (nextAsset: AssetId) => {
+    const current = planRef.current;
+    if (current?.status === "IN_TRADE_HINT" && nextAsset !== assetId) {
+      window.alert(
+        `${current.side} ${current.assetId} trade ACTIVE hai. Active trade ke dauran asset switch blocked.`,
+      );
+      return;
+    }
+    setAssetId(nextAsset);
+  };
+
+  const requestModeChange = (nextMode: TradeMode) => {
+    const current = planRef.current;
+    if (current?.status === "IN_TRADE_HINT" && nextMode !== mode) {
+      window.alert(
+        `${current.side} ${current.mode} trade ACTIVE hai. Active trade ke dauran mode switch blocked.`,
+      );
+      return;
+    }
+    setMode(nextMode);
+  };
 
   const copyAlertCmd = async () => {
     try {
@@ -215,7 +280,7 @@ export default function App() {
               key={a.id}
               type="button"
               className={assetId === a.id ? "active" : ""}
-              onClick={() => setAssetId(a.id)}
+              onClick={() => requestAssetChange(a.id)}
             >
               {a.name}
             </button>
@@ -225,20 +290,30 @@ export default function App() {
           <button
             type="button"
             className={mode === "scalping" ? "active" : ""}
-            onClick={() => setMode("scalping")}
+            onClick={() => requestModeChange("scalping")}
           >
             Scalp
           </button>
           <button
             type="button"
             className={mode === "intraday" ? "active" : ""}
-            onClick={() => setMode("intraday")}
+            onClick={() => requestModeChange("intraday")}
           >
             Intraday
           </button>
         </div>
-        <button type="button" className="refresh-btn" onClick={requestNewPlan}>
-          New plan
+        <button
+          type="button"
+          className="refresh-btn"
+          onClick={requestNewPlan}
+          disabled={plan?.status === "IN_TRADE_HINT"}
+          title={
+            plan?.status === "IN_TRADE_HINT"
+              ? "Active trade complete/SL hone tak plan locked hai"
+              : "Waiting plan cancel karke fresh setup check karein"
+          }
+        >
+          {plan?.status === "IN_TRADE_HINT" ? "Trade active · locked" : "New plan"}
         </button>
       </nav>
 

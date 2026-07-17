@@ -11,6 +11,9 @@ export interface FrozenPlan {
   lockedAt: number;
   status: PlanStatus;
   note: string;
+  /** Scores shown when this plan was frozen; do not replace with a later refresh. */
+  lockedConfidence?: number;
+  lockedWinProbability?: number;
 }
 
 const STORAGE_KEY = "smc_trade_desk_v2";
@@ -100,7 +103,10 @@ export function shouldKeepFrozenPlan(
         note: "SL hit. New plan only after fresh setup.",
       };
     }
-    if (isTooLateToEnter(plan.side, livePrice, plan.levels.entry, plan.levels.stopLoss)) {
+    if (
+      plan.status === "WAITING_ENTRY" &&
+      isTooLateToEnter(plan.side, livePrice, plan.levels.entry, plan.levels.stopLoss)
+    ) {
       // Only invalidate when clearly past entry deep into risk — keep waiting if still below entry for SELL
       if (
         (plan.side === "SELL" && livePrice > plan.levels.entry) ||
@@ -126,10 +132,13 @@ export function shouldKeepFrozenPlan(
   if (nextSide === "WAIT" || nextSide === plan.side) {
     return {
       ...plan,
-      status: plan.status === "INVALIDATED" ? "INVALIDATED" : "WAITING_ENTRY",
+      // Never downgrade an entered trade back to WAITING_ENTRY on refresh.
+      status: plan.status,
       note:
         plan.status === "INVALIDATED"
           ? plan.note
+          : plan.status === "IN_TRADE_HINT"
+            ? plan.note
           : "Entry LOCKED. Chart pe confirm karke limit rakho — chase mat karo.",
     };
   }
@@ -145,6 +154,8 @@ export function createFrozenPlan(
   mode: TradeMode,
   side: Side,
   levels: TradeLevels,
+  lockedConfidence?: number,
+  lockedWinProbability?: number,
 ): FrozenPlan {
   const plan: FrozenPlan = {
     assetId,
@@ -154,6 +165,8 @@ export function createFrozenPlan(
     lockedAt: Date.now(),
     status: "WAITING_ENTRY",
     note: "Limit entry LOCKED. Jab price entry pe aaye tab lo — chart se confirm.",
+    lockedConfidence,
+    lockedWinProbability,
   };
   if (isPlanLevelsUnsafe(plan)) {
     return {
