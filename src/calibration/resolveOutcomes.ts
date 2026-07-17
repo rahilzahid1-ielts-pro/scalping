@@ -155,9 +155,16 @@ function applyPostTp1(
   return sig;
 }
 
-function resolveOne(sig: LoggedSignal, tick: PriceTick): LoggedSignal | null {
+/**
+ * Pure in-memory outcome advance (no DB). Used by live DB resolver and backtest.
+ * `now` defaults to Date.now(); pass bar-close time in backtests.
+ */
+export function advanceSignalOnBar(
+  sig: LoggedSignal,
+  tick: PriceTick,
+  now: number = Date.now(),
+): LoggedSignal | null {
   const { open, high, low } = barBounds(tick);
-  const now = Date.now();
 
   // Phase 1: waiting for TP1 vs original SL
   if (sig.outcome === "OPEN" && sig.outcomeTp1 == null) {
@@ -201,7 +208,7 @@ export function resolveOpenSignalsForSymbol(
   const updated: LoggedSignal[] = [];
 
   for (const sig of active) {
-    const next = resolveOne({ ...sig }, tick);
+    const next = advanceSignalOnBar({ ...sig }, tick);
     if (!next) continue;
     updateSignal(next);
     updated.push(next);

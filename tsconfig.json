@@ -20,12 +20,15 @@
   "include": ["src"],
   "exclude": [
     "daemon",
+    "server",
     "src/calibration/db.ts",
     "src/calibration/signalStore.ts",
     "src/calibration/logSignal.ts",
     "src/calibration/resolveOutcomes.ts",
     "src/calibration/recalibrate.ts",
     "src/calibration/realizedR.ts",
-    "src/calibration/index.ts"
+    "src/calibration/report.ts",
+    "src/calibration/index.ts",
+    "src/backtest"
   ]
 }

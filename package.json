@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "start": "tsx server/prodServer.ts",
     "alerts": "tsx daemon/alertBot.ts",
-    "calibrate": "tsx daemon/calibrate.ts"
+    "calibrate": "tsx daemon/calibrate.ts",
+    "backtest": "tsx daemon/backtest.ts"
   },
   "engines": {
     "node": ">=20"

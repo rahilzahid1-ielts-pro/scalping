@@ -34,11 +34,13 @@ export const DATA_DIR = join(ROOT, "data");
 export const SIGNAL_DB_PATH = join(DATA_DIR, "signals.db");
 
 /**
- * Reserved path for a future backtest store. This module NEVER opens it.
- * Backtest code must import this constant and open its own DB handle —
+ * Reserved path for backtest store. This live module NEVER opens it.
+ * Backtest code opens `data/backtest-results.db` via src/backtest/store.ts —
  * never call getDb() / insertSignal() from this file for backtest rows.
  */
-export const BACKTEST_SIGNAL_DB_PATH = join(DATA_DIR, "backtest-signals.db");
+export const BACKTEST_SIGNAL_DB_PATH = join(DATA_DIR, "backtest-results.db");
+/** Alias matching the deliverable name */
+export const BACKTEST_RESULTS_DB_PATH = BACKTEST_SIGNAL_DB_PATH;
 
 export const SIGNAL_LOG_JSON_PATH = join(DATA_DIR, "signal-log.json");
 export const SIGNAL_LOG_MIGRATED_PATH = join(DATA_DIR, "signal-log.json.migrated");

@@ -23,11 +23,26 @@ npm run dev          # UI (local Vite + API proxies)
 npm run build        # production bundle → dist/
 npm run start        # production Node server (PORT, proxies, calibration API)
 npm run alerts       # background outcome watcher + entry alerts
-npm run calibrate    # actual vs claimed win-rate report
+npm run calibrate    # actual vs claimed win-rate report (LIVE data/signals.db)
 npm run calibrate -- --days=30
+npm run backtest -- --file=C:\gold-trading-engine\data\XAUUSD_M5.json --days=365
 ```
 
 Open the URL Vite prints (default `http://localhost:5173`).
+
+### Backtest (past results of the SAME formula)
+
+```bash
+npm run backtest -- --file=C:\gold-trading-engine\data\XAUUSD_M5.json --days=365 --spread=0.25
+```
+
+- Uses production `generateSignal` (EMA/SMC/PA) — not a copy.
+- Base series: ForexSB/Dukas **M5 JSON** (`time/open/high/low/close` arrays; time = minutes since 2000-01-01 **UTC**). HTF (15m/1H/4H/Daily) are **resampled in-code** from that series only.
+- Walk-forward on closed bars only; incomplete HTF candles are never fed to the engine (anti look-ahead).
+- Outcomes use the same gap/tie rules as live (`advanceSignalOnBar` → ties prefer SL).
+- Results in **`data/backtest-results.db` only** — never merges into live `data/signals.db`.
+- Default Gold spread **$0.25** on entry (`--spread=0`); set `0` only if you accept optimistic fills.
+- Report tables match `npm run calibrate`. Sanity banners flag win rate >75% and empty/overstuffed months.
 
 ### Railway deploy
 
@@ -55,7 +70,7 @@ is imported once on first open, then renamed to `signal-log.json.migrated` (not 
 **Live vs backtest (do not mix):**
 
 - Live measurement uses **only** `data/signals.db` (alerts bot + Vite API + `npm run calibrate`).
-- A future backtest must use **`data/backtest-signals.db`** (`BACKTEST_SIGNAL_DB_PATH`) with its
+- A future backtest must use **`data/backtest-results.db`** (`BACKTEST_RESULTS_DB_PATH`) with its
   own DB handle — never `getDb()` / `insertSignal()` from the live module.
 - **Never merge, copy, ATTACH, or import** backtest rows into live `signals.db`. That leak
   inflates win rates and destroys the live calibration discipline.

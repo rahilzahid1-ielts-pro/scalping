@@ -80,7 +80,8 @@ async function fetchYahooCandles(symbol: string, interval: string): Promise<Cand
   return candles;
 }
 
-function aggregateCandles(candles: Candle[], hours: number): Candle[] {
+/** Aggregate lower-TF bars into N-hour candles (UTC-aligned buckets). */
+export function aggregateCandles(candles: Candle[], hours: number): Candle[] {
   if (candles.length === 0) return [];
   const ms = hours * 60 * 60 * 1000;
   const grouped = new Map<number, Candle[]>();
