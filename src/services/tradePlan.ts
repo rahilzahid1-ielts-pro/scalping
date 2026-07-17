@@ -177,3 +177,17 @@ export function createFrozenPlan(
   }
   return plan;
 }
+
+/** Backfill locked scores on older plans that predate this field. */
+export function ensureLockedScores(
+  plan: FrozenPlan,
+  confidence: number,
+  winProbability: number,
+): FrozenPlan {
+  if (plan.lockedConfidence != null && plan.lockedWinProbability != null) return plan;
+  return {
+    ...plan,
+    lockedConfidence: plan.lockedConfidence ?? confidence,
+    lockedWinProbability: plan.lockedWinProbability ?? winProbability,
+  };
+}

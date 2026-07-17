@@ -17,6 +17,7 @@ import { roundPrice } from "./strategies/indicators";
 import { computeNowAction } from "./utils/nowAction";
 import {
   createFrozenPlan,
+  ensureLockedScores,
   loadSession,
   saveSession,
   shouldKeepFrozenPlan,
@@ -75,11 +76,33 @@ export default function App() {
         current.status !== "INVALIDATED" &&
         (current.side === "BUY" || current.side === "SELL")
       ) {
-        const kept = shouldKeepFrozenPlan(current, next.side, q);
+        // Never backfill locked scores from a later WAIT (confidence hard-capped ≤58).
+        const scoredPlan =
+          current.lockedConfidence == null &&
+          next.side === current.side &&
+          next.confidence >= 68
+            ? ensureLockedScores(
+                current,
+                next.confidence,
+                next.rangePrediction.winProbability,
+              )
+            : current;
+        const kept = shouldKeepFrozenPlan(scoredPlan, next.side, q);
         if (kept) {
           setPlan(kept);
           next.levels = kept.levels;
           next.side = kept.side;
+          // Keep the scores the user saw when this plan locked — do not let a
+          // later WAIT refresh (confidence capped at 58) rewrite the card.
+          if (kept.lockedConfidence != null) {
+            next.confidence = kept.lockedConfidence;
+          }
+          if (kept.lockedWinProbability != null) {
+            next.rangePrediction = {
+              ...next.rangePrediction,
+              winProbability: kept.lockedWinProbability,
+            };
+          }
           void logSignalViaApi(next);
         }
       } else if (
