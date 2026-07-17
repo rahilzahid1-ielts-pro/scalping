@@ -34,6 +34,8 @@ export const ASSETS: Record<AssetId, AssetConfig> = {
     quoteTicker: "BINANCE:BTCUSDT",
     quoteMarket: "crypto",
     binanceSymbol: "BTCUSDT",
+    // Yahoo fallback when Binance returns 451 (geo-block on Railway / some regions)
+    yahooSymbol: "BTC-USD",
     pipSize: 1,
     decimals: 2,
     description: "Bitcoin vs US Dollar",

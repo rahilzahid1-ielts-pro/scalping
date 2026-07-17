@@ -5,6 +5,9 @@ export function resolveFetchUrl(path: string): string {
   if (path.startsWith("/api/yahoo")) {
     return `https://query1.finance.yahoo.com${path.replace(/^\/api\/yahoo/, "")}`;
   }
+  if (path.startsWith("/api/binance-data")) {
+    return `https://data-api.binance.vision${path.replace(/^\/api\/binance-data/, "")}`;
+  }
   if (path.startsWith("/api/binance")) {
     return `https://api.binance.com${path.replace(/^\/api\/binance/, "")}`;
   }

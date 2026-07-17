@@ -45,6 +45,11 @@ const PROXIES: ProxyTarget[] = [
     extraHeaders: { "User-Agent": "Mozilla/5.0" },
   },
   {
+    prefix: "/api/binance-data",
+    origin: "https://data-api.binance.vision",
+    rewrite: (p) => p.replace(/^\/api\/binance-data/, ""),
+  },
+  {
     prefix: "/api/binance",
     origin: "https://api.binance.com",
     rewrite: (p) => p.replace(/^\/api\/binance/, ""),

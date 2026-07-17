@@ -113,6 +113,12 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/binance/, ""),
       },
+      // Public data mirror — often works when api.binance.com returns 451
+      "/api/binance-data": {
+        target: "https://data-api.binance.vision",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/binance-data/, ""),
+      },
       "/api/tv": {
         target: "https://scanner.tradingview.com",
         changeOrigin: true,

@@ -78,10 +78,13 @@ export async function fetchTradingViewQuote(assetId: AssetId): Promise<LiveQuote
   };
 }
 
-export async function fetchBinanceSpotPrice(symbol: string): Promise<LiveQuote> {
-  const res = await apiFetch(`/api/binance/api/v3/ticker/bookTicker?symbol=${symbol}`);
+async function fetchBinanceSpotFrom(
+  basePath: "/api/binance" | "/api/binance-data",
+  symbol: string,
+): Promise<LiveQuote> {
+  const res = await apiFetch(`${basePath}/api/v3/ticker/bookTicker?symbol=${symbol}`);
   if (!res.ok) {
-    const res2 = await apiFetch(`/api/binance/api/v3/ticker/price?symbol=${symbol}`);
+    const res2 = await apiFetch(`${basePath}/api/v3/ticker/price?symbol=${symbol}`);
     if (!res2.ok) throw new Error(`Binance ticker failed: ${res2.status}`);
     const data = (await res2.json()) as { price: string };
     const price = Number(data.price);
@@ -103,24 +106,60 @@ export async function fetchBinanceSpotPrice(symbol: string): Promise<LiveQuote> 
   };
 }
 
+export async function fetchBinanceSpotPrice(symbol: string): Promise<LiveQuote> {
+  try {
+    return await fetchBinanceSpotFrom("/api/binance", symbol);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/451|403|failed/i.test(msg)) throw e;
+    return fetchBinanceSpotFrom("/api/binance-data", symbol);
+  }
+}
+
+async function fetchYahooSpotPrice(yahooSymbol: string): Promise<LiveQuote> {
+  const res = await apiFetch(
+    `/api/yahoo/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1m&range=1d`,
+  );
+  if (!res.ok) throw new Error(`Yahoo ticker failed: ${res.status}`);
+  const json = await res.json();
+  const price = Number(json?.chart?.result?.[0]?.meta?.regularMarketPrice);
+  if (!Number.isFinite(price) || price <= 0) throw new Error("Invalid Yahoo price");
+  return {
+    price,
+    high: price,
+    low: price,
+    source: `Yahoo ${yahooSymbol}`,
+    ts: Date.now(),
+  };
+}
+
 export async function fetchLiveQuote(assetId: AssetId): Promise<LiveQuote> {
   const asset = ASSETS[assetId];
+  const errors: string[] = [];
+
   try {
     return await fetchTradingViewQuote(assetId);
-  } catch {
-    if (asset.binanceSymbol) return fetchBinanceSpotPrice(asset.binanceSymbol);
-    if (asset.yahooSymbol) {
-      const res = await apiFetch(
-        `/api/yahoo/v8/finance/chart/${encodeURIComponent(asset.yahooSymbol)}?interval=1m&range=1d`,
-      );
-      if (!res.ok) throw new Error("All quote sources failed");
-      const json = await res.json();
-      const price = Number(json?.chart?.result?.[0]?.meta?.regularMarketPrice);
-      if (!Number.isFinite(price)) throw new Error("Invalid Yahoo price");
-      return { price, high: price, low: price, source: `Yahoo ${asset.yahooSymbol}`, ts: Date.now() };
-    }
-    throw new Error("No quote source");
+  } catch (e) {
+    errors.push(e instanceof Error ? e.message : String(e));
   }
+
+  if (asset.binanceSymbol) {
+    try {
+      return await fetchBinanceSpotPrice(asset.binanceSymbol);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  if (asset.yahooSymbol) {
+    try {
+      return await fetchYahooSpotPrice(asset.yahooSymbol);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  throw new Error(`No quote source for ${assetId}: ${errors.join(" | ")}`);
 }
 
 export function subscribeBinanceTicker(

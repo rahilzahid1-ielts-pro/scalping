@@ -41,11 +41,16 @@ export function useLivePrice(assetId: AssetId) {
 
     void poll();
 
+    // Binance WS is best-effort only — geo-blocks (451) must not break polling/Yahoo fallback
     const asset = ASSETS[assetId];
     if (asset.binanceSymbol) {
-      unsubWs = subscribeBinanceTicker(asset.binanceSymbol, (q) => {
-        if (!cancelled) apply(q);
-      });
+      try {
+        unsubWs = subscribeBinanceTicker(asset.binanceSymbol, (q) => {
+          if (!cancelled) apply(q);
+        });
+      } catch {
+        /* ignore WS setup failures */
+      }
     }
 
     return () => {

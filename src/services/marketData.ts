@@ -103,10 +103,14 @@ export function aggregateCandles(candles: Candle[], hours: number): Candle[] {
     }));
 }
 
-async function fetchBinanceCandles(symbol: string, interval: string): Promise<Candle[]> {
+async function fetchBinanceCandlesFrom(
+  basePath: "/api/binance" | "/api/binance-data",
+  symbol: string,
+  interval: string,
+): Promise<Candle[]> {
   const iv = mapBinanceInterval(interval);
   const limit = interval === "1d" ? 200 : interval === "4h" ? 200 : 300;
-  const url = `/api/binance/api/v3/klines?symbol=${symbol}&interval=${iv}&limit=${limit}`;
+  const url = `${basePath}/api/v3/klines?symbol=${symbol}&interval=${iv}&limit=${limit}`;
   const res = await apiFetch(url);
   if (!res.ok) throw new Error(`Binance fetch failed: ${res.status}`);
   const raw: unknown[][] = await res.json();
@@ -118,6 +122,17 @@ async function fetchBinanceCandles(symbol: string, interval: string): Promise<Ca
     close: Number(k[4]),
     volume: Number(k[5]),
   }));
+}
+
+/** api.binance.com often 451 geo-blocks; data-api.binance.vision is the public mirror. */
+async function fetchBinanceCandles(symbol: string, interval: string): Promise<Candle[]> {
+  try {
+    return await fetchBinanceCandlesFrom("/api/binance", symbol, interval);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/451|403|blocked|fetch failed/i.test(msg)) throw e;
+    return fetchBinanceCandlesFrom("/api/binance-data", symbol, interval);
+  }
 }
 
 /**
@@ -158,13 +173,27 @@ export function rebaseCandlesToLive(candles: Candle[], livePrice: number): Candl
 
 export async function fetchCandles(assetId: AssetId, interval: string): Promise<Candle[]> {
   const asset = ASSETS[assetId];
+  const errors: string[] = [];
+
   if (asset.binanceSymbol) {
-    return fetchBinanceCandles(asset.binanceSymbol, interval);
+    try {
+      return await fetchBinanceCandles(asset.binanceSymbol, interval);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
   }
   if (asset.yahooSymbol) {
-    return fetchYahooCandles(asset.yahooSymbol, interval);
+    try {
+      return await fetchYahooCandles(asset.yahooSymbol, interval);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
   }
-  throw new Error(`No data source for ${assetId}`);
+  throw new Error(
+    errors.length
+      ? `No candle source for ${assetId}: ${errors.join(" | ")}`
+      : `No data source for ${assetId}`,
+  );
 }
 
 export async function fetchMultiTimeframe(
