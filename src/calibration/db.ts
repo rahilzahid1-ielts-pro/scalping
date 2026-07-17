@@ -1,7 +1,14 @@
 /**
- * Shared SQLite store for signal outcome tracking.
+ * Shared SQLite store for LIVE signal outcome tracking.
  * WAL mode + single-writer-safe better-sqlite3 (sync API).
  * All logger / resolver / calibrate / Vite API paths must use this module.
+ *
+ * HARD SEPARATION (do not break):
+ * - LIVE calibration reads/writes ONLY `data/signals.db` (SIGNAL_DB_PATH).
+ * - Any future backtest MUST use BACKTEST_SIGNAL_DB_PATH (`data/backtest-signals.db`).
+ * - Never merge, copy, ATTACH, or import backtest rows into the live DB.
+ * - `npm run calibrate` uses this live module only — backtest numbers must not
+ *   leak into claimed-vs-actual measurement.
  */
 import Database from "better-sqlite3";
 import {
@@ -10,7 +17,7 @@ import {
   readFileSync,
   renameSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   LoggedSignal,
@@ -22,12 +29,41 @@ import type {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 export const DATA_DIR = join(ROOT, "data");
+
+/** LIVE outcomes only — used by alerts bot, Vite API, and `npm run calibrate`. */
 export const SIGNAL_DB_PATH = join(DATA_DIR, "signals.db");
+
+/**
+ * Reserved path for a future backtest store. This module NEVER opens it.
+ * Backtest code must import this constant and open its own DB handle —
+ * never call getDb() / insertSignal() from this file for backtest rows.
+ */
+export const BACKTEST_SIGNAL_DB_PATH = join(DATA_DIR, "backtest-signals.db");
+
 export const SIGNAL_LOG_JSON_PATH = join(DATA_DIR, "signal-log.json");
 export const SIGNAL_LOG_MIGRATED_PATH = join(DATA_DIR, "signal-log.json.migrated");
 
 /** @deprecated Prefer SIGNAL_DB_PATH — kept for CLI banners / API stats */
 export const SIGNAL_LOG_PATH = SIGNAL_DB_PATH;
+
+/** Refuse opening any path other than the live DB through this module. */
+function assertLiveDbPath(path: string): void {
+  if (resolve(path) !== resolve(SIGNAL_DB_PATH)) {
+    throw new Error(
+      `[calibration] Refusing to open non-live DB via live store module.\n` +
+        `  requested: ${path}\n` +
+        `  live only: ${SIGNAL_DB_PATH}\n` +
+        `  backtest:  ${BACKTEST_SIGNAL_DB_PATH} (open separately — never merge into live)`,
+    );
+  }
+  if (process.env.CALIBRATION_MODE === "backtest") {
+    throw new Error(
+      `[calibration] CALIBRATION_MODE=backtest but live db.ts was invoked. ` +
+        `Backtest must use ${BACKTEST_SIGNAL_DB_PATH} with its own open handle — ` +
+        `never getDb()/insertSignal() on live signals.db.`,
+    );
+  }
+}
 
 let dbInstance: Database.Database | null = null;
 let lastMigrationReport: MigrationReport | null = null;
@@ -193,12 +229,15 @@ function signalToParams(s: LoggedSignal): DbRow {
 }
 
 function openDatabase(): Database.Database {
+  assertLiveDbPath(SIGNAL_DB_PATH);
   try {
     if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
     const db = new Database(SIGNAL_DB_PATH);
     db.pragma("journal_mode = WAL");
     db.pragma("busy_timeout = 5000");
     db.exec(SCHEMA);
+    // Tag connection so dumps / ATTACH mistakes are auditable
+    db.pragma("application_id = 0x4C495645"); // 'LIVE'
     return db;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

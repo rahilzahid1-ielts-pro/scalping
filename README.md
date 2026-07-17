@@ -32,6 +32,14 @@ Open the URL Vite prints (default `http://localhost:5173`).
 Signals are logged to **SQLite** (`data/signals.db`, WAL mode). Legacy `data/signal-log.json`
 is imported once on first open, then renamed to `signal-log.json.migrated` (not deleted).
 
+**Live vs backtest (do not mix):**
+
+- Live measurement uses **only** `data/signals.db` (alerts bot + Vite API + `npm run calibrate`).
+- A future backtest must use **`data/backtest-signals.db`** (`BACKTEST_SIGNAL_DB_PATH`) with its
+  own DB handle — never `getDb()` / `insertSignal()` from the live module.
+- **Never merge, copy, ATTACH, or import** backtest rows into live `signals.db`. That leak
+  inflates win rates and destroys the live calibration discipline.
+
 **Win definitions (exact):**
 
 - **outcomeTp1 / TP1win% (primary)** — `WIN` if TP1 is touched before SL; `LOSS` if SL is
