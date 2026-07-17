@@ -1,15 +1,15 @@
 /**
- * Background Alert Bot — browser band ho to bhi chalega.
- * Usage: npm run alerts
+ * Background Alert Bot — live Gold / Silver / Bitcoin signals.
+ * - Local: npm run alerts (Windows toast + optional Telegram)
+ * - Railway: started from prodServer when Telegram env is set (or ENABLE_ALERT_WORKER=1)
  */
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import { ASSETS } from "../src/config/assets";
 import { fetchLiveQuote } from "../src/services/liveQuotes";
 import { fetchMultiTimeframe } from "../src/services/marketData";
 import { generateSignal } from "../src/strategies/signalEngine";
 import { computeNowAction } from "../src/utils/nowAction";
 import { roundPrice } from "../src/strategies/indicators";
+import type { AssetId, TradeMode } from "../src/types";
 import {
   loadDaemonState,
   saveDaemonState,
@@ -17,59 +17,38 @@ import {
   type DaemonState,
 } from "./planStore";
 import { createFrozenPlan, shouldKeepFrozenPlan } from "../src/services/tradePlan";
+import { buildSessionExtras, canAutoLockPlan } from "../src/utils/sessionPlan";
 import { logSignalFromLive } from "../src/calibration";
 import { resolveOpenSignalsForSymbol } from "../src/calibration/resolveOutcomes";
 import { makePlanKey } from "../src/calibration/signalStore";
 import { invalidateLoggedPlan } from "../src/calibration/resolveOutcomes";
+import {
+  alertChannelsStatus,
+  assetLabel,
+  dispatchTradeAlert,
+  isTelegramConfigured,
+} from "../src/services/notify";
 
-const execAsync = promisify(exec);
-const TICK_MS = 2500;
+const TICK_MS = Number(process.env.ALERT_TICK_MS) || 2500;
 const SIGNAL_EVERY_N = 8;
 
 let tickCount = 0;
+let workerRunning = false;
 
 function log(...args: unknown[]) {
-  console.log(`[${new Date().toLocaleTimeString()}]`, ...args);
+  console.log(`[alertBot ${new Date().toLocaleTimeString()}]`, ...args);
 }
 
-async function windowsAlert(title: string, body: string) {
-  const safeTitle = title.replace(/"/g, "'");
-  const safeBody = body.replace(/"/g, "'").slice(0, 220);
-  const script = `
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-$n = New-Object System.Windows.Forms.NotifyIcon
-$n.Icon = [System.Drawing.SystemIcons]::Warning
-$n.Visible = $true
-$n.BalloonTipTitle = "${safeTitle}"
-$n.BalloonTipText = "${safeBody}"
-$n.ShowBalloonTip(15000)
-1..6 | ForEach-Object { [console]::beep(1000 + $_ * 80, 280); Start-Sleep -Milliseconds 90 }
-Start-Sleep -Seconds 10
-$n.Dispose()
-`;
-  const encoded = Buffer.from(script, "utf16le").toString("base64");
-  try {
-    await execAsync(`powershell -NoProfile -EncodedCommand ${encoded}`, {
-      windowsHide: true,
-      timeout: 25000,
-    });
-  } catch {
-    try {
-      await execAsync(
-        `powershell -NoProfile -Command "1..5 | % { [console]::beep(1100,300); Start-Sleep -m 100 }"`,
-      );
-    } catch {
-      process.stdout.write("\x07\x07\x07\x07");
-    }
-  }
-}
-
-function lockPlan(state: DaemonState, assetId: AssetId, mode: TradeMode, signal: ReturnType<typeof generateSignal>, live: number) {
+function lockPlan(
+  state: DaemonState,
+  assetId: AssetId,
+  mode: TradeMode,
+  signal: ReturnType<typeof generateSignal>,
+  live: number,
+) {
   const key = planKey(assetId, mode);
   let current = state.plans[key] ?? null;
 
-  // Drop zombie plans: SELL entry far above with price never reaching, stuck TOO_LATE style
   if (current && current.status !== "INVALIDATED") {
     const entry = current.levels.entry;
     const sl = current.levels.stopLoss;
@@ -91,19 +70,38 @@ function lockPlan(state: DaemonState, assetId: AssetId, mode: TradeMode, signal:
     }
   }
 
-  if (current && current.status !== "INVALIDATED" && current.assetId === assetId && current.mode === mode) {
+  if (
+    current &&
+    current.status !== "INVALIDATED" &&
+    current.assetId === assetId &&
+    current.mode === mode
+  ) {
     state.plans[key] = shouldKeepFrozenPlan(current, signal.side, live);
     return state.plans[key];
   }
 
-  if (signal.side !== "WAIT" && signal.levels && signal.confidence >= state.minConfidence) {
-    const created = createFrozenPlan(assetId, mode, signal.side, signal.levels);
+  if (canAutoLockPlan(mode, signal, current, assetId)) {
+    const extras = buildSessionExtras(
+      assetId,
+      mode,
+      signal.side,
+      signal.levels!,
+      signal,
+    );
+    const created = createFrozenPlan(
+      assetId,
+      mode,
+      signal.side,
+      signal.levels!,
+      signal.confidence,
+      signal.rangePrediction.winProbability,
+      extras,
+    );
     state.plans[key] = created.status === "INVALIDATED" ? null : created;
     return state.plans[key];
   }
 
-  // Clear invalidated so next good signal can lock fresh
-  if (current?.status === "INVALIDATED") {
+  if (current?.status === "INVALIDATED" && mode === "scalping") {
     state.plans[key] = null;
   }
 
@@ -126,7 +124,6 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
 
   let now = computeNowAction(signal, plan, live, asset, quote);
 
-  // Recycle dead/missed plans — next ticks can lock a fresh WAIT_ENTRY
   if (now.action === "TOO_LATE" || now.action === "PLAN_DEAD") {
     if (plan?.levels && (plan.side === "BUY" || plan.side === "SELL")) {
       invalidateLoggedPlan(
@@ -141,13 +138,41 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
         now.action,
       );
     }
+
+    if (mode === "intraday" && plan) {
+      const dead = {
+        ...plan,
+        status: "INVALIDATED" as const,
+        note:
+          plan.note ||
+          "Intraday zone miss/SL — aaj naya auto plan nahi. Kal / New plan.",
+      };
+      state.plans[planKey(assetId, mode)] = dead;
+      now = computeNowAction(signal, dead, live, asset, quote);
+      return { signal, plan: dead, now, quote };
+    }
+
     state.plans[planKey(assetId, mode)] = null;
     plan = null;
-    // Don't force old side/levels onto signal after clear
     const fresh = generateSignal(assetId, mode, frames);
     fresh.price = roundPrice(live, asset.decimals);
-    if (fresh.side !== "WAIT" && fresh.levels && fresh.confidence >= state.minConfidence) {
-      plan = createFrozenPlan(assetId, mode, fresh.side, fresh.levels);
+    if (canAutoLockPlan(mode, fresh, null, assetId)) {
+      const extras = buildSessionExtras(
+        assetId,
+        mode,
+        fresh.side,
+        fresh.levels!,
+        fresh,
+      );
+      plan = createFrozenPlan(
+        assetId,
+        mode,
+        fresh.side,
+        fresh.levels!,
+        fresh.confidence,
+        fresh.rangePrediction.winProbability,
+        extras,
+      );
       if (plan.status === "INVALIDATED") plan = null;
       state.plans[planKey(assetId, mode)] = plan;
     }
@@ -164,12 +189,16 @@ async function tick(state: DaemonState) {
 
   for (const w of state.watches) {
     try {
-      const { signal, plan, now, quote } = await checkOne(state, w.assetId, w.mode);
-      const label = `${w.assetId}/${w.mode}`;
+      const { signal, plan, now, quote } = await checkOne(
+        state,
+        w.assetId,
+        w.mode,
+      );
+      const name = assetLabel(w.assetId);
+      const label = `${name}/${w.mode}`;
       const entry = plan?.levels.entry;
       const d = ASSETS[w.assetId].decimals;
 
-      // Persist BUY/SELL emissions (deduped) + resolve open outcomes on live tick
       if (signal.side !== "WAIT" && signal.levels) {
         const toLog =
           plan && plan.status !== "INVALIDATED"
@@ -188,30 +217,77 @@ async function tick(state: DaemonState) {
         open: quote.price,
       });
 
-      if (verbose || now.action === "ENTER_NOW" || now.action === "TOO_LATE" || now.action === "WAIT_ENTRY") {
+      if (
+        verbose ||
+        now.action === "ENTER_NOW" ||
+        now.action === "TOO_LATE" ||
+        now.action === "WAIT_ENTRY"
+      ) {
         log(
-          `${label.padEnd(16)} ${now.action.padEnd(12)} live=${quote.price.toFixed(d)} entry=${entry ?? "-"} conf=${signal.confidence}% win=${signal.rangePrediction.winProbability}%`,
+          `${label.padEnd(18)} ${now.action.padEnd(12)} live=${quote.price.toFixed(d)} entry=${entry ?? "-"} conf=${signal.confidence}%`,
         );
       }
 
+      // Alert #1: plan / zone locked
+      if (plan && plan.status === "WAITING_ENTRY") {
+        const lockKey = `LOCK:${w.assetId}:${w.mode}:${plan.lockedAt}`;
+        if (!state.lastAlertAt[lockKey]) {
+          state.lastAlertAt[lockKey] = Date.now();
+          const zone =
+            plan.entryZoneLow != null && plan.entryZoneHigh != null
+              ? `${plan.entryZoneLow}–${plan.entryZoneHigh}`
+              : String(plan.levels.entry);
+          const title =
+            plan.mode === "intraday" ? "ZONE LOCKED" : "PLAN LOCKED";
+          const body = [
+            `${plan.side} entry zone: ${zone}`,
+            `SL ${plan.levels.stopLoss} · TP1 ${plan.levels.takeProfit1} · TP2 ${plan.levels.takeProfit2}`,
+            `Conf ${plan.lockedConfidence ?? signal.confidence}% · Win ${plan.lockedWinProbability ?? signal.rangePrediction.winProbability}%`,
+            `Live ${quote.price.toFixed(d)}`,
+          ].join("\n");
+          log("PLAN LOCK >>>", name, title);
+          await dispatchTradeAlert({
+            kind: "PLAN_LOCK",
+            assetId: w.assetId,
+            mode: w.mode,
+            side: plan.side,
+            title,
+            body,
+          });
+        }
+      }
+
+      // Alert #2: entry zone hit
       const highQuality =
         now.action === "ENTER_NOW" &&
         now.inEntryZone &&
         now.entry != null &&
         signal.confidence >= state.minConfidence &&
         signal.rangePrediction.winProbability >= state.minWinProb &&
-        // Price must be near locked entry (not a fake far signal)
-        Math.abs(quote.price - now.entry) <= Math.abs(now.stopLoss! - now.entry) * 0.35;
+        Math.abs(quote.price - now.entry) <=
+          Math.abs(now.stopLoss! - now.entry) * 0.35;
 
       if (highQuality) {
-        const alertKey = `${label}:${now.side}:${now.entry}`;
+        const alertKey = `ENTRY:${w.assetId}:${w.mode}:${now.side}:${now.entry}`;
         const last = state.lastAlertAt[alertKey] ?? 0;
         if (Date.now() - last > 5 * 60 * 1000) {
           state.lastAlertAt[alertKey] = Date.now();
-          const title = `${now.headlineUr} | ${ASSETS[w.assetId].name}`;
-          const body = `${now.side} @ ${now.entry} | Live ${now.livePrice} | SL ${now.stopLoss} TP ${now.takeProfit} | Conf ${signal.confidence}% Win ${signal.rangePrediction.winProbability}% (${w.mode})`;
-          log("ALERT >>>", title);
-          await windowsAlert(title, body);
+          const title = now.headlineUr || "ENTRY HIT";
+          const body = [
+            `${now.side} NOW @ ${now.entry}`,
+            `Live ${now.livePrice} · SL ${now.stopLoss} · TP1 ${now.takeProfit}`,
+            `Conf ${signal.confidence}% · Win ${signal.rangePrediction.winProbability}%`,
+            `Mode: ${w.mode}`,
+          ].join("\n");
+          log("ENTRY >>>", name, title);
+          await dispatchTradeAlert({
+            kind: "ENTRY_HIT",
+            assetId: w.assetId,
+            mode: w.mode,
+            side: String(now.side),
+            title,
+            body,
+          });
         }
       }
     } catch (e) {
@@ -222,36 +298,69 @@ async function tick(state: DaemonState) {
   saveDaemonState(state);
 }
 
-async function main() {
+/** Start background poll loop (idempotent). Used by CLI and Railway prodServer. */
+export function startAlertWorker(): void {
+  if (workerRunning) {
+    log("Worker already running — skip");
+    return;
+  }
+  workerRunning = true;
+
   const state = loadDaemonState();
   saveDaemonState(state);
+  const ch = alertChannelsStatus();
 
   console.log(`
 ════════════════════════════════════════════════
-  SMC BACKGROUND ALERT BOT
-  Tab band / minimize — alerts phir bhi aayenge
+  SMC LIVE ALERT WORKER
+  Gold · Silver · Bitcoin — tab band bhi alerts
 ════════════════════════════════════════════════
-  Pairs : ${state.watches.map((w) => `${w.assetId}/${w.mode}`).join(", ")}
-  Gate  : conf>=${state.minConfidence}%  win>=${state.minWinProb}%
-  Poll  : every ${TICK_MS}ms
-  Stop  : Ctrl+C
+  Pairs    : ${state.watches.map((w) => `${assetLabel(w.assetId)}/${w.mode}`).join(", ")}
+  Gate     : conf>=${state.minConfidence}%  win>=${state.minWinProb}%
+  Poll     : every ${TICK_MS}ms
+  Telegram : ${ch.telegram ? "ON ✓" : "OFF (set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)"}
+  Windows  : ${ch.windows ? "ON" : "n/a"}
 ════════════════════════════════════════════════
 `);
 
-  try {
-    await execAsync(`powershell -NoProfile -Command "[console]::beep(900,250)"`);
-    log("Ready — high-probability ENTRY pe Windows toast + beeps");
-  } catch {
-    log("Ready (beep test skipped)");
+  if (!ch.telegram && !ch.windows) {
+    log(
+      "⚠ No notify channel. Railway pe Telegram zaroor set karo warna alerts sirf logs mein aayenge.",
+    );
   }
 
-  for (;;) {
-    await tick(state);
-    await new Promise((r) => setTimeout(r, TICK_MS));
-  }
+  void (async () => {
+    for (;;) {
+      try {
+        await tick(state);
+      } catch (e) {
+        log("tick fatal:", e instanceof Error ? e.message : e);
+      }
+      await new Promise((r) => setTimeout(r, TICK_MS));
+    }
+  })();
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+export function shouldAutoStartAlertWorker(): boolean {
+  const flag = (process.env.ENABLE_ALERT_WORKER ?? "auto").toLowerCase();
+  if (flag === "0" || flag === "false" || flag === "off") return false;
+  if (flag === "1" || flag === "true" || flag === "on") return true;
+  // auto: start on Railway / when Telegram is configured
+  return isTelegramConfigured() || Boolean(process.env.RAILWAY_ENVIRONMENT);
+}
+
+/** CLI entry: npm run alerts */
+async function main() {
+  startAlertWorker();
+}
+
+const isDirect =
+  process.argv[1]?.includes("alertBot") ||
+  process.env.npm_lifecycle_event === "alerts";
+
+if (isDirect) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

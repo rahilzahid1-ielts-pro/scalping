@@ -200,7 +200,9 @@ export async function fetchMultiTimeframe(
   assetId: AssetId,
   mode: "scalping" | "intraday",
   livePrice?: number,
+  options?: { rebaseToLive?: boolean },
 ) {
+  const rebaseToLive = options?.rebaseToLive ?? mode === "scalping";
   let frames;
   if (mode === "scalping") {
     const [m5, m15, h1, daily] = await Promise.all([
@@ -229,7 +231,7 @@ export async function fetchMultiTimeframe(
     }
   }
 
-  if (price != null) {
+  if (price != null && rebaseToLive) {
     return {
       primary: rebaseCandlesToLive(frames.primary, price),
       confirmation: rebaseCandlesToLive(frames.confirmation, price),

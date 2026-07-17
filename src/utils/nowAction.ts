@@ -1,6 +1,7 @@
 import type { AssetConfig, LiveQuote, LiveSignal, Side } from "../types";
 import type { FrozenPlan } from "../services/tradePlan";
 import { roundPrice } from "../strategies/indicators";
+import { CONFLICT_CAP_PCT } from "../calibration/types";
 import {
   entryTolerance,
   hasSafeStopRoom,
@@ -27,12 +28,18 @@ export interface NowActionResult {
   winProbability: number;
   side: Side;
   entry: number | null;
+  entryZoneLow: number | null;
+  entryZoneHigh: number | null;
+  safeZoneLow: number | null;
+  safeZoneHigh: number | null;
   stopLoss: number | null;
   takeProfit: number | null;
+  takeProfit2: number | null;
   livePrice: number;
   distanceToEntry: number | null;
   inEntryZone: boolean;
   conflictingSignals: boolean;
+  sessionLocked: boolean;
 }
 
 const MIN_CONFIDENCE = 68;
@@ -49,12 +56,18 @@ export function computeNowAction(
   // A locked plan must keep the scores the user saw when it fired. A later
   // refresh may lean WAIT/opposite, but that is not a new instruction for an
   // already-entered trade.
-  const conf = plan?.lockedConfidence ?? signal.confidence;
-  const winProb =
+  // Conflict guardrail (Fix 4): BOTH confidence and win% ≤ CONFLICT_CAP_PCT.
+  const conflict =
+    Boolean(signal.diagnostics?.conflictingSignals) ||
+    Boolean(signal.diagnostics?.conflictCapped);
+  let conf = plan?.lockedConfidence ?? signal.confidence;
+  let winProb =
     plan?.lockedWinProbability ?? signal.rangePrediction.winProbability;
+  if (conflict) {
+    conf = Math.min(conf, CONFLICT_CAP_PCT);
+    winProb = Math.min(winProb, CONFLICT_CAP_PCT);
+  }
   const tol = entryTolerance(asset, signal.mode, p);
-
-  const conflict = signal.diagnostics?.conflictingSignals ?? false;
   const empty: NowActionResult = {
     action: "WAIT_SETUP",
     headline: "WAIT",
@@ -64,13 +77,24 @@ export function computeNowAction(
     winProbability: winProb,
     side: "WAIT",
     entry: null,
+    entryZoneLow: null,
+    entryZoneHigh: null,
+    safeZoneLow: null,
+    safeZoneHigh: null,
     stopLoss: null,
     takeProfit: null,
+    takeProfit2: null,
     livePrice: p,
     distanceToEntry: null,
     inEntryZone: false,
     conflictingSignals: conflict,
+    sessionLocked: false,
   };
+
+  const sessionLocked =
+    plan?.mode === "intraday" &&
+    !!plan.sessionDate &&
+    plan.status !== "INVALIDATED";
 
   if (plan?.status === "INVALIDATED") {
     return {
@@ -81,8 +105,14 @@ export function computeNowAction(
       detail: plan.note || "Plan khatam. New plan dabao.",
       side: plan.side,
       entry: plan.levels.entry,
+      entryZoneLow: plan.entryZoneLow ?? null,
+      entryZoneHigh: plan.entryZoneHigh ?? null,
+      safeZoneLow: plan.safeZoneLow ?? null,
+      safeZoneHigh: plan.safeZoneHigh ?? null,
       stopLoss: plan.levels.stopLoss,
       takeProfit: plan.levels.takeProfit1,
+      takeProfit2: plan.levels.takeProfit2,
+      sessionLocked: false,
     };
   }
 
@@ -101,12 +131,18 @@ export function computeNowAction(
       winProbability: winProb,
       side: plan.side,
       entry: plan.levels.entry,
+      entryZoneLow: plan.entryZoneLow ?? null,
+      entryZoneHigh: plan.entryZoneHigh ?? null,
+      safeZoneLow: plan.safeZoneLow ?? null,
+      safeZoneHigh: plan.safeZoneHigh ?? null,
       stopLoss: plan.levels.stopLoss,
       takeProfit: plan.levels.takeProfit1,
+      takeProfit2: plan.levels.takeProfit2,
       livePrice: p,
       distanceToEntry: roundPrice(p - plan.levels.entry, decimals),
       inEntryZone: false,
       conflictingSignals: conflict,
+      sessionLocked,
     };
   }
 
@@ -129,6 +165,11 @@ export function computeNowAction(
   const entry = levels.entry;
   const sl = levels.stopLoss;
   const tp = levels.takeProfit1;
+  const tp2 = levels.takeProfit2;
+  const zoneLow = plan?.entryZoneLow ?? null;
+  const zoneHigh = plan?.entryZoneHigh ?? null;
+  const safeLow = plan?.safeZoneLow ?? null;
+  const safeHigh = plan?.safeZoneHigh ?? null;
 
   // Probe = high-side for SELL so chart-ahead ticks still fire alert
   const probe = roundPrice(
@@ -152,12 +193,18 @@ export function computeNowAction(
       winProbability: winProb,
       side,
       entry,
+      entryZoneLow: zoneLow,
+      entryZoneHigh: zoneHigh,
+      safeZoneLow: safeLow,
+      safeZoneHigh: safeHigh,
       stopLoss: sl,
       takeProfit: tp,
+      takeProfit2: tp2,
       livePrice: p,
       distanceToEntry: dist,
       inEntryZone: false,
       conflictingSignals: conflict,
+      sessionLocked,
     };
   }
 
@@ -171,59 +218,86 @@ export function computeNowAction(
       winProbability: winProb,
       side,
       entry,
+      entryZoneLow: zoneLow,
+      entryZoneHigh: zoneHigh,
+      safeZoneLow: safeLow,
+      safeZoneHigh: safeHigh,
       stopLoss: sl,
       takeProfit: tp,
+      takeProfit2: tp2,
       livePrice: p,
       distanceToEntry: dist,
       inEntryZone: false,
       conflictingSignals: conflict,
+      sessionLocked,
     };
   }
 
-  const inZone = isInEntryZone(side, probe, entry, tol);
+  const inZone =
+    zoneLow != null && zoneHigh != null
+      ? probe >= Math.min(zoneLow, zoneHigh) && probe <= Math.max(zoneLow, zoneHigh)
+      : isInEntryZone(side, probe, entry, tol);
 
   if (inZone) {
     return {
       action: "ENTER_NOW",
       headline: side === "BUY" ? "BUY NOW" : "SELL NOW",
       headlineUr: side === "BUY" ? "AB BUY LO" : "AB SELL LO",
-      detail: `ENTRY HIT @ ${entry}. Live ${p} (probe ${probe}). SL ${sl} · TP1 ${tp}. Chart confirm karke LO.`,
-      confidence: Math.max(conf, 68),
+      detail: `ENTRY ZONE HIT (${zoneLow ?? entry}–${zoneHigh ?? entry}). Live ${p} (probe ${probe}). SL ${sl} · TP1 ${tp}. Chart confirm karke LO.`,
+      confidence: conf,
       winProbability: winProb,
       side,
-      entry, // keep LOCKED entry — do not swap to live
+      entry,
+      entryZoneLow: zoneLow,
+      entryZoneHigh: zoneHigh,
+      safeZoneLow: safeLow,
+      safeZoneHigh: safeHigh,
       stopLoss: sl,
       takeProfit: tp,
+      takeProfit2: tp2,
       livePrice: p,
       distanceToEntry: roundPrice(probe - entry, decimals),
       inEntryZone: true,
       conflictingSignals: conflict,
+      sessionLocked,
     };
   }
 
-  const waitDetail =
-    side === "SELL"
+  const zoneLabel =
+    zoneLow != null && zoneHigh != null
+      ? `${Math.min(zoneLow, zoneHigh)}–${Math.max(zoneLow, zoneHigh)}`
+      : String(entry);
+
+  const waitDetail = sessionLocked
+    ? `${side} intraday zone ${zoneLabel} — din bhar LOCKED. Market yahan aaye to ${side}. SL ${sl} · TP1 ${tp} · TP2 ${tp2}. Alert auto bajega.`
+    : side === "SELL"
       ? probe < entry
-        ? `SELL limit ${entry} — abhi ${p}. Aur ${roundPrice(entry - probe, decimals)} chahiye. Alert auto bajega.`
+        ? `SELL zone ${zoneLabel} — abhi ${p}. Aur ${roundPrice(entry - probe, decimals)} chahiye. Alert auto bajega.`
         : `Probe ${probe} entry ke paas/upar — zone check. Chart confirm.`
       : probe > entry
-        ? `BUY limit ${entry} — abhi ${p}. Pullback wait. Alert auto bajega.`
-        : `Price ${p} — limit ${entry}.`;
+        ? `BUY zone ${zoneLabel} — abhi ${p}. Pullback wait. Alert auto bajega.`
+        : `Price ${p} — zone ${zoneLabel}.`;
 
   return {
     action: "WAIT_ENTRY",
-    headline: "WAIT FOR ENTRY",
-    headlineUr: "ENTRY KA WAIT KARO",
+    headline: sessionLocked ? "WAIT FOR ZONE" : "WAIT FOR ENTRY",
+    headlineUr: sessionLocked ? "ZONE KA WAIT KARO" : "ENTRY KA WAIT KARO",
     detail: waitDetail,
     confidence: conf,
     winProbability: winProb,
     side,
     entry,
+    entryZoneLow: zoneLow,
+    entryZoneHigh: zoneHigh,
+    safeZoneLow: safeLow,
+    safeZoneHigh: safeHigh,
     stopLoss: sl,
     takeProfit: tp,
+    takeProfit2: tp2,
     livePrice: p,
     distanceToEntry: dist,
     inEntryZone: false,
     conflictingSignals: conflict,
+    sessionLocked,
   };
 }

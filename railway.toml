@@ -7,5 +7,12 @@ startCommand = "npm run start"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
-# Optional: attach a Railway Volume mounted at /app/data so data/signals.db
-# survives redeploys. Without a volume, the live SQLite DB resets each deploy.
+# Live alerts (Gold/Silver/Bitcoin) when web is closed:
+# Set Railway Variables:
+#   TELEGRAM_BOT_TOKEN=...
+#   TELEGRAM_CHAT_ID=...
+#   ENABLE_ALERT_WORKER=1
+# prodServer auto-starts the alert worker and pushes Telegram notifications.
+#
+# Optional: attach a Railway Volume mounted at /app/data (or set DATA_DIR)
+# so data/signals.db + alert-daemon-state.json survive redeploys.

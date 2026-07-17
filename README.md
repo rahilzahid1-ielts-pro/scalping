@@ -22,11 +22,23 @@ npm install
 npm run dev          # UI (local Vite + API proxies)
 npm run build        # production bundle → dist/
 npm run start        # production Node server (PORT, proxies, calibration API)
-npm run alerts       # background outcome watcher + entry alerts
+npm run alerts       # background Gold/Silver/BTC alerts (Windows + optional Telegram)
 npm run calibrate    # actual vs claimed win-rate report (LIVE data/signals.db)
 npm run calibrate -- --days=30
 npm run backtest -- --file=C:\gold-trading-engine\data\XAUUSD_M5.json --days=365
 ```
+
+### Phone alerts jab web band ho (Railway + Telegram)
+
+Browser band hone pe notifications ke liye Railway Variables set karo:
+
+1. Telegram `@BotFather` se bot token lo  
+2. Apna `TELEGRAM_CHAT_ID` lo  
+3. Railway pe:
+   - `TELEGRAM_BOT_TOKEN=...`
+   - `TELEGRAM_CHAT_ID=...`
+   - `ENABLE_ALERT_WORKER=1`
+4. Redeploy — har alert pe **Gold / Silver / Bitcoin** clearly likha aayega (zone lock + entry hit)
 
 Open the URL Vite prints (default `http://localhost:5173`).
 

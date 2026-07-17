@@ -6,7 +6,19 @@ import type { FrozenPlan } from "../src/services/tradePlan";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const DAEMON_DIR = __dirname;
-export const STATE_PATH = join(DAEMON_DIR, "state.json");
+
+/** Prefer data/ (Railway volume) so lock/dedupe state survives redeploys. */
+function resolveStatePath(): string {
+  const dataDir = process.env.DATA_DIR || join(process.cwd(), "data");
+  try {
+    if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+    return join(dataDir, "alert-daemon-state.json");
+  } catch {
+    return join(DAEMON_DIR, "state.json");
+  }
+}
+
+export const STATE_PATH = resolveStatePath();
 
 export type DaemonWatch = {
   assetId: AssetId;
@@ -31,6 +43,8 @@ export function defaultState(): DaemonState {
       { assetId: "XAUUSD", mode: "intraday" },
       { assetId: "XAUUSD", mode: "scalping" },
       { assetId: "XAGUSD", mode: "intraday" },
+      { assetId: "XAGUSD", mode: "scalping" },
+      { assetId: "BTCUSD", mode: "intraday" },
       { assetId: "BTCUSD", mode: "scalping" },
     ],
     plans: {},
@@ -44,13 +58,25 @@ export function loadDaemonState(): DaemonState {
   try {
     if (!existsSync(STATE_PATH)) return defaultState();
     const raw = JSON.parse(readFileSync(STATE_PATH, "utf8")) as Partial<DaemonState>;
-    return { ...defaultState(), ...raw, plans: raw.plans ?? {}, lastAlertAt: raw.lastAlertAt ?? {} };
+    const base = defaultState();
+    const watches =
+      raw.watches && raw.watches.length >= base.watches.length
+        ? raw.watches
+        : base.watches;
+    return {
+      ...base,
+      ...raw,
+      watches,
+      plans: raw.plans ?? {},
+      lastAlertAt: raw.lastAlertAt ?? {},
+    };
   } catch {
     return defaultState();
   }
 }
 
 export function saveDaemonState(state: DaemonState) {
-  if (!existsSync(DAEMON_DIR)) mkdirSync(DAEMON_DIR, { recursive: true });
+  const dir = dirname(STATE_PATH);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(STATE_PATH, JSON.stringify(state, null, 2), "utf8");
 }

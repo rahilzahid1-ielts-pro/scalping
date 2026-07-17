@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS signals (
   atr14 REAL,
   atr_pct_of_price REAL,
   regime TEXT,
-  resolve_note TEXT
+  resolve_note TEXT,
+  zone_touched_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_bt_ts ON signals(timestamp);
 `;
@@ -123,6 +124,7 @@ function rowToSignal(row: DbRow): LoggedSignal {
     atrPctOfPrice: row.atr_pct_of_price == null ? null : Number(row.atr_pct_of_price),
     regime: (row.regime as LoggedSignal["regime"]) ?? null,
     resolveNote: row.resolve_note == null ? undefined : String(row.resolve_note),
+    zoneTouchedAt: row.zone_touched_at == null ? null : Number(row.zone_touched_at),
   };
 }
 
@@ -169,6 +171,7 @@ function signalToParams(s: LoggedSignal): DbRow {
     atr_pct_of_price: s.atrPctOfPrice,
     regime: s.regime,
     resolve_note: s.resolveNote ?? null,
+    zone_touched_at: s.zoneTouchedAt ?? null,
   };
 }
 
@@ -214,7 +217,7 @@ export function insertBacktestSignal(db: Database.Database, signal: LoggedSignal
       outcome, outcome_tp1, resolved_at, realized_r, realized_r_full,
       full_plan_closed, tp2_hit, tp3_hit, sl_after_tp1,
       tp1_hit_at, tp2_hit_at, tp3_hit_at, sl_after_tp1_at,
-      atr14, atr_pct_of_price, regime, resolve_note
+      atr14, atr_pct_of_price, regime, resolve_note, zone_touched_at
     ) VALUES (
       @id, @timestamp, @symbol, @mode, @side, @entry, @sl, @tp1, @tp2, @tp3,
       @confidence, @win_chance_displayed, @win_chance_calibrated,
@@ -223,7 +226,7 @@ export function insertBacktestSignal(db: Database.Database, signal: LoggedSignal
       @outcome, @outcome_tp1, @resolved_at, @realized_r, @realized_r_full,
       @full_plan_closed, @tp2_hit, @tp3_hit, @sl_after_tp1,
       @tp1_hit_at, @tp2_hit_at, @tp3_hit_at, @sl_after_tp1_at,
-      @atr14, @atr_pct_of_price, @regime, @resolve_note
+      @atr14, @atr_pct_of_price, @regime, @resolve_note, @zone_touched_at
     )
   `);
   stmt.run(signalToParams(signal));
@@ -237,7 +240,7 @@ export function updateBacktestSignal(db: Database.Database, signal: LoggedSignal
       full_plan_closed=@full_plan_closed, tp2_hit=@tp2_hit, tp3_hit=@tp3_hit,
       sl_after_tp1=@sl_after_tp1, tp1_hit_at=@tp1_hit_at, tp2_hit_at=@tp2_hit_at,
       tp3_hit_at=@tp3_hit_at, sl_after_tp1_at=@sl_after_tp1_at,
-      resolve_note=@resolve_note
+      resolve_note=@resolve_note, zone_touched_at=@zone_touched_at
     WHERE id=@id
   `);
   stmt.run(signalToParams(signal));

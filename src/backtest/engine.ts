@@ -1,16 +1,23 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import type { AssetId, Candle, TradeMode } from "../types";
+import type { AssetId, Candle, RegimeTag, TradeMode } from "../types";
 import { ASSETS } from "../config/assets";
 import { generateSignal } from "../strategies/signalEngine";
 import { makePlanKey } from "../calibration/db";
 import { advanceSignalOnBar } from "../calibration/resolveOutcomes";
 import type { LoggedSignal } from "../calibration/types";
-import { entryTolerance, isTooLateToEnter } from "../utils/tradeSafety";
+import {
+  createFrozenPlan,
+  shouldKeepFrozenPlan,
+  type FrozenPlan,
+} from "../services/tradePlan";
+import {
+  buildSessionExtras,
+  canAutoLockPlan,
+  sessionDayKey,
+} from "../utils/sessionPlan";
 import { framesAtIndex, isClosedFifteenEnd, precomputeHtfs } from "./frames";
 import { insertBacktestSignal, updateBacktestSignal } from "./store";
-
-const LOCK_MIN_CONFIDENCE = 68; // matches App.tsx auto-lock threshold
 
 export interface BacktestOptions {
   assetId: AssetId;
@@ -22,20 +29,49 @@ export interface BacktestOptions {
   onProgress?: (done: number, total: number) => void;
 }
 
+export interface RegimeFunnelBucket {
+  locked: number;
+  touched: number;
+  tp1Wins: number;
+  tp1Losses: number;
+}
+
 export interface BacktestStats {
+  /** Plans locked (funnel stage 1 — live “plan lock” alert). */
   signalsFired: number;
+  /** Locked plans whose entry zone was touched (funnel stage 2). */
+  zoneTouched: number;
+  /** Among touched plans that resolved TP1 WIN/LOSS. */
+  tp1WinsAfterTouch: number;
+  tp1LossesAfterTouch: number;
   byMonth: Map<string, number>;
+  byRegime: Map<string, RegimeFunnelBucket>;
   equityR: number[];
 }
 
-type PendingPlan = {
-  row: LoggedSignal;
-  filled: boolean;
-  signalBarIndex: number;
+type Phase = "IDLE" | "PLAN_LOCKED" | "ENTRY_HIT";
+
+type ModeState = {
+  phase: Phase;
+  /** Live FrozenPlan mirror — kept after invalidate until session allows re-lock. */
+  plan: FrozenPlan | null;
+  row: LoggedSignal | null;
 };
 
-const MAX_WAIT_BARS_SCALP = 36; // 3h of M5
-const MAX_WAIT_BARS_INTRA = 96; // 8h of M5
+function emptyRegime(): RegimeFunnelBucket {
+  return { locked: 0, touched: 0, tp1Wins: 0, tp1Losses: 0 };
+}
+
+function bumpRegime(
+  map: Map<string, RegimeFunnelBucket>,
+  regime: RegimeTag | null | undefined,
+  field: keyof RegimeFunnelBucket,
+) {
+  const key = regime ?? "UNKNOWN";
+  const b = map.get(key) ?? emptyRegime();
+  b[field] += 1;
+  map.set(key, b);
+}
 
 function applySpread(
   side: "BUY" | "SELL",
@@ -103,6 +139,8 @@ function toLogged(
     atr14: d.atr14,
     atrPctOfPrice: d.atrPctOfPrice,
     regime: d.regime,
+    resolveNote: "PLAN_LOCKED",
+    zoneTouchedAt: null,
   };
 }
 
@@ -110,44 +148,100 @@ function monthKey(ts: number): string {
   return new Date(ts).toISOString().slice(0, 7);
 }
 
-function barTouchesEntry(
-  side: "BUY" | "SELL",
+/** Mirror live nowAction entry-zone hit using frozen zone bounds. */
+function barTouchesZone(
   bar: Candle,
+  zoneLow: number | undefined,
+  zoneHigh: number | undefined,
   entry: number,
-  tol: number,
 ): boolean {
-  if (side === "BUY") {
-    return bar.low <= entry + tol && bar.high >= entry - tol * 1.2;
+  const low = zoneLow ?? entry;
+  const high = zoneHigh ?? entry;
+  const zLo = Math.min(low, high);
+  const zHi = Math.max(low, high);
+  return bar.low <= zHi && bar.high >= zLo;
+}
+
+function idleAfterResolve(mode: TradeMode, plan: FrozenPlan): ModeState {
+  if (mode === "intraday" && plan.sessionDate) {
+    return {
+      phase: "IDLE",
+      plan: {
+        ...plan,
+        status: "INVALIDATED",
+        note: "Session plan resolved — no auto re-lock until next UTC day",
+      },
+      row: null,
+    };
   }
-  return bar.high >= entry - tol && bar.low <= entry + tol * 1.2;
+  return { phase: "IDLE", plan: null, row: null };
+}
+
+function invalidateWaiting(
+  db: Database.Database,
+  state: ModeState,
+  asOfClose: number,
+  note: string,
+): ModeState {
+  const { row, plan } = state;
+  if (row) {
+    row.outcome = "INVALIDATED";
+    row.resolvedAt = asOfClose;
+    row.realizedR = 0;
+    row.realizedRFull = 0;
+    row.fullPlanClosed = true;
+    row.resolveNote = note;
+    updateBacktestSignal(db, row);
+  }
+  if (!plan) return { phase: "IDLE", plan: null, row: null };
+  const dead: FrozenPlan = {
+    ...plan,
+    status: "INVALIDATED",
+    note,
+  };
+  // Intraday: keep invalidated plan so canAutoLockPlan blocks same UTC day.
+  if (plan.mode === "intraday" && plan.sessionDate) {
+    return { phase: "IDLE", plan: dead, row: null };
+  }
+  return { phase: "IDLE", plan: null, row: null };
 }
 
 /**
- * Walk-forward backtest using production `generateSignal` + `advanceSignalOnBar`.
- * One open plan per mode. Fills only after price touches entry (live WAIT→ENTER).
+ * Walk-forward backtest mirroring live session-lock state machine
+ * (canAutoLockPlan / createFrozenPlan / sessionDayKey / shouldKeepFrozenPlan).
+ * One FrozenPlan per mode. generateSignal only when IDLE.
  */
 export function runWalkForward(
   db: Database.Database,
   m5: Candle[],
   opts: BacktestOptions,
 ): BacktestStats {
-  const pendingByMode = new Map<TradeMode, PendingPlan>();
+  const byMode = new Map<TradeMode, ModeState>();
+  for (const mode of opts.modes) {
+    byMode.set(mode, { phase: "IDLE", plan: null, row: null });
+  }
+
   const stats: BacktestStats = {
     signalsFired: 0,
+    zoneTouched: 0,
+    tp1WinsAfterTouch: 0,
+    tp1LossesAfterTouch: 0,
     byMonth: new Map(),
+    byRegime: new Map(),
     equityR: [],
   };
 
   let equity = 0;
   const total = m5.length;
   const htfs = precomputeHtfs(m5);
-  const asset = ASSETS[opts.assetId];
 
   for (let i = 0; i < m5.length; i++) {
     const bar = m5[i];
     const periodMs =
       i + 1 < m5.length ? m5[i + 1].time - bar.time : 5 * 60 * 1000;
     const asOfClose = bar.time + periodMs;
+    const asOf = new Date(asOfClose);
+    const today = sessionDayKey(asOf);
     const tick = {
       price: bar.close,
       open: bar.open,
@@ -156,99 +250,224 @@ export function runWalkForward(
     };
 
     for (const mode of opts.modes) {
-      const pending = pendingByMode.get(mode);
-      if (!pending) continue;
+      let state = byMode.get(mode)!;
 
-      const { row } = pending;
-      const tol = entryTolerance(asset, mode, row.entry);
+      // ── Session rollover (same UTC day key as live) ──────────────────────
+      if (
+        mode === "intraday" &&
+        state.plan?.sessionDate &&
+        state.plan.sessionDate !== today
+      ) {
+        if (state.phase === "PLAN_LOCKED" && state.row) {
+          state = invalidateWaiting(
+            db,
+            state,
+            asOfClose,
+            `Session rollover ${state.plan.sessionDate}→${today} — zone never touched`,
+          );
+          // Clear spent plan so new day can lock (sessionDate !== today already,
+          // but null is cleaner IDLE for the new session).
+          state = { phase: "IDLE", plan: null, row: null };
+        } else if (state.phase === "IDLE") {
+          // Prior-day INVALIDATED marker — drop so today can auto-lock.
+          state = { phase: "IDLE", plan: null, row: null };
+        }
+        // ENTRY_HIT: keep managing open trade across day boundary (live does).
+        byMode.set(mode, state);
+      }
 
-      if (!pending.filled) {
-        const maxWait =
-          mode === "scalping" ? MAX_WAIT_BARS_SCALP : MAX_WAIT_BARS_INTRA;
-        const waited = i - pending.signalBarIndex;
+      // ── Advance locked / in-trade plans (frozen levels — no generateSignal) ─
+      if (state.phase === "PLAN_LOCKED" && state.plan && state.row) {
+        const plan = state.plan;
+        const row = state.row;
 
-        if (
-          waited > maxWait ||
-          isTooLateToEnter(row.side, bar.close, row.entry, row.sl) ||
-          (row.side === "BUY" && bar.low <= row.sl) ||
-          (row.side === "SELL" && bar.high >= row.sl)
-        ) {
-          row.outcome = "INVALIDATED";
-          row.resolvedAt = asOfClose;
-          row.realizedR = 0;
-          row.realizedRFull = 0;
-          row.fullPlanClosed = true;
-          row.resolveNote =
-            waited > maxWait
-              ? `Entry timeout after ${waited} bars`
-              : "Entry never filled / too late / SL before entry";
-          updateBacktestSignal(db, row);
-          pendingByMode.delete(mode);
+        const kept = shouldKeepFrozenPlan(plan, plan.side, bar.close);
+        if (kept?.status === "INVALIDATED") {
+          state = invalidateWaiting(
+            db,
+            { ...state, plan: kept },
+            asOfClose,
+            kept.note || "Plan invalidated before zone touch",
+          );
+          byMode.set(mode, state);
           continue;
         }
 
-        if (barTouchesEntry(row.side, bar, row.entry, tol)) {
-          pending.filled = true;
+        if (
+          barTouchesZone(
+            bar,
+            plan.entryZoneLow,
+            plan.entryZoneHigh,
+            plan.levels.entry,
+          )
+        ) {
+          row.zoneTouchedAt = asOfClose;
+          row.resolveNote = "ENTRY_HIT";
+          updateBacktestSignal(db, row);
+          stats.zoneTouched += 1;
+          bumpRegime(stats.byRegime, row.regime, "touched");
+
+          const activePlan: FrozenPlan = {
+            ...plan,
+            status: "IN_TRADE_HINT",
+            note: `Entry zone hit @ ${asOfClose}`,
+          };
           const next = advanceSignalOnBar({ ...row }, tick, asOfClose);
           if (next) {
             updateBacktestSignal(db, next);
+            if (next.outcomeTp1 === "WIN" || next.outcomeTp1 === "LOSS") {
+              if (next.outcomeTp1 === "WIN") {
+                stats.tp1WinsAfterTouch += 1;
+                bumpRegime(stats.byRegime, next.regime, "tp1Wins");
+              } else {
+                stats.tp1LossesAfterTouch += 1;
+                bumpRegime(stats.byRegime, next.regime, "tp1Losses");
+              }
+            }
             if (next.outcomeTp1 === "LOSS" || next.fullPlanClosed) {
               const r = next.realizedRFull ?? next.realizedR ?? 0;
               equity += r;
               stats.equityR.push(equity);
-              pendingByMode.delete(mode);
+              state = idleAfterResolve(mode, activePlan);
             } else {
-              pendingByMode.set(mode, { row: next, filled: true });
+              state = { phase: "ENTRY_HIT", plan: activePlan, row: next };
             }
           } else {
-            pendingByMode.set(mode, pending);
+            state = { phase: "ENTRY_HIT", plan: activePlan, row };
           }
+          byMode.set(mode, state);
+          continue;
         }
+
+        byMode.set(mode, state);
         continue;
       }
 
-      const next = advanceSignalOnBar({ ...row }, tick, asOfClose);
-      if (next) {
-        updateBacktestSignal(db, next);
-        if (next.outcomeTp1 === "LOSS" || next.fullPlanClosed) {
-          const r = next.realizedRFull ?? next.realizedR ?? 0;
-          equity += r;
-          stats.equityR.push(equity);
-          pendingByMode.delete(mode);
-        } else {
-          pendingByMode.set(mode, { row: next, filled: true });
+      if (state.phase === "ENTRY_HIT" && state.plan && state.row) {
+        const next = advanceSignalOnBar({ ...state.row }, tick, asOfClose);
+        if (next) {
+          updateBacktestSignal(db, next);
+          if (next.outcomeTp1 === "WIN" || next.outcomeTp1 === "LOSS") {
+            // Count TP1 only once (first time outcomeTp1 appears)
+            if (state.row.outcomeTp1 == null) {
+              if (next.outcomeTp1 === "WIN") {
+                stats.tp1WinsAfterTouch += 1;
+                bumpRegime(stats.byRegime, next.regime, "tp1Wins");
+              } else {
+                stats.tp1LossesAfterTouch += 1;
+                bumpRegime(stats.byRegime, next.regime, "tp1Losses");
+              }
+            }
+          }
+          if (next.outcomeTp1 === "LOSS" || next.fullPlanClosed) {
+            const r = next.realizedRFull ?? next.realizedR ?? 0;
+            equity += r;
+            stats.equityR.push(equity);
+            state = idleAfterResolve(mode, state.plan);
+          } else {
+            state = { phase: "ENTRY_HIT", plan: state.plan, row: next };
+          }
         }
+        byMode.set(mode, state);
+        continue;
       }
-    }
 
-    if (i < opts.windowStartIdx) {
-      if (i % 2000 === 0) opts.onProgress?.(i, total);
-      continue;
-    }
+      // ── IDLE: only then attempt generateSignal + canAutoLockPlan ───────────
+      if (state.phase !== "IDLE") {
+        byMode.set(mode, state);
+        continue;
+      }
 
-    for (const mode of opts.modes) {
-      if (pendingByMode.has(mode)) continue;
-      if (mode === "intraday" && !isClosedFifteenEnd(m5, i)) continue;
+      if (i < opts.windowStartIdx) {
+        byMode.set(mode, state);
+        continue;
+      }
+
+      if (mode === "intraday" && !isClosedFifteenEnd(m5, i)) {
+        byMode.set(mode, state);
+        continue;
+      }
 
       const frames = framesAtIndex(m5, i, mode, htfs);
-      if (!frames) continue;
+      if (!frames) {
+        byMode.set(mode, state);
+        continue;
+      }
 
       const signal = generateSignal(opts.assetId, mode, frames);
-      if (signal.side === "WAIT" || !signal.levels) continue;
-      if (signal.confidence < LOCK_MIN_CONFIDENCE) continue;
+      if (
+        !canAutoLockPlan(mode, signal, state.plan, opts.assetId, asOf)
+      ) {
+        byMode.set(mode, state);
+        continue;
+      }
 
-      const entry = applySpread(signal.side, signal.levels.entry, opts.spread);
-      const row = toLogged(signal, entry, asOfClose);
-      if (!row) continue;
+      const extras = buildSessionExtras(
+        opts.assetId,
+        mode,
+        signal.side,
+        signal.levels!,
+        signal,
+        asOf,
+      );
+      const plan = createFrozenPlan(
+        opts.assetId,
+        mode,
+        signal.side,
+        signal.levels!,
+        signal.confidence,
+        signal.rangePrediction.winProbability,
+        extras,
+        asOfClose,
+      );
+      if (plan.status === "INVALIDATED" || plan.side === "WAIT") {
+        byMode.set(mode, state);
+        continue;
+      }
+
+      const entry = applySpread(signal.side, plan.levels.entry, opts.spread);
+      const row = toLogged(
+        {
+          ...signal,
+          side: plan.side,
+          levels: plan.levels,
+          confidence: plan.lockedConfidence ?? signal.confidence,
+        },
+        entry,
+        asOfClose,
+      );
+      if (!row) {
+        byMode.set(mode, state);
+        continue;
+      }
 
       insertBacktestSignal(db, row);
-      pendingByMode.set(mode, { row, filled: false, signalBarIndex: i });
+      state = { phase: "PLAN_LOCKED", plan, row };
       stats.signalsFired += 1;
+      bumpRegime(stats.byRegime, row.regime, "locked");
       const mk = monthKey(asOfClose);
       stats.byMonth.set(mk, (stats.byMonth.get(mk) ?? 0) + 1);
+      byMode.set(mode, state);
     }
 
     if (i % 2000 === 0) opts.onProgress?.(i, total);
+  }
+
+  // End-of-data: invalidate still-waiting locks
+  const last = m5[m5.length - 1];
+  const lastClose =
+    last.time +
+    (m5.length > 1 ? m5[m5.length - 1].time - m5[m5.length - 2].time : 5 * 60 * 1000);
+  for (const mode of opts.modes) {
+    const state = byMode.get(mode)!;
+    if (state.phase === "PLAN_LOCKED" && state.row) {
+      invalidateWaiting(
+        db,
+        state,
+        lastClose,
+        "End of data — zone never touched",
+      );
+    }
   }
 
   opts.onProgress?.(total, total);
@@ -268,12 +487,16 @@ export function maxDrawdownR(equityCurve: number[]): number {
   return Math.round(maxDd * 1000) / 1000;
 }
 
-/** Longest consecutive TP1 LOSS streak. */
+/** Longest consecutive TP1 LOSS streak (touched plans only). */
 export function longestLosingStreak(signals: LoggedSignal[]): number {
   let best = 0;
   let cur = 0;
   const resolved = signals
-    .filter((s) => s.outcomeTp1 === "WIN" || s.outcomeTp1 === "LOSS")
+    .filter(
+      (s) =>
+        s.zoneTouchedAt != null &&
+        (s.outcomeTp1 === "WIN" || s.outcomeTp1 === "LOSS"),
+    )
     .sort((a, b) => (a.resolvedAt ?? a.timestamp) - (b.resolvedAt ?? b.timestamp));
   for (const s of resolved) {
     if (s.outcomeTp1 === "LOSS") {
@@ -284,4 +507,15 @@ export function longestLosingStreak(signals: LoggedSignal[]): number {
     }
   }
   return best;
+}
+
+export function zoneTouchRate(stats: BacktestStats): number | null {
+  if (stats.signalsFired <= 0) return null;
+  return (stats.zoneTouched / stats.signalsFired) * 100;
+}
+
+export function conditionalTp1WinRate(stats: BacktestStats): number | null {
+  const n = stats.tp1WinsAfterTouch + stats.tp1LossesAfterTouch;
+  if (n <= 0) return null;
+  return (stats.tp1WinsAfterTouch / n) * 100;
 }

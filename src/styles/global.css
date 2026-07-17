@@ -894,6 +894,32 @@ button.active {
   color: var(--buy);
 }
 
+.alert-banner.session-lock {
+  background: rgba(90, 140, 196, 0.18);
+  border-color: rgba(90, 140, 196, 0.45);
+  animation: none;
+}
+
+.session-safe-zone {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.55rem 0.75rem;
+  border-radius: 10px;
+  background: rgba(90, 140, 196, 0.1);
+  border: 1px dashed rgba(90, 140, 196, 0.35);
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.session-safe-zone strong {
+  color: #9ec5f0;
+}
+
+.action-now-levels .zone-span {
+  grid-column: 1 / -1;
+}
+
 .alert-banner {
   text-align: center;
   padding: 0.65rem;
@@ -1026,6 +1052,26 @@ button.active {
 .bg-alert-banner p {
   margin: 0.4rem 0 0.75rem;
   font-size: 0.9rem;
+}
+
+.bg-alert-banner .tg-on {
+  color: #9ed4b0;
+}
+
+.bg-alert-banner .alert-setup-steps {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.bg-alert-banner .alert-setup-steps li {
+  margin-bottom: 0.45rem;
+}
+
+.bg-alert-banner .status-hint {
+  font-size: 0.8rem;
+  opacity: 0.85;
 }
 
 .cmd-box {

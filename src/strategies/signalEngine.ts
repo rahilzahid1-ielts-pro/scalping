@@ -69,12 +69,14 @@ function buildLevels(
     entry = side === "BUY" ? price - step : price + step;
   }
 
-  // Sanity: SELL entry must be at/above live; BUY at/below — else snap to safe limit
-  if (side === "SELL" && entry < price) {
-    entry = price + atrVal * 0.25;
+  // Sanity: only snap when entry is on wrong side of live by a large margin.
+  // Intraday keeps SMC/swing zone even if price has moved away (wait for pullback).
+  const snapPad = atrVal * (mode === "intraday" ? 0.85 : 0.25);
+  if (side === "SELL" && entry < price - snapPad) {
+    entry = price + atrVal * (mode === "intraday" ? 0.15 : 0.25);
   }
-  if (side === "BUY" && entry > price) {
-    entry = price - atrVal * 0.25;
+  if (side === "BUY" && entry > price + snapPad) {
+    entry = price - atrVal * (mode === "intraday" ? 0.15 : 0.25);
   }
 
   let stopLoss: number;
@@ -412,6 +414,7 @@ export function generateSignal(
     confidence = Math.min(confidence, CONFLICT_CAP_PCT);
     rangePrediction = {
       ...rangePrediction,
+      confidence: Math.min(rangePrediction.confidence, CONFLICT_CAP_PCT),
       winProbability: Math.min(rangePrediction.winProbability, CONFLICT_CAP_PCT),
     };
   }

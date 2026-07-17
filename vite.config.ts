@@ -17,6 +17,36 @@ function calibrationApiPlugin(): Plugin {
     name: "calibration-api",
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        if (req.url?.startsWith("/api/alerts/status")) {
+          try {
+            const { alertChannelsStatus, isTelegramConfigured } = await import(
+              "./src/services/notify"
+            );
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: true,
+                ...alertChannelsStatus(),
+                telegramConfigured: isTelegramConfigured(),
+                workerWillAutoStart: false,
+                hint: isTelegramConfigured()
+                  ? "Telegram configured. Production (Railway npm start) pe worker auto-start hoga."
+                  : "Local: npm run alerts. Railway: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID set karo.",
+              }),
+            );
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "alerts status error",
+              }),
+            );
+          }
+          return;
+        }
+
         if (!req.url?.startsWith("/api/calibration/")) return next();
 
         try {

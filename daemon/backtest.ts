@@ -18,9 +18,11 @@ import {
   openBacktestDb,
 } from "../src/backtest/store";
 import {
+  conditionalTp1WinRate,
   longestLosingStreak,
   maxDrawdownR,
   runWalkForward,
+  zoneTouchRate,
 } from "../src/backtest/engine";
 
 function argValue(argv: string[], name: string): string | undefined {
@@ -78,7 +80,7 @@ function tryLiveWinRate(): number | null {
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   console.log(`
-SMC Backtest (walk-forward, production generateSignal)
+SMC Backtest (walk-forward, live session-lock state machine)
 ──────────────────────────────────────────────────────
 File    : ${opts.file}
 Asset   : ${opts.asset}
@@ -149,15 +151,19 @@ Suspicious gaps (>1 bar, weekends excluded): ${loaded.quality.suspiciousGaps}
     },
   });
   process.stdout.write("\n");
-  console.log(`Done in ${((Date.now() - t0) / 1000).toFixed(1)}s — signals fired: ${stats.signalsFired}`);
+  console.log(
+    `Done in ${((Date.now() - t0) / 1000).toFixed(1)}s — plans locked: ${stats.signalsFired}, zone touched: ${stats.zoneTouched}`,
+  );
 
   const signals = listBacktestSignals(db);
-  const resolved = resolvedTp1Samples(signals);
+  const touched = signals.filter((s) => s.zoneTouchedAt != null);
+  const resolved = resolvedTp1Samples(touched);
   const wins = resolved.filter((s) => s.outcomeTp1 === "WIN").length;
   const losses = resolved.filter((s) => s.outcomeTp1 === "LOSS").length;
-  const overall = resolved.length ? (wins / resolved.length) * 100 : null;
+  const touchRate = zoneTouchRate(stats);
+  const condWin = conditionalTp1WinRate(stats);
   const avgRf = (() => {
-    const closed = signals.filter((s) => s.fullPlanClosed && s.realizedRFull != null);
+    const closed = touched.filter((s) => s.fullPlanClosed && s.realizedRFull != null);
     if (!closed.length) return null;
     return closed.reduce((a, s) => a + (s.realizedRFull as number), 0) / closed.length;
   })();
@@ -166,29 +172,48 @@ Suspicious gaps (>1 bar, weekends excluded): ${loaded.quality.suspiciousGaps}
 
   console.log(`
 ════════════════════════════════════════════════════════
-SANITY CHECKS (read these before trusting the numbers)
+SESSION-LOCK FUNNEL (mirrors live plan-lock → entry-hit)
 ════════════════════════════════════════════════════════
-Spread assumption     : ${opts.spread} price units on entry
-Overall TP1 win rate  : ${overall == null ? "—" : overall.toFixed(1) + "%"}  (n=${resolved.length}, W=${wins} L=${losses})
-Avg realizedR_full    : ${avgRf == null ? "—" : avgRf.toFixed(3)}
-Max drawdown (R)      : ${maxDd}
-Longest losing streak : ${loseStreak}
+Plans locked (stage 1)     : ${stats.signalsFired}
+Zone touched (stage 2)     : ${stats.zoneTouched}
+zoneTouchRate              : ${touchRate == null ? "—" : touchRate.toFixed(1) + "%"}
+Conditional TP1 win%       : ${condWin == null ? "—" : condWin.toFixed(1) + "%"}  (n=${wins + losses}, W=${wins} L=${losses})
+  (old per-tick baseline was ~55.5% — compare this conditional figure)
+Avg realizedR_full (touch) : ${avgRf == null ? "—" : avgRf.toFixed(3)}
+Max drawdown (R)           : ${maxDd}
+Longest losing streak      : ${loseStreak}
+Spread assumption          : ${opts.spread} price units on entry
 `);
+
+  console.log("Funnel by regime:");
+  const regimes = [...stats.byRegime.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  if (!regimes.length) {
+    console.log("  (none)");
+  } else {
+    for (const [reg, b] of regimes) {
+      const ztr = b.locked ? ((b.touched / b.locked) * 100).toFixed(1) : "—";
+      const n = b.tp1Wins + b.tp1Losses;
+      const wr = n ? ((b.tp1Wins / n) * 100).toFixed(1) : "—";
+      console.log(
+        `  ${reg.padEnd(12)} locked=${b.locked}  touched=${b.touched}  zoneTouchRate=${ztr}%  TP1win%=${wr}% (n=${n})`,
+      );
+    }
+  }
 
   const liveWr = tryLiveWinRate();
   if (liveWr != null) {
-    console.log(`Live calibration TP1 win% (all-time sample): ${liveWr.toFixed(1)}%`);
+    console.log(`\nLive calibration TP1 win% (all-time sample): ${liveWr.toFixed(1)}%`);
   }
-  if (overall != null && overall > 75) {
+  if (condWin != null && condWin > 75) {
     console.log(`
-⚠⚠⚠ IMPLAUSIBLY HIGH BACKTEST WIN RATE (>75%)
+⚠⚠⚠ IMPLAUSIBLY HIGH CONDITIONAL TP1 WIN RATE (>75%)
     Live measurement so far${liveWr != null ? ` is ~${liveWr.toFixed(1)}%` : " is typically far lower"}.
     This usually means residual look-ahead bias, missing spread/slippage, or data issues —
     NOT proof that the live formula is a 75%+ system. Do not treat this as validation.
 `);
   }
 
-  console.log("Signals per month:");
+  console.log("Plans locked per month:");
   const months = [...stats.byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   // Fill months in window
   if (months.length) {
@@ -196,8 +221,8 @@ Longest losing streak : ${loseStreak}
       const flag =
         n === 0
           ? " ⚠ ZERO (possible data gap)"
-          : n > 200
-            ? " ⚠ unusually high vs live refresh rate — check walk loop"
+          : n > 80
+            ? " ⚠ high vs ~1 zone/day/mode — check walk loop"
             : "";
       console.log(`  ${m}: ${n}${flag}`);
     }
@@ -223,18 +248,18 @@ Longest losing streak : ${loseStreak}
   }
 
   console.log(`
-Backtest calibration tables (same report path as npm run calibrate)
+Backtest calibration tables (touched plans only — conditional on zone hit)
 Store: ${getBacktestDbPath()}
 `);
-  printStandardCalibrationTables(signals);
+  printStandardCalibrationTables(touched);
 
   console.log(`Methodology:
-  • Production generateSignal() only — no parallel EMA/SMC copy
-  • Walk-forward on closed ${loaded.quality.periodMinutes}m bars; HTF (15m/1H/4H/D) resampled
-    from the same prefix; incomplete HTF candles discarded (no look-ahead)
+  • Live session-lock state machine: canAutoLockPlan + createFrozenPlan + sessionDayKey
+  • generateSignal() only while IDLE (no per-bar re-lock while PLAN_LOCKED / ENTRY_HIT)
+  • Intraday: one auto-lock per UTC day; levels frozen until invalidate / rollover / resolve
+  • Funnel: PLAN_LOCKED → zoneTouchRate → conditional TP1win% (after touch)
+  • Walk-forward on closed ${loaded.quality.periodMinutes}m bars; HTF resampled, no look-ahead
   • Gap resolution = advanceSignalOnBar / resolveGapAmongLevels (ties → SL)
-  • Entry fill simulated (price must touch entry zone; too-late / SL-before-entry → INVALIDATED)
-  • One open plan per mode (matches live freeze)
   • Results NEVER written to data/signals.db
   • Live display recal still gated (≥${MIN_DAYS_BEFORE_DISPLAY_RECAL}d / n≥${MIN_SAMPLES_FOR_CALIBRATION} live samples)
 `);

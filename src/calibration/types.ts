@@ -63,6 +63,11 @@ export interface LoggedSignal {
   atrPctOfPrice: number | null;
   regime: RegimeTag | null;
   resolveNote?: string;
+  /**
+   * Funnel stage 2: when price first touched the locked entry zone.
+   * Null = locked zone never touched before invalidate / session end.
+   */
+  zoneTouchedAt?: number | null;
 }
 
 /** @deprecated JSON file shape — only used during one-time migration */

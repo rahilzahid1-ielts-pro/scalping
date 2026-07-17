@@ -59,10 +59,20 @@ export function ActionNow({ now, assetId, alertsOn, onToggleAlerts, onTestSound 
 
       {now.entry != null && (
         <div className="action-now-levels">
-          <div>
-            <span>Entry</span>
-            <strong>{now.entry.toFixed(d)}</strong>
-          </div>
+          {now.entryZoneLow != null && now.entryZoneHigh != null ? (
+            <div className="zone-span">
+              <span>Entry zone</span>
+              <strong>
+                {Math.min(now.entryZoneLow, now.entryZoneHigh).toFixed(d)}–
+                {Math.max(now.entryZoneLow, now.entryZoneHigh).toFixed(d)}
+              </strong>
+            </div>
+          ) : (
+            <div>
+              <span>Entry</span>
+              <strong>{now.entry.toFixed(d)}</strong>
+            </div>
+          )}
           <div>
             <span>SL</span>
             <strong className="sl">{now.stopLoss?.toFixed(d)}</strong>
@@ -71,7 +81,27 @@ export function ActionNow({ now, assetId, alertsOn, onToggleAlerts, onTestSound 
             <span>TP1</span>
             <strong className="tp">{now.takeProfit?.toFixed(d)}</strong>
           </div>
+          {now.takeProfit2 != null && (
+            <div>
+              <span>TP2</span>
+              <strong className="tp">{now.takeProfit2.toFixed(d)}</strong>
+            </div>
+          )}
         </div>
+      )}
+
+      {now.sessionLocked && now.safeZoneLow != null && now.safeZoneHigh != null && (
+        <div className="session-safe-zone">
+          <span>Safe zone (din bhar)</span>
+          <strong>
+            {Math.min(now.safeZoneLow, now.safeZoneHigh).toFixed(d)}–
+            {Math.max(now.safeZoneLow, now.safeZoneHigh).toFixed(d)}
+          </strong>
+        </div>
+      )}
+
+      {now.sessionLocked && now.action === "WAIT_ENTRY" && (
+        <div className="alert-banner session-lock">📌 INTRADAY ZONE LOCKED — levels refresh se nahi badlenge</div>
       )}
 
       {now.action === "ENTER_NOW" && (

@@ -14,6 +14,13 @@ export interface FrozenPlan {
   /** Scores shown when this plan was frozen; do not replace with a later refresh. */
   lockedConfidence?: number;
   lockedWinProbability?: number;
+  /** Intraday: UTC calendar day this session plan was locked (one zone per day). */
+  sessionDate?: string;
+  entryZoneLow?: number;
+  entryZoneHigh?: number;
+  /** Expected intraday range (SMC/PA path) — frozen at lock time. */
+  safeZoneLow?: number;
+  safeZoneHigh?: number;
 }
 
 const STORAGE_KEY = "smc_trade_desk_v2";
@@ -156,17 +163,27 @@ export function createFrozenPlan(
   levels: TradeLevels,
   lockedConfidence?: number,
   lockedWinProbability?: number,
+  extras?: Pick<
+    FrozenPlan,
+    "sessionDate" | "entryZoneLow" | "entryZoneHigh" | "safeZoneLow" | "safeZoneHigh"
+  >,
+  /** Wall clock live; bar-close ms in backtest. */
+  lockedAtMs: number = Date.now(),
 ): FrozenPlan {
+  const isSession = mode === "intraday" && extras?.sessionDate;
   const plan: FrozenPlan = {
     assetId,
     mode,
     side,
     levels,
-    lockedAt: Date.now(),
+    lockedAt: lockedAtMs,
     status: "WAITING_ENTRY",
-    note: "Limit entry LOCKED. Jab price entry pe aaye tab lo — chart se confirm.",
+    note: isSession
+      ? `Intraday zone LOCKED (${extras!.sessionDate}). Din bhar entry/SL/TP same — sirf New plan se badlega.`
+      : "Limit entry LOCKED. Jab price entry pe aaye tab lo — chart se confirm.",
     lockedConfidence,
     lockedWinProbability,
+    ...extras,
   };
   if (isPlanLevelsUnsafe(plan)) {
     return {

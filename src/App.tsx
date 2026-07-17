@@ -10,11 +10,16 @@ import { BiasCard } from "./components/BiasCard";
 import { PredictionPanel } from "./components/PredictionPanel";
 import { StrategyBreakdown } from "./components/StrategyBreakdown";
 import { useLivePrice } from "./hooks/useLivePrice";
-import { requestAlertPermission, testAlertSound, useEntryAlert } from "./hooks/useEntryAlert";
+import { requestAlertPermission, testAlertSound, useEntryAlert, usePlanLockAlert } from "./hooks/useEntryAlert";
 import { useServiceWorkerAlerts } from "./hooks/useServiceWorkerAlerts";
 import { BackgroundAlertBanner } from "./components/BackgroundAlertBanner";
 import { roundPrice } from "./strategies/indicators";
 import { computeNowAction } from "./utils/nowAction";
+import {
+  buildSessionExtras,
+  canAutoLockPlan,
+  signalInterval,
+} from "./utils/sessionPlan";
 import {
   createFrozenPlan,
   ensureLockedScores,
@@ -24,10 +29,7 @@ import {
   type FrozenPlan,
 } from "./services/tradePlan";
 import { logSignalViaApi, resolveSignalsViaApi } from "./calibration/browserClient";
-
-function signalInterval(mode: TradeMode) {
-  return mode === "scalping" ? 30_000 : 60_000;
-}
+import { CONFLICT_CAP_PCT } from "./calibration/types";
 
 const boot = loadSession();
 
@@ -51,7 +53,12 @@ export default function App() {
   const skipClearRef = useRef(true);
 
   const asset = ASSETS[assetId];
-  const refreshMs = signalInterval(mode);
+  const hasActivePlan =
+    !!plan &&
+    plan.assetId === assetId &&
+    plan.mode === mode &&
+    plan.status !== "INVALIDATED";
+  const refreshMs = signalInterval(mode, hasActivePlan);
 
   useEffect(() => {
     saveSession({ assetId, mode, plan, alertsOn });
@@ -103,24 +110,36 @@ export default function App() {
               winProbability: kept.lockedWinProbability,
             };
           }
+          // Conflict refresh must not leave locked scores above the cap while
+          // diagnostics still show the ≤65% warning.
+          if (next.diagnostics.conflictCapped || next.diagnostics.conflictingSignals) {
+            next.confidence = Math.min(next.confidence, CONFLICT_CAP_PCT);
+            next.rangePrediction = {
+              ...next.rangePrediction,
+              confidence: Math.min(next.rangePrediction.confidence, CONFLICT_CAP_PCT),
+              winProbability: Math.min(
+                next.rangePrediction.winProbability,
+                CONFLICT_CAP_PCT,
+              ),
+            };
+          }
           void logSignalViaApi(next);
         }
       } else if (
         (!current || current.status === "INVALIDATED" || current.assetId !== assetId || current.mode !== mode) &&
-        next.side !== "WAIT" &&
-        next.levels &&
-        next.confidence >= 68
+        canAutoLockPlan(mode, next, current, assetId)
       ) {
-        // Only create when there is NO active locked plan
         if (!current || current.status === "INVALIDATED" || current.assetId !== assetId || current.mode !== mode) {
+          const extras = buildSessionExtras(assetId, mode, next.side, next.levels!, next);
           setPlan(
             createFrozenPlan(
               assetId,
               mode,
               next.side,
-              next.levels,
+              next.levels!,
               next.confidence,
               next.rangePrediction.winProbability,
+              extras,
             ),
           );
           void logSignalViaApi(next);
@@ -146,9 +165,12 @@ export default function App() {
       setLoading(true);
     }
     void refresh();
+  }, [assetId, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     const id = window.setInterval(() => void refresh(), refreshMs);
     return () => window.clearInterval(id);
-  }, [assetId, mode, refreshMs]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshMs, refresh]);
 
   useEffect(() => {
     if (forceNewPlan === 0) return;
@@ -215,8 +237,9 @@ export default function App() {
     ? `${plan.assetId}-${plan.mode}-${plan.side}-${plan.levels.entry}-${plan.lockedAt}`
     : "none";
 
+  usePlanLockAlert(plan?.status !== "INVALIDATED" ? plan : null, alertsOn);
   useEntryAlert({ now: nowAction, enabled: alertsOn, planKey });
-  useServiceWorkerAlerts(nowAction, alertsOn, planKey);
+  useServiceWorkerAlerts(nowAction, alertsOn, planKey, plan);
 
   const toggleAlerts = async () => {
     await requestAlertPermission();
@@ -282,7 +305,7 @@ export default function App() {
           <span className="brand-mark">GO</span>
           <div>
             <h1>Trade Alert</h1>
-            <p>Entry freeze · alert on hit · refresh pe number nahi badlega</p>
+            <p>Intraday = 1 zone / din · alert on lock + entry hit</p>
           </div>
         </div>
         <div className="topbar-meta">
@@ -290,7 +313,11 @@ export default function App() {
           Live {pollMs}ms
           {plan && plan.status !== "INVALIDATED" && (
             <span className="updated">
-              LOCKED {plan.side} @ {plan.levels.entry}
+              LOCKED {plan.side}
+              {plan.entryZoneLow != null && plan.entryZoneHigh != null
+                ? ` zone ${plan.entryZoneLow}–${plan.entryZoneHigh}`
+                : ` @ ${plan.levels.entry}`}
+              {plan.sessionDate ? ` · ${plan.sessionDate}` : ""}
             </span>
           )}
         </div>
@@ -389,7 +416,7 @@ export default function App() {
 
       <p className="footer-note">
         Pehle <strong>Alerts ON</strong> + <strong>Test sound</strong> dabao (browser audio unlock).
-        Entry pe 6 beeps. Sirf <strong>New plan</strong> se entry badlegi — refresh se nahi.
+        Plan lock = 4 beeps · Entry zone hit = 6 beeps. Intraday = 1 zone din bhar — sirf <strong>New plan</strong> se badlegi.
       </p>
     </div>
   );

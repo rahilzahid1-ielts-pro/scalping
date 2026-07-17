@@ -1,5 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { NowActionResult } from "../utils/nowAction";
+import type { FrozenPlan } from "../services/tradePlan";
+import { ASSETS } from "../config/assets";
 
 let sharedCtx: AudioContext | null = null;
 
@@ -40,10 +42,35 @@ function notifyEntry(now: NowActionResult) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   try {
     new Notification(now.headlineUr, {
-      body: `${now.side} ENTRY ${now.entry} · SL ${now.stopLoss} · TP ${now.takeProfit}`,
+      body: `${now.side} ENTRY ${now.entryZoneLow ?? now.entry}–${now.entryZoneHigh ?? now.entry} · SL ${now.stopLoss} · TP ${now.takeProfit}`,
       tag: "entry-alert",
       requireInteraction: true,
     });
+  } catch {
+    /* ignore */
+  }
+}
+
+function notifyPlanLocked(plan: FrozenPlan) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const d = ASSETS[plan.assetId].decimals;
+  const zone =
+    plan.entryZoneLow != null && plan.entryZoneHigh != null
+      ? `${plan.entryZoneLow.toFixed(d)}–${plan.entryZoneHigh.toFixed(d)}`
+      : plan.levels.entry.toFixed(d);
+  const safe =
+    plan.safeZoneLow != null && plan.safeZoneHigh != null
+      ? ` · Safe ${plan.safeZoneLow.toFixed(d)}–${plan.safeZoneHigh.toFixed(d)}`
+      : "";
+  try {
+    new Notification(
+      plan.mode === "intraday" ? "INTRADAY ZONE LOCKED" : "TRADE PLAN LOCKED",
+      {
+        body: `${plan.side} zone ${zone} · SL ${plan.levels.stopLoss.toFixed(d)} · TP1 ${plan.levels.takeProfit1.toFixed(d)} · TP2 ${plan.levels.takeProfit2.toFixed(d)}${safe}`,
+        tag: "plan-lock-alert",
+        requireInteraction: true,
+      },
+    );
   } catch {
     /* ignore */
   }
@@ -54,6 +81,19 @@ interface Options {
   enabled: boolean;
   /** Stable key = locked entry only (not live price) */
   planKey: string;
+}
+
+export function usePlanLockAlert(plan: FrozenPlan | null, enabled: boolean) {
+  const firedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled || !plan || plan.status === "INVALIDATED") return;
+    const key = `${plan.assetId}-${plan.mode}-${plan.lockedAt}-LOCK`;
+    if (firedRef.current === key) return;
+    firedRef.current = key;
+    playBeep(520, 260, 4);
+    notifyPlanLocked(plan);
+  }, [plan, enabled]);
 }
 
 export function useEntryAlert({ now, enabled, planKey }: Options) {

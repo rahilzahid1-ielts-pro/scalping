@@ -9,14 +9,14 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("message", (event) => {
   const data = event.data;
-  if (!data || data.type !== "ENTRY_ALERT") return;
+  if (!data || (data.type !== "ENTRY_ALERT" && data.type !== "PLAN_LOCK_ALERT")) return;
   event.waitUntil(
-    self.registration.showNotification(data.title || "ENTRY ALERT", {
+    self.registration.showNotification(data.title || "TRADE ALERT", {
       body: data.body || "",
-      tag: data.tag || "entry-alert",
+      tag: data.tag || "trade-alert",
       requireInteraction: true,
       silent: false,
-      vibrate: [200, 100, 200, 100, 400],
+      vibrate: data.type === "PLAN_LOCK_ALERT" ? [150, 80, 150, 80, 150] : [200, 100, 200, 100, 400],
     }),
   );
 });

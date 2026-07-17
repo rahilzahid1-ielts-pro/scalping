@@ -234,6 +234,23 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/alerts/status" && req.method === "GET") {
+      const { alertChannelsStatus, isTelegramConfigured } = await import(
+        "../src/services/notify"
+      );
+      const { shouldAutoStartAlertWorker } = await import("../daemon/alertBot");
+      sendJson(res, 200, {
+        ok: true,
+        ...alertChannelsStatus(),
+        telegramConfigured: isTelegramConfigured(),
+        workerWillAutoStart: shouldAutoStartAlertWorker(),
+        hint: isTelegramConfigured()
+          ? "Telegram ON — phone pe Gold/Silver/Bitcoin alerts aayenge (web band bhi)."
+          : "Railway Variables mein TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID set karo.",
+      });
+      return;
+    }
+
     const proxy = PROXIES.find((p) => path.startsWith(p.prefix));
     if (proxy) {
       await proxyRequest(req, res, proxy, path, url.search);
@@ -268,4 +285,17 @@ if (!existsSync(DIST)) {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[prodServer] listening on 0.0.0.0:${PORT}`);
   console.log(`[prodServer] serving ${DIST}`);
+
+  // Live alert worker on Railway — Telegram phone alerts even when web is closed
+  void import("../daemon/alertBot").then(({ startAlertWorker, shouldAutoStartAlertWorker }) => {
+    if (shouldAutoStartAlertWorker()) {
+      startAlertWorker();
+    } else {
+      console.log(
+        "[prodServer] Alert worker OFF — set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (or ENABLE_ALERT_WORKER=1)",
+      );
+    }
+  }).catch((e) => {
+    console.error("[prodServer] Failed to start alert worker:", e);
+  });
 });
