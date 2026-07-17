@@ -1,0 +1,298 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ASSET_LIST, ASSETS } from "./config/assets";
+import { fetchMultiTimeframe } from "./services/marketData";
+import { generateSignal } from "./strategies/signalEngine";
+import type { AssetId, LiveSignal, TradeMode } from "./types";
+import { TradingViewChart } from "./components/TradingViewChart";
+import { ActionNow } from "./components/ActionNow";
+import { DetailsAccordion } from "./components/DetailsAccordion";
+import { BiasCard } from "./components/BiasCard";
+import { PredictionPanel } from "./components/PredictionPanel";
+import { StrategyBreakdown } from "./components/StrategyBreakdown";
+import { useLivePrice } from "./hooks/useLivePrice";
+import { requestAlertPermission, testAlertSound, useEntryAlert } from "./hooks/useEntryAlert";
+import { useServiceWorkerAlerts } from "./hooks/useServiceWorkerAlerts";
+import { BackgroundAlertBanner } from "./components/BackgroundAlertBanner";
+import { roundPrice } from "./strategies/indicators";
+import { computeNowAction } from "./utils/nowAction";
+import {
+  createFrozenPlan,
+  loadSession,
+  saveSession,
+  shouldKeepFrozenPlan,
+  type FrozenPlan,
+} from "./services/tradePlan";
+import { logSignalViaApi, resolveSignalsViaApi } from "./calibration/browserClient";
+
+function signalInterval(mode: TradeMode) {
+  return mode === "scalping" ? 30_000 : 60_000;
+}
+
+const boot = loadSession();
+
+export default function App() {
+  const [assetId, setAssetId] = useState<AssetId>(boot.assetId);
+  const [mode, setMode] = useState<TradeMode>(boot.mode);
+  const [signal, setSignal] = useState<LiveSignal | null>(null);
+  const [plan, setPlan] = useState<FrozenPlan | null>(boot.plan);
+  const [forceNewPlan, setForceNewPlan] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [alertsOn, setAlertsOn] = useState(boot.alertsOn);
+  const [now, setNow] = useState(Date.now());
+  const [booted, setBooted] = useState(false);
+
+  const { quote, error: quoteError, pollMs } = useLivePrice(assetId);
+  const quoteRef = useRef(quote);
+  quoteRef.current = quote;
+  const planRef = useRef(plan);
+  planRef.current = plan;
+  const skipClearRef = useRef(true);
+
+  const asset = ASSETS[assetId];
+  const refreshMs = signalInterval(mode);
+
+  useEffect(() => {
+    saveSession({ assetId, mode, plan, alertsOn });
+  }, [assetId, mode, plan, alertsOn]);
+
+  const refresh = useCallback(async () => {
+    try {
+      setError(null);
+      const livePx = quoteRef.current?.price;
+      const frames = await fetchMultiTimeframe(assetId, mode, livePx);
+      const next = generateSignal(assetId, mode, frames);
+      const q = quoteRef.current?.price;
+      if (q != null) next.price = roundPrice(q, asset.decimals);
+
+      const current = planRef.current;
+
+      // HARD RULE: if locked plan exists for this pair+mode — NEVER change entry/SL/TP
+      if (
+        current &&
+        current.assetId === assetId &&
+        current.mode === mode &&
+        current.status !== "INVALIDATED" &&
+        (current.side === "BUY" || current.side === "SELL")
+      ) {
+        const kept = shouldKeepFrozenPlan(current, next.side, q);
+        if (kept) {
+          setPlan(kept);
+          next.levels = kept.levels;
+          next.side = kept.side;
+          void logSignalViaApi(next);
+        }
+      } else if (
+        (!current || current.status === "INVALIDATED" || current.assetId !== assetId || current.mode !== mode) &&
+        next.side !== "WAIT" &&
+        next.levels &&
+        next.confidence >= 68
+      ) {
+        // Only create when there is NO active locked plan
+        if (!current || current.status === "INVALIDATED" || current.assetId !== assetId || current.mode !== mode) {
+          setPlan(createFrozenPlan(assetId, mode, next.side, next.levels));
+          void logSignalViaApi(next);
+        }
+      }
+
+      setSignal(next);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load market data");
+    } finally {
+      setLoading(false);
+      setBooted(true);
+    }
+  }, [assetId, mode, asset.decimals]);
+
+  useEffect(() => {
+    if (skipClearRef.current) {
+      skipClearRef.current = false;
+    } else {
+      // User switched Gold/Silver/BTC or Scalp/Intraday — new plan allowed
+      setPlan(null);
+      setSignal(null);
+      setLoading(true);
+    }
+    void refresh();
+    const id = window.setInterval(() => void refresh(), refreshMs);
+    return () => window.clearInterval(id);
+  }, [assetId, mode, refreshMs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (forceNewPlan === 0) return;
+    setPlan(null);
+    planRef.current = null;
+    saveSession({ assetId, mode, plan: null, alertsOn });
+    void refresh();
+  }, [forceNewPlan]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 300);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Soft SL check only — do NOT rewrite entry
+  useEffect(() => {
+    const current = planRef.current;
+    if (!current || !quote?.price || current.status === "INVALIDATED") return;
+    void resolveSignalsViaApi(assetId, quote.price, {
+      high: quote.high,
+      low: quote.low,
+      open: quote.price,
+    });
+    if (current.side === "SELL" && quote.price >= current.levels.stopLoss) {
+      setPlan({
+        ...current,
+        status: "INVALIDATED",
+        note: "SL hit on live price.",
+      });
+    } else if (current.side === "BUY" && quote.price <= current.levels.stopLoss) {
+      setPlan({
+        ...current,
+        status: "INVALIDATED",
+        note: "SL hit on live price.",
+      });
+    }
+  }, [quote?.price, quote?.high, quote?.low, assetId]);
+
+  const livePrice = quote?.price ?? signal?.price ?? 0;
+
+  const nowAction = useMemo(() => {
+    if (!signal || !livePrice) return null;
+    return computeNowAction(signal, plan, livePrice, asset, quote);
+  }, [signal, plan, livePrice, asset, quote]);
+
+  // Key ONLY on locked entry — refresh must not reset alert arming wrongly
+  const planKey = plan
+    ? `${plan.assetId}-${plan.mode}-${plan.side}-${plan.levels.entry}-${plan.lockedAt}`
+    : "none";
+
+  useEntryAlert({ now: nowAction, enabled: alertsOn, planKey });
+  useServiceWorkerAlerts(nowAction, alertsOn, planKey);
+
+  const toggleAlerts = async () => {
+    await requestAlertPermission();
+    setAlertsOn((a) => !a);
+  };
+
+  const requestNewPlan = () => setForceNewPlan((n) => n + 1);
+
+  const copyAlertCmd = async () => {
+    try {
+      await navigator.clipboard.writeText("npm run alerts");
+      await requestAlertPermission();
+      testAlertSound();
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div className="app app-simple">
+      <header className="topbar compact">
+        <div className="brand">
+          <span className="brand-mark">GO</span>
+          <div>
+            <h1>Trade Alert</h1>
+            <p>Entry freeze · alert on hit · refresh pe number nahi badlega</p>
+          </div>
+        </div>
+        <div className="topbar-meta">
+          <span className={`live-dot ${quote && now - quote.ts < 2000 ? "on" : ""}`} />
+          Live {pollMs}ms
+          {plan && plan.status !== "INVALIDATED" && (
+            <span className="updated">
+              LOCKED {plan.side} @ {plan.levels.entry}
+            </span>
+          )}
+        </div>
+      </header>
+
+      <nav className="controls compact">
+        <div className="asset-tabs">
+          {ASSET_LIST.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={assetId === a.id ? "active" : ""}
+              onClick={() => setAssetId(a.id)}
+            >
+              {a.name}
+            </button>
+          ))}
+        </div>
+        <div className="mode-toggle">
+          <button
+            type="button"
+            className={mode === "scalping" ? "active" : ""}
+            onClick={() => setMode("scalping")}
+          >
+            Scalp
+          </button>
+          <button
+            type="button"
+            className={mode === "intraday" ? "active" : ""}
+            onClick={() => setMode("intraday")}
+          >
+            Intraday
+          </button>
+        </div>
+        <button type="button" className="refresh-btn" onClick={requestNewPlan}>
+          New plan
+        </button>
+      </nav>
+
+      <main className="layout-simple">
+        <div className="command-column">
+          {loading && !nowAction && !booted && (
+            <div className="panel loading">Loading…</div>
+          )}
+          {(error || quoteError) && (
+            <div className="panel error">
+              <p>{error || quoteError}</p>
+            </div>
+          )}
+          {nowAction && (
+            <ActionNow
+              now={nowAction}
+              assetId={assetId}
+              alertsOn={alertsOn}
+              onToggleAlerts={() => void toggleAlerts()}
+              onTestSound={testAlertSound}
+            />
+          )}
+
+          <BackgroundAlertBanner onStartHint={() => void copyAlertCmd()} />
+
+          {signal && (
+            <DetailsAccordion title="Advanced — bias, path, SMC detail">
+              <PredictionPanel prediction={signal.rangePrediction} assetId={assetId} />
+              <div className="bias-row">
+                <BiasCard title="Daily bias" forecast={signal.dailyBias} assetId={assetId} />
+                <BiasCard title="Tomorrow" forecast={signal.tomorrowBias} assetId={assetId} />
+              </div>
+              <StrategyBreakdown signal={signal} />
+            </DetailsAccordion>
+          )}
+        </div>
+
+        <div className="chart-column chart-compact">
+          <div className="chart-shell chart-small">
+            <div className="chart-label">
+              <strong>{asset.name}</strong>
+              {quote && (
+                <span className="chart-live-px">{quote.price.toFixed(asset.decimals)}</span>
+              )}
+            </div>
+            <TradingViewChart symbol={asset.tvSymbol} />
+          </div>
+        </div>
+      </main>
+
+      <p className="footer-note">
+        Pehle <strong>Alerts ON</strong> + <strong>Test sound</strong> dabao (browser audio unlock).
+        Entry pe 6 beeps. Sirf <strong>New plan</strong> se entry badlegi — refresh se nahi.
+      </p>
+    </div>
+  );
+}

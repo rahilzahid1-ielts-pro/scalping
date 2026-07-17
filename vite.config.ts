@@ -1,0 +1,127 @@
+import { defineConfig, type Plugin } from "vite";
+import react from "@vitejs/plugin-react";
+import type { IncomingMessage } from "node:http";
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c) => chunks.push(Buffer.from(c)));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+/** Dev-server API so the browser can persist signals to data/signals.db */
+function calibrationApiPlugin(): Plugin {
+  return {
+    name: "calibration-api",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith("/api/calibration/")) return next();
+
+        try {
+          const { logEmittedSignal } = await import("./src/calibration/logSignal");
+          const { resolveOpenSignalsForSymbol } = await import(
+            "./src/calibration/resolveOutcomes"
+          );
+          const { listAllSignals, SIGNAL_DB_PATH } = await import("./src/calibration/db");
+
+          if (req.method === "POST" && req.url === "/api/calibration/log") {
+            const body = JSON.parse(await readBody(req));
+            const row = logEmittedSignal(body);
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: true, row }));
+            return;
+          }
+
+          if (req.method === "POST" && req.url === "/api/calibration/resolve") {
+            const body = JSON.parse(await readBody(req)) as {
+              symbol: string;
+              price: number;
+              open?: number;
+              high?: number;
+              low?: number;
+            };
+            const updated = resolveOpenSignalsForSymbol(body.symbol, {
+              price: body.price,
+              open: body.open,
+              high: body.high,
+              low: body.low,
+            });
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: true, updated: updated.length }));
+            return;
+          }
+
+          if (req.method === "GET" && req.url.startsWith("/api/calibration/stats")) {
+            const signals = listAllSignals();
+            const open = signals.filter((s) => s.outcome === "OPEN").length;
+            const resolved = signals.filter(
+              (s) => s.outcomeTp1 === "WIN" || s.outcomeTp1 === "LOSS",
+            ).length;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: true,
+                total: signals.length,
+                open,
+                resolved,
+                path: SIGNAL_DB_PATH,
+              }),
+            );
+            return;
+          }
+
+          res.statusCode = 404;
+          res.end(JSON.stringify({ ok: false, error: "not found" }));
+        } catch (e) {
+          res.statusCode = 500;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: e instanceof Error ? e.message : "calibration api error",
+            }),
+          );
+        }
+      });
+    },
+  };
+}
+
+export default defineConfig({
+  plugins: [react(), calibrationApiPlugin()],
+  optimizeDeps: {
+    exclude: ["better-sqlite3"],
+  },
+  ssr: {
+    external: ["better-sqlite3"],
+  },
+  server: {
+    port: 5173,
+    proxy: {
+      "/api/yahoo": {
+        target: "https://query1.finance.yahoo.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/yahoo/, ""),
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+        },
+      },
+      "/api/binance": {
+        target: "https://api.binance.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/binance/, ""),
+      },
+      "/api/tv": {
+        target: "https://scanner.tradingview.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/tv/, ""),
+        headers: {
+          Origin: "https://www.tradingview.com",
+          Referer: "https://www.tradingview.com/",
+        },
+      },
+    },
+  },
+});
