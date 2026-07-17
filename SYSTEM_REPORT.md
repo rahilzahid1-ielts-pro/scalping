@@ -22,9 +22,13 @@ A local trading desk that:
 | Command | Purpose |
 |---------|---------|
 | `npm run dev` | Web UI → http://localhost:5173 |
+| `npm run build` | Production Vite bundle → `dist/` |
+| `npm run start` | Production Node server (Railway): static UI + `/api/*` proxies + calibration |
 | `npm run alerts` | Background bot (Windows toast + beeps) — keep terminal open |
 | `npm run calibrate` | Actual vs claimed win-rate report (`data/signals.db`) |
 | `npm run calibrate -- --days=14` | Same report, custom lookback |
+
+Railway must use `npm run start` (not static-only). Optional Volume at `/app/data` keeps `signals.db`.
 
 ### Calibration (measurement)
 

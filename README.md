@@ -19,13 +19,33 @@ Live trading signal web app with **TradingView charts**, multi-timeframe OHLC an
 
 ```bash
 npm install
-npm run dev          # UI
+npm run dev          # UI (local Vite + API proxies)
+npm run build        # production bundle → dist/
+npm run start        # production Node server (PORT, proxies, calibration API)
 npm run alerts       # background outcome watcher + entry alerts
 npm run calibrate    # actual vs claimed win-rate report
 npm run calibrate -- --days=30
 ```
 
 Open the URL Vite prints (default `http://localhost:5173`).
+
+### Railway deploy
+
+Static-only hosting breaks live signals: `/api/*` must return JSON, not `index.html`.
+This repo ships `server/prodServer.ts` for that.
+
+1. Connect the GitHub repo to Railway.
+2. Build / start come from [`railway.toml`](railway.toml): `npm ci && npm run build` → `npm run start`.
+3. Railway sets `PORT` automatically; the server binds `0.0.0.0:$PORT`.
+4. **Optional but recommended:** mount a Volume at `/app/data` so `data/signals.db` persists across redeploys. Without it, calibration history resets every deploy (quotes/signals still work).
+5. After deploy, open the public URL — Gold/Scalp should load without `Unexpected token '<'`. Check Network: `/api/tv/.../scan` and `/api/yahoo/...` return JSON.
+
+Local production smoke test:
+
+```bash
+npm run build && npm run start
+# then open http://localhost:4173
+```
 
 ### Calibration report (how to read)
 
