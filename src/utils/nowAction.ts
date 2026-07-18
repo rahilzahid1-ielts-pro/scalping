@@ -40,6 +40,8 @@ export interface NowActionResult {
   inEntryZone: boolean;
   conflictingSignals: boolean;
   sessionLocked: boolean;
+  /** Tier-1 early warning: liquidity sweep against the plan side (display-only). */
+  liquidityWarning: boolean;
 }
 
 const MIN_CONFIDENCE = 68;
@@ -50,6 +52,8 @@ export function computeNowAction(
   livePrice: number,
   asset: AssetConfig,
   quote?: LiveQuote | null,
+  /** Tier-1 flag: sweep detected against the locked plan → shave displayed scores. */
+  liquidityWarning?: boolean,
 ): NowActionResult {
   const decimals = asset.decimals;
   const p = roundPrice(livePrice, decimals);
@@ -67,6 +71,10 @@ export function computeNowAction(
     conf = Math.min(conf, CONFLICT_CAP_PCT);
     winProb = Math.min(winProb, CONFLICT_CAP_PCT);
   }
+  // Tier-1 sweep is surfaced as an informational card flag only. The confidence/
+  // win% penalty was REMOVED: backtest showed swept plans win MORE (72.5% vs 46.5%
+  // TP1), so shaving their displayed scores was backwards. Detection + logging stay.
+  const liqWarn = liquidityWarning === true;
   const tol = entryTolerance(asset, signal.mode, p);
   const empty: NowActionResult = {
     action: "WAIT_SETUP",
@@ -89,6 +97,7 @@ export function computeNowAction(
     inEntryZone: false,
     conflictingSignals: conflict,
     sessionLocked: false,
+    liquidityWarning: liqWarn,
   };
 
   const sessionLocked =
@@ -113,6 +122,7 @@ export function computeNowAction(
       takeProfit: plan.levels.takeProfit1,
       takeProfit2: plan.levels.takeProfit2,
       sessionLocked: false,
+      liquidityWarning: liqWarn,
     };
   }
 
@@ -143,6 +153,7 @@ export function computeNowAction(
       inEntryZone: false,
       conflictingSignals: conflict,
       sessionLocked,
+      liquidityWarning: liqWarn,
     };
   }
 
@@ -205,6 +216,7 @@ export function computeNowAction(
       inEntryZone: false,
       conflictingSignals: conflict,
       sessionLocked,
+      liquidityWarning: liqWarn,
     };
   }
 
@@ -230,6 +242,7 @@ export function computeNowAction(
       inEntryZone: false,
       conflictingSignals: conflict,
       sessionLocked,
+      liquidityWarning: liqWarn,
     };
   }
 
@@ -260,6 +273,7 @@ export function computeNowAction(
       inEntryZone: true,
       conflictingSignals: conflict,
       sessionLocked,
+      liquidityWarning: liqWarn,
     };
   }
 
@@ -299,5 +313,6 @@ export function computeNowAction(
     inEntryZone: false,
     conflictingSignals: conflict,
     sessionLocked,
+    liquidityWarning: liqWarn,
   };
 }

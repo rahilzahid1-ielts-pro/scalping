@@ -44,6 +44,23 @@ function main() {
   const flipDetermined = flipSaved + flipCutWin;
   const savedPct = flipDetermined > 0 ? (flipSaved / flipDetermined) * 100 : null;
 
+  // Tier-1 effectiveness: TP1win% on plans WITH a mid-plan liquidity-sweep warning
+  // vs plans with NONE. Predictive iff swept win rate is clearly worse.
+  const tp1WinRate = (arr: typeof resolved): number | null => {
+    const w = arr.filter((s) => s.outcomeTp1 === "WIN").length;
+    return arr.length > 0 ? (w / arr.length) * 100 : null;
+  };
+  const swept = resolved.filter((s) => s.liquiditySweepDetectedAt != null);
+  const noSweep = resolved.filter((s) => s.liquiditySweepDetectedAt == null);
+  const sweptWr = tp1WinRate(swept);
+  const noSweepWr = tp1WinRate(noSweep);
+  const sweptTotal = signals.filter((s) => s.liquiditySweepDetectedAt != null).length;
+  const fmtWr = (v: number | null) => (v == null ? "n/a" : `${v.toFixed(1)}%`);
+  const wrDelta =
+    sweptWr != null && noSweepWr != null
+      ? `${(sweptWr - noSweepWr >= 0 ? "+" : "")}${(sweptWr - noSweepWr).toFixed(1)}pts`
+      : "n/a";
+
   console.log(`
 SMC Calibration Report (LIVE)
 ─────────────────────────────
@@ -60,6 +77,10 @@ Invalidated           : ${signals.filter((s) => s.outcome === "INVALIDATED").len
 Regime-flip invalidated: ${flips.length} (${flipRate.toFixed(1)}% of locked plans)
   wouldHaveHitSlFirst  : true=${flipSaved} (saved loss)  false=${flipCutWin} (cut a win)  pending=${flipPending}
   → saved-loss rate    : ${savedPct == null ? "n/a (none resolved yet)" : `${savedPct.toFixed(1)}% of ${flipDetermined} resolved flips`}
+Tier-1 liquidity sweep (mid-plan warning): ${sweptTotal} plans flagged
+  TP1win% with sweep   : ${fmtWr(sweptWr)} (n=${swept.length})
+  TP1win% no sweep     : ${fmtWr(noSweepWr)} (n=${noSweep.length})
+  → predictive delta   : ${wrDelta} ${sweptWr != null && noSweepWr != null ? (sweptWr < noSweepWr - 5 ? "(sweep worse → warning predictive)" : "(similar → penalty may be noise)") : ""}
 Regimes in window     : ${distinctRegimes(resolved).join(", ") || "(none)"}
 Calendar days (TP1)   : ${distinctCalendarDays(resolved).length}
 Display recal gate    : ${calibrationDisplayGateOk(all) ? "OPEN (≥14d data)" : `CLOSED (need ≥${MIN_DAYS_BEFORE_DISPLAY_RECAL}d resolved history)`}

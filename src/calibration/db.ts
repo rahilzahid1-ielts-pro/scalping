@@ -121,7 +121,9 @@ CREATE TABLE IF NOT EXISTS signals (
   regime TEXT,
   resolve_note TEXT,
   zone_touched_at INTEGER,
-  would_have_hit_sl_first INTEGER
+  would_have_hit_sl_first INTEGER,
+  liquidity_sweep_detected_at INTEGER,
+  liquidity_sweep_then_regime_flipped INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_signals_symbol_outcome ON signals(symbol, outcome);
@@ -195,6 +197,13 @@ function rowToSignal(row: DbRow): LoggedSignal {
     resolveNote: row.resolve_note == null ? undefined : String(row.resolve_note),
     zoneTouchedAt: row.zone_touched_at == null ? null : Number(row.zone_touched_at),
     wouldHaveHitSlFirst: intToNullableBool(row.would_have_hit_sl_first),
+    liquiditySweepDetectedAt:
+      row.liquidity_sweep_detected_at == null
+        ? null
+        : Number(row.liquidity_sweep_detected_at),
+    liquiditySweepThenRegimeFlipped: intToNullableBool(
+      row.liquidity_sweep_then_regime_flipped,
+    ),
   };
 }
 
@@ -243,6 +252,10 @@ function signalToParams(s: LoggedSignal): DbRow {
     resolve_note: s.resolveNote ?? null,
     zone_touched_at: s.zoneTouchedAt ?? null,
     would_have_hit_sl_first: nullableBoolToInt(s.wouldHaveHitSlFirst),
+    liquidity_sweep_detected_at: s.liquiditySweepDetectedAt ?? null,
+    liquidity_sweep_then_regime_flipped: nullableBoolToInt(
+      s.liquiditySweepThenRegimeFlipped,
+    ),
   };
 }
 
@@ -285,6 +298,14 @@ function ensureColumns(db: Database.Database): void {
   }
   if (!have.has("would_have_hit_sl_first")) {
     db.exec("ALTER TABLE signals ADD COLUMN would_have_hit_sl_first INTEGER");
+  }
+  if (!have.has("liquidity_sweep_detected_at")) {
+    db.exec("ALTER TABLE signals ADD COLUMN liquidity_sweep_detected_at INTEGER");
+  }
+  if (!have.has("liquidity_sweep_then_regime_flipped")) {
+    db.exec(
+      "ALTER TABLE signals ADD COLUMN liquidity_sweep_then_regime_flipped INTEGER",
+    );
   }
 }
 
@@ -389,6 +410,12 @@ function coerceLegacyRow(raw: unknown, index: number): LoggedSignal | null {
     zoneTouchedAt: r.zoneTouchedAt == null ? null : Number(r.zoneTouchedAt),
     wouldHaveHitSlFirst:
       r.wouldHaveHitSlFirst == null ? null : Boolean(r.wouldHaveHitSlFirst),
+    liquiditySweepDetectedAt:
+      r.liquiditySweepDetectedAt == null ? null : Number(r.liquiditySweepDetectedAt),
+    liquiditySweepThenRegimeFlipped:
+      r.liquiditySweepThenRegimeFlipped == null
+        ? null
+        : Boolean(r.liquiditySweepThenRegimeFlipped),
   };
 }
 
@@ -413,7 +440,8 @@ function migrateJsonIfNeeded(db: Database.Database): MigrationReport {
       full_plan_closed, tp2_hit, tp3_hit, sl_after_tp1,
       tp1_hit_at, tp2_hit_at, tp3_hit_at, sl_after_tp1_at,
       atr14, atr_pct_of_price, regime, resolve_note,
-      zone_touched_at, would_have_hit_sl_first
+      zone_touched_at, would_have_hit_sl_first,
+      liquidity_sweep_detected_at, liquidity_sweep_then_regime_flipped
     ) VALUES (
       @id, @timestamp, @symbol, @mode, @side, @entry, @sl, @tp1, @tp2, @tp3,
       @confidence, @win_chance_displayed, @win_chance_calibrated,
@@ -423,7 +451,8 @@ function migrateJsonIfNeeded(db: Database.Database): MigrationReport {
       @full_plan_closed, @tp2_hit, @tp3_hit, @sl_after_tp1,
       @tp1_hit_at, @tp2_hit_at, @tp3_hit_at, @sl_after_tp1_at,
       @atr14, @atr_pct_of_price, @regime, @resolve_note,
-      @zone_touched_at, @would_have_hit_sl_first
+      @zone_touched_at, @would_have_hit_sl_first,
+      @liquidity_sweep_detected_at, @liquidity_sweep_then_regime_flipped
     )
   `);
 
@@ -574,7 +603,8 @@ export function insertSignal(signal: LoggedSignal): LoggedSignal {
         full_plan_closed, tp2_hit, tp3_hit, sl_after_tp1,
         tp1_hit_at, tp2_hit_at, tp3_hit_at, sl_after_tp1_at,
         atr14, atr_pct_of_price, regime, resolve_note,
-        zone_touched_at, would_have_hit_sl_first
+        zone_touched_at, would_have_hit_sl_first,
+        liquidity_sweep_detected_at, liquidity_sweep_then_regime_flipped
       ) VALUES (
         @id, @timestamp, @symbol, @mode, @side, @entry, @sl, @tp1, @tp2, @tp3,
         @confidence, @win_chance_displayed, @win_chance_calibrated,
@@ -584,7 +614,8 @@ export function insertSignal(signal: LoggedSignal): LoggedSignal {
         @full_plan_closed, @tp2_hit, @tp3_hit, @sl_after_tp1,
         @tp1_hit_at, @tp2_hit_at, @tp3_hit_at, @sl_after_tp1_at,
         @atr14, @atr_pct_of_price, @regime, @resolve_note,
-        @zone_touched_at, @would_have_hit_sl_first
+        @zone_touched_at, @would_have_hit_sl_first,
+        @liquidity_sweep_detected_at, @liquidity_sweep_then_regime_flipped
       )
     `);
     const result = stmt.run(signalToParams(signal));
@@ -619,7 +650,9 @@ export function updateSignal(signal: LoggedSignal): void {
         tp3_hit_at=@tp3_hit_at, sl_after_tp1_at=@sl_after_tp1_at,
         atr14=@atr14, atr_pct_of_price=@atr_pct_of_price, regime=@regime,
         resolve_note=@resolve_note, zone_touched_at=@zone_touched_at,
-        would_have_hit_sl_first=@would_have_hit_sl_first
+        would_have_hit_sl_first=@would_have_hit_sl_first,
+        liquidity_sweep_detected_at=@liquidity_sweep_detected_at,
+        liquidity_sweep_then_regime_flipped=@liquidity_sweep_then_regime_flipped
       WHERE id=@id
     `);
     stmt.run(signalToParams(signal));

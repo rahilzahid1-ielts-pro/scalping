@@ -58,7 +58,9 @@ CREATE TABLE IF NOT EXISTS signals (
   regime TEXT,
   resolve_note TEXT,
   zone_touched_at INTEGER,
-  would_have_hit_sl_first INTEGER
+  would_have_hit_sl_first INTEGER,
+  liquidity_sweep_detected_at INTEGER,
+  liquidity_sweep_then_regime_flipped INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_bt_ts ON signals(timestamp);
 `;
@@ -130,6 +132,15 @@ function rowToSignal(row: DbRow): LoggedSignal {
       row.would_have_hit_sl_first == null
         ? null
         : row.would_have_hit_sl_first === 1 || row.would_have_hit_sl_first === true,
+    liquiditySweepDetectedAt:
+      row.liquidity_sweep_detected_at == null
+        ? null
+        : Number(row.liquidity_sweep_detected_at),
+    liquiditySweepThenRegimeFlipped:
+      row.liquidity_sweep_then_regime_flipped == null
+        ? null
+        : row.liquidity_sweep_then_regime_flipped === 1 ||
+          row.liquidity_sweep_then_regime_flipped === true,
   };
 }
 
@@ -179,6 +190,13 @@ function signalToParams(s: LoggedSignal): DbRow {
     zone_touched_at: s.zoneTouchedAt ?? null,
     would_have_hit_sl_first:
       s.wouldHaveHitSlFirst == null ? null : s.wouldHaveHitSlFirst ? 1 : 0,
+    liquidity_sweep_detected_at: s.liquiditySweepDetectedAt ?? null,
+    liquidity_sweep_then_regime_flipped:
+      s.liquiditySweepThenRegimeFlipped == null
+        ? null
+        : s.liquiditySweepThenRegimeFlipped
+          ? 1
+          : 0,
   };
 }
 
@@ -225,7 +243,8 @@ export function insertBacktestSignal(db: Database.Database, signal: LoggedSignal
       full_plan_closed, tp2_hit, tp3_hit, sl_after_tp1,
       tp1_hit_at, tp2_hit_at, tp3_hit_at, sl_after_tp1_at,
       atr14, atr_pct_of_price, regime, resolve_note, zone_touched_at,
-      would_have_hit_sl_first
+      would_have_hit_sl_first, liquidity_sweep_detected_at,
+      liquidity_sweep_then_regime_flipped
     ) VALUES (
       @id, @timestamp, @symbol, @mode, @side, @entry, @sl, @tp1, @tp2, @tp3,
       @confidence, @win_chance_displayed, @win_chance_calibrated,
@@ -235,7 +254,8 @@ export function insertBacktestSignal(db: Database.Database, signal: LoggedSignal
       @full_plan_closed, @tp2_hit, @tp3_hit, @sl_after_tp1,
       @tp1_hit_at, @tp2_hit_at, @tp3_hit_at, @sl_after_tp1_at,
       @atr14, @atr_pct_of_price, @regime, @resolve_note, @zone_touched_at,
-      @would_have_hit_sl_first
+      @would_have_hit_sl_first, @liquidity_sweep_detected_at,
+      @liquidity_sweep_then_regime_flipped
     )
   `);
   stmt.run(signalToParams(signal));
@@ -250,7 +270,9 @@ export function updateBacktestSignal(db: Database.Database, signal: LoggedSignal
       sl_after_tp1=@sl_after_tp1, tp1_hit_at=@tp1_hit_at, tp2_hit_at=@tp2_hit_at,
       tp3_hit_at=@tp3_hit_at, sl_after_tp1_at=@sl_after_tp1_at,
       resolve_note=@resolve_note, zone_touched_at=@zone_touched_at,
-      would_have_hit_sl_first=@would_have_hit_sl_first
+      would_have_hit_sl_first=@would_have_hit_sl_first,
+      liquidity_sweep_detected_at=@liquidity_sweep_detected_at,
+      liquidity_sweep_then_regime_flipped=@liquidity_sweep_then_regime_flipped
     WHERE id=@id
   `);
   stmt.run(signalToParams(signal));

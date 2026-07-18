@@ -266,7 +266,24 @@ export function invalidateLoggedPlanRegimeFlip(planKey: string): void {
   sig.realizedRFull = 0;
   sig.fullPlanClosed = true;
   sig.wouldHaveHitSlFirst = null;
+  // Tier-1 ↔ Tier-2 link: did an earlier liquidity-sweep warning precede this flip?
+  if (sig.liquiditySweepDetectedAt != null) {
+    sig.liquiditySweepThenRegimeFlipped = true;
+  }
   sig.resolveNote = "Regime flip vs plan side — invalidated before SL/TP";
+  updateSignal(sig);
+}
+
+/**
+ * Tier-1: record the first mid-plan liquidity-sweep warning on the open plan row.
+ * Display/measurement only — does not resolve or alter the plan.
+ */
+export function markLiquiditySweep(planKey: string, at: number): void {
+  const sig = findByPlanKey(planKey);
+  if (!sig) return;
+  if (sig.outcome !== "OPEN") return;
+  if (sig.liquiditySweepDetectedAt != null) return;
+  sig.liquiditySweepDetectedAt = at;
   updateSignal(sig);
 }
 

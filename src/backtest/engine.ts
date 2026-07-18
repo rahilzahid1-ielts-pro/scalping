@@ -17,6 +17,7 @@ import {
   canAutoLockPlan,
   sessionDayKey,
 } from "../utils/sessionPlan";
+import { isLiquiditySweepAgainst } from "../utils/liquidityWarning";
 import { framesAtIndex, isClosedFifteenEnd, precomputeHtfs } from "./frames";
 import { insertBacktestSignal, updateBacktestSignal } from "./store";
 
@@ -151,6 +152,8 @@ function toLogged(
     resolveNote: "PLAN_LOCKED",
     zoneTouchedAt: null,
     wouldHaveHitSlFirst: null,
+    liquiditySweepDetectedAt: null,
+    liquiditySweepThenRegimeFlipped: null,
   };
 }
 
@@ -303,6 +306,9 @@ export function runWalkForward(
           row.sl,
           row.tp1,
         );
+        if (row.liquiditySweepDetectedAt != null) {
+          row.liquiditySweepThenRegimeFlipped = true;
+        }
         row.resolveNote = "Regime flip vs plan side — invalidated";
         updateBacktestSignal(db, row);
         stats.regimeFlips += 1;
@@ -354,6 +360,11 @@ export function runWalkForward(
               frames.bias.length ? computeRegime(frames.bias) : null,
             ]
           : [];
+      // Tier-1 (log only): liquidity sweep against the active plan side.
+      const sweepAgainst =
+        frames && activeNow && state.plan
+          ? isLiquiditySweepAgainst(state.plan.side, frames.primary)
+          : false;
 
       // ── Advance locked / in-trade plans (frozen levels — no generateSignal) ─
       if (state.phase === "PLAN_LOCKED" && state.plan && state.row) {
@@ -382,6 +393,12 @@ export function runWalkForward(
         // Persist rolling flip-confirmation counter for next bar.
         const plan = kept ?? state.plan;
         state = { ...state, plan };
+
+        // Tier-1: record first liquidity-sweep warning while waiting for entry.
+        if (sweepAgainst && row.liquiditySweepDetectedAt == null) {
+          row.liquiditySweepDetectedAt = asOfClose;
+          updateBacktestSignal(db, row);
+        }
 
         if (
           barTouchesZone(
@@ -458,6 +475,12 @@ export function runWalkForward(
             ...state,
             plan: { ...state.plan, flipStreak: keptActive.flipStreak },
           };
+        }
+
+        // Tier-1: record first liquidity-sweep warning during the active trade.
+        if (sweepAgainst && state.row.liquiditySweepDetectedAt == null) {
+          state.row.liquiditySweepDetectedAt = asOfClose;
+          updateBacktestSignal(db, state.row);
         }
 
         const next = advanceSignalOnBar({ ...state.row }, tick, asOfClose);

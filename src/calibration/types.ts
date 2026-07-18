@@ -82,6 +82,16 @@ export interface LoggedSignal {
    * null  = not yet determined (live: still watching; or never resolved)
    */
   wouldHaveHitSlFirst?: boolean | null;
+  /**
+   * Tier-1 early warning: when a liquidity sweep AGAINST the plan side was first
+   * detected mid-plan (PLAN_LOCKED / ENTRY_HIT). Null = no sweep flagged.
+   */
+  liquiditySweepDetectedAt?: number | null;
+  /**
+   * Whether a sweep-flagged plan subsequently got Tier-2 regime-flip invalidated.
+   * Filled only on flip; stays null while REGIME_FLIP_ENABLED is false (expected).
+   */
+  liquiditySweepThenRegimeFlipped?: boolean | null;
 }
 
 /** @deprecated JSON file shape — only used during one-time migration */

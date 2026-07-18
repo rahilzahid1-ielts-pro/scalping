@@ -71,7 +71,17 @@ function findFVG(candles: Candle[]) {
   return undefined;
 }
 
-function liquiditySweep(candles: Candle[]) {
+/**
+ * Standard SMC liquidity sweep on the working timeframe (reuses swingHighsLows):
+ * price wicks past a recent swing level (grabbing resting stops) then closes back
+ * on the other side within a couple of bars — a stop-hunt, not a genuine breakout.
+ *   buy_side  = swept a swing HIGH then closed back below  → bearish reversal cue
+ *   sell_side = swept a swing LOW  then closed back above  → bullish reversal cue
+ * Exported so the Tier-1 early-warning layer uses the exact same detection.
+ */
+export function detectLiquiditySweep(
+  candles: Candle[],
+): "buy_side" | "sell_side" | "none" {
   if (candles.length < 10) return "none" as const;
   const { highs, lows } = swingHighsLows(candles, 2, 1);
   const last = candles[candles.length - 1];
@@ -103,7 +113,7 @@ export function analyzeSmartMoney(candles: Candle[]): SmcSignal {
   const struct = detectBOS(candles);
   const ob = findOrderBlock(candles, struct.structure);
   const fvg = findFVG(candles);
-  const sweep = liquiditySweep(candles);
+  const sweep = detectLiquiditySweep(candles);
   const pd = premiumDiscount(candles);
   const notes: string[] = [];
   let score = 45;

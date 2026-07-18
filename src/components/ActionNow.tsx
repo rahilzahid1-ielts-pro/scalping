@@ -57,6 +57,12 @@ export function ActionNow({ now, assetId, alertsOn, onToggleAlerts, onTestSound 
         </div>
       )}
 
+      {now.liquidityWarning && (
+        <div className="liquidity-flag">
+          Liquidity sweep detected mid-plan — informational. Levels and confidence unchanged.
+        </div>
+      )}
+
       {now.entry != null && (
         <div className="action-now-levels">
           {now.entryZoneLow != null && now.entryZoneHigh != null ? (

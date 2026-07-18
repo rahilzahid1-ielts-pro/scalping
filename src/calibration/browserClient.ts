@@ -62,6 +62,27 @@ export async function regimeFlipInvalidateViaApi(plan: FrozenPlan): Promise<void
   }
 }
 
+/** Browser → API: record a Tier-1 liquidity-sweep warning on the open plan row. */
+export async function liquiditySweepViaApi(plan: FrozenPlan): Promise<void> {
+  if (plan.side !== "BUY" && plan.side !== "SELL") return;
+  try {
+    await fetch("/api/calibration/liquidity-sweep", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol: plan.assetId,
+        mode: plan.mode,
+        side: plan.side,
+        entry: plan.levels.entry,
+        sl: plan.levels.stopLoss,
+        tp1: plan.levels.takeProfit1,
+      }),
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 export async function resolveSignalsViaApi(
   symbol: string,
   price: number,

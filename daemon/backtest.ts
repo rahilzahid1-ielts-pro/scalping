@@ -171,6 +171,31 @@ Suspicious gaps (>1 bar, weekends excluded): ${loaded.quality.suspiciousGaps}
   const maxDd = maxDrawdownR(stats.equityR);
   const loseStreak = longestLosingStreak(signals);
 
+  // Tier-1 effectiveness: conditional TP1win% on touched+resolved plans, split by
+  // whether a mid-plan liquidity sweep was flagged.
+  const tp1Wr = (arr: typeof resolved): number | null => {
+    const w = arr.filter((s) => s.outcomeTp1 === "WIN").length;
+    return arr.length > 0 ? (w / arr.length) * 100 : null;
+  };
+  const sweptResolved = resolved.filter((s) => s.liquiditySweepDetectedAt != null);
+  const noSweepResolved = resolved.filter((s) => s.liquiditySweepDetectedAt == null);
+  const sweptWr = tp1Wr(sweptResolved);
+  const noSweepWr = tp1Wr(noSweepResolved);
+  const sweptTotal = signals.filter((s) => s.liquiditySweepDetectedAt != null).length;
+  const fmtWr = (v: number | null) => (v == null ? "—" : `${v.toFixed(1)}%`);
+  const wrDelta =
+    sweptWr != null && noSweepWr != null
+      ? `${sweptWr - noSweepWr >= 0 ? "+" : ""}${(sweptWr - noSweepWr).toFixed(1)}pts`
+      : "—";
+  const predictiveVerdict =
+    sweptWr != null && noSweepWr != null
+      ? sweptWr < noSweepWr - 5
+        ? "sweep clearly worse → warning is predictive; keep the penalty"
+        : sweptWr > noSweepWr + 5
+          ? "sweep BETTER → warning is backwards; remove the penalty"
+          : "similar win rate → likely noise; consider removing the penalty"
+      : "insufficient data";
+
   console.log(`
 ════════════════════════════════════════════════════════
 SESSION-LOCK FUNNEL (mirrors live plan-lock → entry-hit)
@@ -202,6 +227,14 @@ Regime flips               : ${stats.regimeFlips}${
         ).toFixed(1) + "% of resolved flips"
       : "n/a"
   }
+
+TIER-1 LIQUIDITY-SWEEP EARLY WARNING (display/log only — no invalidation, no alert)
+────────────────────────────────────────────────────────────────────
+Plans flagged (sweep mid-plan): ${sweptTotal}
+Conditional TP1win% — swept    : ${fmtWr(sweptWr)} (n=${sweptResolved.length}, resolved+touched)
+Conditional TP1win% — no sweep : ${fmtWr(noSweepWr)} (n=${noSweepResolved.length})
+Predictive delta               : ${wrDelta}
+Verdict                        : ${predictiveVerdict}
 `);
 
   console.log("Funnel by regime:");

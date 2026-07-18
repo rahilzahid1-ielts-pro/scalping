@@ -31,9 +31,11 @@ import {
 } from "./services/tradePlan";
 import {
   logSignalViaApi,
+  liquiditySweepViaApi,
   regimeFlipInvalidateViaApi,
   resolveSignalsViaApi,
 } from "./calibration/browserClient";
+import { isLiquiditySweepAgainst } from "./utils/liquidityWarning";
 import { CONFLICT_CAP_PCT } from "./calibration/types";
 
 const boot = loadSession();
@@ -49,6 +51,7 @@ export default function App() {
   const [alertsOn, setAlertsOn] = useState(boot.alertsOn);
   const [now, setNow] = useState(Date.now());
   const [booted, setBooted] = useState(false);
+  const [liquidityWarn, setLiquidityWarn] = useState(false);
 
   const { quote, error: quoteError, pollMs } = useLivePrice(assetId);
   const quoteRef = useRef(quote);
@@ -72,6 +75,7 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       setError(null);
+      setLiquidityWarn(false);
       const livePx = quoteRef.current?.price;
       const frames = await fetchMultiTimeframe(assetId, mode, livePx);
       const next = generateSignal(assetId, mode, frames);
@@ -115,9 +119,16 @@ export default function App() {
         if (kept && kept.status === "INVALIDATED" && kept.note === REGIME_FLIP_NOTE) {
           setPlan(null);
           planRef.current = null;
+          setLiquidityWarn(false);
           void regimeFlipInvalidateViaApi(current);
         } else if (kept) {
           setPlan(kept);
+          // Tier-1 early warning (display/log only): sweep against the locked side.
+          const swept =
+            kept.status !== "INVALIDATED" &&
+            isLiquiditySweepAgainst(kept.side, frames.primary);
+          setLiquidityWarn(swept);
+          if (swept) void liquiditySweepViaApi(kept);
           next.levels = kept.levels;
           next.side = kept.side;
           // Keep the scores the user saw when this plan locked — do not let a
@@ -234,8 +245,8 @@ export default function App() {
 
   const nowAction = useMemo(() => {
     if (!signal || !livePrice) return null;
-    return computeNowAction(signal, plan, livePrice, asset, quote);
-  }, [signal, plan, livePrice, asset, quote]);
+    return computeNowAction(signal, plan, livePrice, asset, quote, liquidityWarn);
+  }, [signal, plan, livePrice, asset, quote, liquidityWarn]);
 
   // Once the app instructed ENTER NOW, persist an active-trade state. From this
   // point a refresh/New plan must not turn that instruction into WAIT/opposite.

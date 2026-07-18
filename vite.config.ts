@@ -51,8 +51,11 @@ function calibrationApiPlugin(): Plugin {
 
         try {
           const { logEmittedSignal } = await import("./src/calibration/logSignal");
-          const { resolveOpenSignalsForSymbol, invalidateLoggedPlanRegimeFlip } =
-            await import("./src/calibration/resolveOutcomes");
+          const {
+            resolveOpenSignalsForSymbol,
+            invalidateLoggedPlanRegimeFlip,
+            markLiquiditySweep,
+          } = await import("./src/calibration/resolveOutcomes");
           const { listAllSignals, SIGNAL_DB_PATH, makePlanKey } = await import(
             "./src/calibration/db"
           );
@@ -68,6 +71,22 @@ function calibrationApiPlugin(): Plugin {
             };
             const planKey = makePlanKey(b.symbol, b.mode, b.side, b.entry, b.sl, b.tp1);
             invalidateLoggedPlanRegimeFlip(planKey);
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: true }));
+            return;
+          }
+
+          if (req.method === "POST" && req.url === "/api/calibration/liquidity-sweep") {
+            const b = JSON.parse(await readBody(req)) as {
+              symbol: string;
+              mode: string;
+              side: string;
+              entry: number;
+              sl: number;
+              tp1: number;
+            };
+            const planKey = makePlanKey(b.symbol, b.mode, b.side, b.entry, b.sl, b.tp1);
+            markLiquiditySweep(planKey, Date.now());
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify({ ok: true }));
             return;

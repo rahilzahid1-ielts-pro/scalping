@@ -28,7 +28,9 @@ import {
   resolveRegimeFlipShadows,
   invalidateLoggedPlan,
   invalidateLoggedPlanRegimeFlip,
+  markLiquiditySweep,
 } from "../src/calibration/resolveOutcomes";
+import { isLiquiditySweepAgainst } from "../src/utils/liquidityWarning";
 import { makePlanKey } from "../src/calibration/signalStore";
 import {
   alertChannelsStatus,
@@ -160,6 +162,24 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
   if (plan && plan.status !== "INVALIDATED") {
     signal.side = plan.side;
     signal.levels = plan.levels;
+
+    // Tier-1 early warning (log only, no alert): liquidity sweep vs plan side.
+    if (
+      (plan.side === "BUY" || plan.side === "SELL") &&
+      isLiquiditySweepAgainst(plan.side, frames.primary)
+    ) {
+      markLiquiditySweep(
+        makePlanKey(
+          assetId,
+          mode,
+          plan.side,
+          plan.levels.entry,
+          plan.levels.stopLoss,
+          plan.levels.takeProfit1,
+        ),
+        Date.now(),
+      );
+    }
   }
 
   let now = computeNowAction(signal, plan, live, asset, quote);

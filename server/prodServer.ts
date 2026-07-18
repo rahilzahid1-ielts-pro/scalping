@@ -87,9 +87,11 @@ async function handleCalibration(
 ): Promise<void> {
   try {
     const { logEmittedSignal } = await import("../src/calibration/logSignal");
-    const { resolveOpenSignalsForSymbol, invalidateLoggedPlanRegimeFlip } = await import(
-      "../src/calibration/resolveOutcomes"
-    );
+    const {
+      resolveOpenSignalsForSymbol,
+      invalidateLoggedPlanRegimeFlip,
+      markLiquiditySweep,
+    } = await import("../src/calibration/resolveOutcomes");
     const { listAllSignals, SIGNAL_DB_PATH, makePlanKey } = await import(
       "../src/calibration/db"
     );
@@ -106,6 +108,22 @@ async function handleCalibration(
       };
       const planKey = makePlanKey(b.symbol, b.mode, b.side, b.entry, b.sl, b.tp1);
       invalidateLoggedPlanRegimeFlip(planKey);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === "POST" && urlPath === "/api/calibration/liquidity-sweep") {
+      const raw = (await readBody(req)).toString("utf8");
+      const b = JSON.parse(raw || "{}") as {
+        symbol: string;
+        mode: string;
+        side: string;
+        entry: number;
+        sl: number;
+        tp1: number;
+      };
+      const planKey = makePlanKey(b.symbol, b.mode, b.side, b.entry, b.sl, b.tp1);
+      markLiquiditySweep(planKey, Date.now());
       sendJson(res, 200, { ok: true });
       return;
     }
