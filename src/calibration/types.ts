@@ -92,6 +92,18 @@ export interface LoggedSignal {
    * Filled only on flip; stays null while REGIME_FLIP_ENABLED is false (expected).
    */
   liquiditySweepThenRegimeFlipped?: boolean | null;
+  /**
+   * SCALPING-ONLY: when a fresh trend-confirmation trigger produced this locked
+   * plan (regime just transitioned + ATR expanding + HTF agreement). Null = plan
+   * was not locked via the trend-confirmation trigger (or mode !== scalping).
+   */
+  trendConfirmedAt?: number | null;
+  /**
+   * SCALPING-ONLY: how many closed bars the confirmed trend actually lasted before
+   * reverting to RANGE / flipping. Filled after the trend ends; null while ongoing
+   * or when the row was not trend-confirmed.
+   */
+  trendDurationBars?: number | null;
 }
 
 /** @deprecated JSON file shape — only used during one-time migration */

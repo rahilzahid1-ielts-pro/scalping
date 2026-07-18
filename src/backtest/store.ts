@@ -60,7 +60,9 @@ CREATE TABLE IF NOT EXISTS signals (
   zone_touched_at INTEGER,
   would_have_hit_sl_first INTEGER,
   liquidity_sweep_detected_at INTEGER,
-  liquidity_sweep_then_regime_flipped INTEGER
+  liquidity_sweep_then_regime_flipped INTEGER,
+  trend_confirmed_at INTEGER,
+  trend_duration_bars INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_bt_ts ON signals(timestamp);
 `;
@@ -141,6 +143,10 @@ function rowToSignal(row: DbRow): LoggedSignal {
         ? null
         : row.liquidity_sweep_then_regime_flipped === 1 ||
           row.liquidity_sweep_then_regime_flipped === true,
+    trendConfirmedAt:
+      row.trend_confirmed_at == null ? null : Number(row.trend_confirmed_at),
+    trendDurationBars:
+      row.trend_duration_bars == null ? null : Number(row.trend_duration_bars),
   };
 }
 
@@ -197,6 +203,8 @@ function signalToParams(s: LoggedSignal): DbRow {
         : s.liquiditySweepThenRegimeFlipped
           ? 1
           : 0,
+    trend_confirmed_at: s.trendConfirmedAt ?? null,
+    trend_duration_bars: s.trendDurationBars ?? null,
   };
 }
 
@@ -244,7 +252,8 @@ export function insertBacktestSignal(db: Database.Database, signal: LoggedSignal
       tp1_hit_at, tp2_hit_at, tp3_hit_at, sl_after_tp1_at,
       atr14, atr_pct_of_price, regime, resolve_note, zone_touched_at,
       would_have_hit_sl_first, liquidity_sweep_detected_at,
-      liquidity_sweep_then_regime_flipped
+      liquidity_sweep_then_regime_flipped,
+      trend_confirmed_at, trend_duration_bars
     ) VALUES (
       @id, @timestamp, @symbol, @mode, @side, @entry, @sl, @tp1, @tp2, @tp3,
       @confidence, @win_chance_displayed, @win_chance_calibrated,
@@ -255,7 +264,8 @@ export function insertBacktestSignal(db: Database.Database, signal: LoggedSignal
       @tp1_hit_at, @tp2_hit_at, @tp3_hit_at, @sl_after_tp1_at,
       @atr14, @atr_pct_of_price, @regime, @resolve_note, @zone_touched_at,
       @would_have_hit_sl_first, @liquidity_sweep_detected_at,
-      @liquidity_sweep_then_regime_flipped
+      @liquidity_sweep_then_regime_flipped,
+      @trend_confirmed_at, @trend_duration_bars
     )
   `);
   stmt.run(signalToParams(signal));
@@ -272,10 +282,24 @@ export function updateBacktestSignal(db: Database.Database, signal: LoggedSignal
       resolve_note=@resolve_note, zone_touched_at=@zone_touched_at,
       would_have_hit_sl_first=@would_have_hit_sl_first,
       liquidity_sweep_detected_at=@liquidity_sweep_detected_at,
-      liquidity_sweep_then_regime_flipped=@liquidity_sweep_then_regime_flipped
+      liquidity_sweep_then_regime_flipped=@liquidity_sweep_then_regime_flipped,
+      trend_confirmed_at=@trend_confirmed_at,
+      trend_duration_bars=@trend_duration_bars
     WHERE id=@id
   `);
   stmt.run(signalToParams(signal));
+}
+
+/**
+ * Targeted update of ONLY trend_duration_bars (by id). Avoids clobbering a row
+ * whose outcome was resolved after the lock-time object was captured.
+ */
+export function setBacktestTrendDuration(
+  db: Database.Database,
+  id: string,
+  bars: number,
+): void {
+  db.prepare("UPDATE signals SET trend_duration_bars=? WHERE id=?").run(bars, id);
 }
 
 export function listBacktestSignals(db: Database.Database): LoggedSignal[] {

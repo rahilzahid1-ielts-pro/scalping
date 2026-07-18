@@ -29,8 +29,16 @@ import {
   invalidateLoggedPlan,
   invalidateLoggedPlanRegimeFlip,
   markLiquiditySweep,
+  markTrendConfirmed,
+  setTrendDuration,
 } from "../src/calibration/resolveOutcomes";
 import { isLiquiditySweepAgainst } from "../src/utils/liquidityWarning";
+import {
+  evaluateTrendConfirm,
+  markTrendConsumed,
+  newTrendTracker,
+  type TrendTracker,
+} from "../src/utils/trendConfirm";
 import { makePlanKey } from "../src/calibration/signalStore";
 import {
   alertChannelsStatus,
@@ -45,6 +53,23 @@ const SIGNAL_EVERY_N = 8;
 let tickCount = 0;
 let workerRunning = false;
 
+// SCALPING-ONLY trend-confirmation state (keyed by daemon planKey assetId-mode).
+// Intraday keys are never inserted here.
+const trendTrackers = new Map<string, TrendTracker>();
+const trendRuns = new Map<
+  string,
+  { dir: "BUY" | "SELL"; dbKey: string; bars: number; lastBarTime: number }
+>();
+
+function getTrendTracker(key: string): TrendTracker {
+  let t = trendTrackers.get(key);
+  if (!t) {
+    t = newTrendTracker();
+    trendTrackers.set(key, t);
+  }
+  return t;
+}
+
 function log(...args: unknown[]) {
   console.log(`[alertBot ${new Date().toLocaleTimeString()}]`, ...args);
 }
@@ -56,6 +81,7 @@ function lockPlan(
   signal: ReturnType<typeof generateSignal>,
   live: number,
   htfRegimes: (RegimeTag | null | undefined)[],
+  trendConfirmed = false,
 ) {
   const key = planKey(assetId, mode);
   let current = state.plans[key] ?? null;
@@ -132,6 +158,11 @@ function lockPlan(
       signal.rangePrediction.winProbability,
       extras,
     );
+    // SCALPING-ONLY: tag the fresh lock as trend-confirmed (drives distinct alert).
+    if (trendConfirmed && created.status !== "INVALIDATED" && mode === "scalping") {
+      created.trendConfirmed = true;
+      created.trendConfirmedAt = Date.now();
+    }
     state.plans[key] = created.status === "INVALIDATED" ? null : created;
     return state.plans[key];
   }
@@ -158,7 +189,73 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
     frames.bias.length ? computeRegime(frames.bias) : null,
   ];
 
-  let plan = lockPlan(state, assetId, mode, signal, live, htfRegimes);
+  // ── SCALPING-ONLY: trend-confirmation early trigger + trend-duration tracking.
+  // Intraday never enters this branch, so its session-lock path is untouched.
+  const dkey = planKey(assetId, mode);
+  let trendConfirmedNow = false;
+  const primaryBarTime = frames.primary.length
+    ? frames.primary[frames.primary.length - 1].time
+    : Date.now();
+  if (mode === "scalping") {
+    const tracker = getTrendTracker(dkey);
+    const res = evaluateTrendConfirm(
+      tracker,
+      signal.diagnostics.regime,
+      frames.primary,
+      htfRegimes,
+      primaryBarTime,
+    );
+    trendConfirmedNow = res.armed && res.dir === signal.side;
+
+    // Advance / finalize the confirmed-trend duration counter on new closed bars.
+    const run = trendRuns.get(dkey);
+    if (run && primaryBarTime !== run.lastBarTime) {
+      const still =
+        (run.dir === "BUY" && signal.diagnostics.regime === "TREND_UP") ||
+        (run.dir === "SELL" && signal.diagnostics.regime === "TREND_DOWN");
+      if (still) {
+        run.bars += 1;
+        run.lastBarTime = primaryBarTime;
+      } else {
+        setTrendDuration(run.dbKey, run.bars);
+        trendRuns.delete(dkey);
+      }
+    }
+  }
+
+  let plan = lockPlan(
+    state,
+    assetId,
+    mode,
+    signal,
+    live,
+    htfRegimes,
+    trendConfirmedNow,
+  );
+
+  // Start a duration run when a fresh trend-confirmed scalping plan just locked.
+  if (
+    mode === "scalping" &&
+    plan?.trendConfirmed &&
+    plan.status === "WAITING_ENTRY" &&
+    (plan.side === "BUY" || plan.side === "SELL") &&
+    !trendRuns.has(dkey)
+  ) {
+    trendRuns.set(dkey, {
+      dir: plan.side,
+      dbKey: makePlanKey(
+        assetId,
+        mode,
+        plan.side,
+        plan.levels.entry,
+        plan.levels.stopLoss,
+        plan.levels.takeProfit1,
+      ),
+      bars: 0,
+      lastBarTime: primaryBarTime,
+    });
+    markTrendConsumed(getTrendTracker(dkey));
+  }
   if (plan && plan.status !== "INVALIDATED") {
     signal.side = plan.side;
     signal.levels = plan.levels;
@@ -233,6 +330,15 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
         fresh.rangePrediction.winProbability,
         extras,
       );
+      if (
+        plan.status !== "INVALIDATED" &&
+        mode === "scalping" &&
+        trendConfirmedNow &&
+        fresh.side === signal.side
+      ) {
+        plan.trendConfirmed = true;
+        plan.trendConfirmedAt = Date.now();
+      }
       if (plan.status === "INVALIDATED") plan = null;
       state.plans[planKey(assetId, mode)] = plan;
     }
@@ -270,6 +376,25 @@ async function tick(state: DaemonState) {
             : signal;
         logSignalFromLive(toLog);
       }
+      // SCALPING-ONLY: stamp trendConfirmedAt once the row exists in signals.db.
+      if (
+        w.mode === "scalping" &&
+        plan?.trendConfirmed &&
+        plan.status === "WAITING_ENTRY" &&
+        (plan.side === "BUY" || plan.side === "SELL")
+      ) {
+        markTrendConfirmed(
+          makePlanKey(
+            w.assetId,
+            w.mode,
+            plan.side,
+            plan.levels.entry,
+            plan.levels.stopLoss,
+            plan.levels.takeProfit1,
+          ),
+          plan.trendConfirmedAt ?? Date.now(),
+        );
+      }
       const priceCtx = {
         price: quote.price,
         high: quote.high,
@@ -300,14 +425,25 @@ async function tick(state: DaemonState) {
             plan.entryZoneLow != null && plan.entryZoneHigh != null
               ? `${plan.entryZoneLow}–${plan.entryZoneHigh}`
               : String(plan.levels.entry);
-          const title =
-            plan.mode === "intraday" ? "ZONE LOCKED" : "PLAN LOCKED";
-          const body = [
-            `${plan.side} entry zone: ${zone}`,
-            `SL ${plan.levels.stopLoss} · TP1 ${plan.levels.takeProfit1} · TP2 ${plan.levels.takeProfit2}`,
-            `Conf ${plan.lockedConfidence ?? signal.confidence}% · Win ${plan.lockedWinProbability ?? signal.rangePrediction.winProbability}%`,
-            `Live ${quote.price.toFixed(d)}`,
-          ].join("\n");
+          const trendAlert = plan.trendConfirmed && plan.mode === "scalping";
+          const title = trendAlert
+            ? "🔥 NEW TREND STARTING"
+            : plan.mode === "intraday"
+              ? "ZONE LOCKED"
+              : "PLAN LOCKED";
+          const body = trendAlert
+            ? [
+                `🔥 New trend starting — ${plan.side} scalping, SL ${plan.levels.stopLoss} TP1 ${plan.levels.takeProfit1} — chart confirm karke lo.`,
+                `Entry zone: ${zone} · TP2 ${plan.levels.takeProfit2}`,
+                `Conf ${plan.lockedConfidence ?? signal.confidence}% · Win ${plan.lockedWinProbability ?? signal.rangePrediction.winProbability}%`,
+                `Live ${quote.price.toFixed(d)}`,
+              ].join("\n")
+            : [
+                `${plan.side} entry zone: ${zone}`,
+                `SL ${plan.levels.stopLoss} · TP1 ${plan.levels.takeProfit1} · TP2 ${plan.levels.takeProfit2}`,
+                `Conf ${plan.lockedConfidence ?? signal.confidence}% · Win ${plan.lockedWinProbability ?? signal.rangePrediction.winProbability}%`,
+                `Live ${quote.price.toFixed(d)}`,
+              ].join("\n");
           log("PLAN LOCK >>>", name, title);
           await dispatchTradeAlert({
             kind: "PLAN_LOCK",

@@ -123,7 +123,9 @@ CREATE TABLE IF NOT EXISTS signals (
   zone_touched_at INTEGER,
   would_have_hit_sl_first INTEGER,
   liquidity_sweep_detected_at INTEGER,
-  liquidity_sweep_then_regime_flipped INTEGER
+  liquidity_sweep_then_regime_flipped INTEGER,
+  trend_confirmed_at INTEGER,
+  trend_duration_bars INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_signals_symbol_outcome ON signals(symbol, outcome);
@@ -204,6 +206,10 @@ function rowToSignal(row: DbRow): LoggedSignal {
     liquiditySweepThenRegimeFlipped: intToNullableBool(
       row.liquidity_sweep_then_regime_flipped,
     ),
+    trendConfirmedAt:
+      row.trend_confirmed_at == null ? null : Number(row.trend_confirmed_at),
+    trendDurationBars:
+      row.trend_duration_bars == null ? null : Number(row.trend_duration_bars),
   };
 }
 
@@ -256,6 +262,8 @@ function signalToParams(s: LoggedSignal): DbRow {
     liquidity_sweep_then_regime_flipped: nullableBoolToInt(
       s.liquiditySweepThenRegimeFlipped,
     ),
+    trend_confirmed_at: s.trendConfirmedAt ?? null,
+    trend_duration_bars: s.trendDurationBars ?? null,
   };
 }
 
@@ -306,6 +314,12 @@ function ensureColumns(db: Database.Database): void {
     db.exec(
       "ALTER TABLE signals ADD COLUMN liquidity_sweep_then_regime_flipped INTEGER",
     );
+  }
+  if (!have.has("trend_confirmed_at")) {
+    db.exec("ALTER TABLE signals ADD COLUMN trend_confirmed_at INTEGER");
+  }
+  if (!have.has("trend_duration_bars")) {
+    db.exec("ALTER TABLE signals ADD COLUMN trend_duration_bars INTEGER");
   }
 }
 
@@ -416,6 +430,10 @@ function coerceLegacyRow(raw: unknown, index: number): LoggedSignal | null {
       r.liquiditySweepThenRegimeFlipped == null
         ? null
         : Boolean(r.liquiditySweepThenRegimeFlipped),
+    trendConfirmedAt:
+      r.trendConfirmedAt == null ? null : Number(r.trendConfirmedAt),
+    trendDurationBars:
+      r.trendDurationBars == null ? null : Number(r.trendDurationBars),
   };
 }
 
@@ -441,7 +459,8 @@ function migrateJsonIfNeeded(db: Database.Database): MigrationReport {
       tp1_hit_at, tp2_hit_at, tp3_hit_at, sl_after_tp1_at,
       atr14, atr_pct_of_price, regime, resolve_note,
       zone_touched_at, would_have_hit_sl_first,
-      liquidity_sweep_detected_at, liquidity_sweep_then_regime_flipped
+      liquidity_sweep_detected_at, liquidity_sweep_then_regime_flipped,
+      trend_confirmed_at, trend_duration_bars
     ) VALUES (
       @id, @timestamp, @symbol, @mode, @side, @entry, @sl, @tp1, @tp2, @tp3,
       @confidence, @win_chance_displayed, @win_chance_calibrated,
@@ -452,7 +471,8 @@ function migrateJsonIfNeeded(db: Database.Database): MigrationReport {
       @tp1_hit_at, @tp2_hit_at, @tp3_hit_at, @sl_after_tp1_at,
       @atr14, @atr_pct_of_price, @regime, @resolve_note,
       @zone_touched_at, @would_have_hit_sl_first,
-      @liquidity_sweep_detected_at, @liquidity_sweep_then_regime_flipped
+      @liquidity_sweep_detected_at, @liquidity_sweep_then_regime_flipped,
+      @trend_confirmed_at, @trend_duration_bars
     )
   `);
 
@@ -604,7 +624,8 @@ export function insertSignal(signal: LoggedSignal): LoggedSignal {
         tp1_hit_at, tp2_hit_at, tp3_hit_at, sl_after_tp1_at,
         atr14, atr_pct_of_price, regime, resolve_note,
         zone_touched_at, would_have_hit_sl_first,
-        liquidity_sweep_detected_at, liquidity_sweep_then_regime_flipped
+        liquidity_sweep_detected_at, liquidity_sweep_then_regime_flipped,
+        trend_confirmed_at, trend_duration_bars
       ) VALUES (
         @id, @timestamp, @symbol, @mode, @side, @entry, @sl, @tp1, @tp2, @tp3,
         @confidence, @win_chance_displayed, @win_chance_calibrated,
@@ -615,7 +636,8 @@ export function insertSignal(signal: LoggedSignal): LoggedSignal {
         @tp1_hit_at, @tp2_hit_at, @tp3_hit_at, @sl_after_tp1_at,
         @atr14, @atr_pct_of_price, @regime, @resolve_note,
         @zone_touched_at, @would_have_hit_sl_first,
-        @liquidity_sweep_detected_at, @liquidity_sweep_then_regime_flipped
+        @liquidity_sweep_detected_at, @liquidity_sweep_then_regime_flipped,
+        @trend_confirmed_at, @trend_duration_bars
       )
     `);
     const result = stmt.run(signalToParams(signal));
@@ -652,7 +674,9 @@ export function updateSignal(signal: LoggedSignal): void {
         resolve_note=@resolve_note, zone_touched_at=@zone_touched_at,
         would_have_hit_sl_first=@would_have_hit_sl_first,
         liquidity_sweep_detected_at=@liquidity_sweep_detected_at,
-        liquidity_sweep_then_regime_flipped=@liquidity_sweep_then_regime_flipped
+        liquidity_sweep_then_regime_flipped=@liquidity_sweep_then_regime_flipped,
+        trend_confirmed_at=@trend_confirmed_at,
+        trend_duration_bars=@trend_duration_bars
       WHERE id=@id
     `);
     stmt.run(signalToParams(signal));

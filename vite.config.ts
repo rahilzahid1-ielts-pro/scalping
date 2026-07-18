@@ -55,6 +55,7 @@ function calibrationApiPlugin(): Plugin {
             resolveOpenSignalsForSymbol,
             invalidateLoggedPlanRegimeFlip,
             markLiquiditySweep,
+            markTrendConfirmed,
           } = await import("./src/calibration/resolveOutcomes");
           const { listAllSignals, SIGNAL_DB_PATH, makePlanKey } = await import(
             "./src/calibration/db"
@@ -87,6 +88,26 @@ function calibrationApiPlugin(): Plugin {
             };
             const planKey = makePlanKey(b.symbol, b.mode, b.side, b.entry, b.sl, b.tp1);
             markLiquiditySweep(planKey, Date.now());
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: true }));
+            return;
+          }
+
+          if (
+            req.method === "POST" &&
+            req.url === "/api/calibration/trend-confirmed"
+          ) {
+            const b = JSON.parse(await readBody(req)) as {
+              symbol: string;
+              mode: string;
+              side: string;
+              entry: number;
+              sl: number;
+              tp1: number;
+              at?: number;
+            };
+            const planKey = makePlanKey(b.symbol, b.mode, b.side, b.entry, b.sl, b.tp1);
+            markTrendConfirmed(planKey, b.at ?? Date.now());
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify({ ok: true }));
             return;

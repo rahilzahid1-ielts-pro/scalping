@@ -61,6 +61,28 @@ function main() {
       ? `${(sweptWr - noSweepWr >= 0 ? "+" : "")}${(sweptWr - noSweepWr).toFixed(1)}pts`
       : "n/a";
 
+  // Scalping trend-confirmation early trigger (scalping-only rows). Avg trend
+  // duration + win rate of confirmed-trend scalping trades vs the rest.
+  const scalpResolved = resolved.filter((s) => s.mode === "scalping");
+  const tcResolved = scalpResolved.filter((s) => s.trendConfirmedAt != null);
+  const ntResolved = scalpResolved.filter((s) => s.trendConfirmedAt == null);
+  const tcWr = tp1WinRate(tcResolved);
+  const ntWr = tp1WinRate(ntResolved);
+  const tcWrDelta =
+    tcWr != null && ntWr != null
+      ? `${tcWr - ntWr >= 0 ? "+" : ""}${(tcWr - ntWr).toFixed(1)}pts`
+      : "n/a";
+  const trendDurs = signals
+    .filter((s) => s.mode === "scalping" && s.trendDurationBars != null)
+    .map((s) => s.trendDurationBars as number);
+  const avgTrendDur =
+    trendDurs.length > 0
+      ? trendDurs.reduce((a, b) => a + b, 0) / trendDurs.length
+      : null;
+  const trendConfirmedTotal = signals.filter(
+    (s) => s.mode === "scalping" && s.trendConfirmedAt != null,
+  ).length;
+
   console.log(`
 SMC Calibration Report (LIVE)
 ─────────────────────────────
@@ -81,6 +103,11 @@ Tier-1 liquidity sweep (mid-plan warning): ${sweptTotal} plans flagged
   TP1win% with sweep   : ${fmtWr(sweptWr)} (n=${swept.length})
   TP1win% no sweep     : ${fmtWr(noSweepWr)} (n=${noSweep.length})
   → predictive delta   : ${wrDelta} ${sweptWr != null && noSweepWr != null ? (sweptWr < noSweepWr - 5 ? "(sweep worse → warning predictive)" : "(similar → penalty may be noise)") : ""}
+Trend-confirmation (scalping-only): ${trendConfirmedTotal} plans trend-confirmed
+  Avg trend duration   : ${avgTrendDur == null ? "n/a" : `${avgTrendDur.toFixed(1)} bars`} (n=${trendDurs.length} completed runs)
+  TP1win% confirmed    : ${fmtWr(tcWr)} (n=${tcResolved.length})
+  TP1win% other scalps : ${fmtWr(ntWr)} (n=${ntResolved.length})
+  → trend-window edge  : ${tcWrDelta}
 Regimes in window     : ${distinctRegimes(resolved).join(", ") || "(none)"}
 Calendar days (TP1)   : ${distinctCalendarDays(resolved).length}
 Display recal gate    : ${calibrationDisplayGateOk(all) ? "OPEN (≥14d data)" : `CLOSED (need ≥${MIN_DAYS_BEFORE_DISPLAY_RECAL}d resolved history)`}

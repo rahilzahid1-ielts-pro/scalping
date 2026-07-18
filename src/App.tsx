@@ -34,8 +34,15 @@ import {
   liquiditySweepViaApi,
   regimeFlipInvalidateViaApi,
   resolveSignalsViaApi,
+  trendConfirmedViaApi,
 } from "./calibration/browserClient";
 import { isLiquiditySweepAgainst } from "./utils/liquidityWarning";
+import {
+  evaluateTrendConfirm,
+  markTrendConsumed,
+  newTrendTracker,
+  type TrendTracker,
+} from "./utils/trendConfirm";
 import { CONFLICT_CAP_PCT } from "./calibration/types";
 
 const boot = loadSession();
@@ -59,6 +66,8 @@ export default function App() {
   const planRef = useRef(plan);
   planRef.current = plan;
   const skipClearRef = useRef(true);
+  // SCALPING-ONLY trend-confirmation tracker (intraday never uses it).
+  const trendTrackerRef = useRef<TrendTracker>(newTrendTracker());
 
   const asset = ASSETS[assetId];
   const hasActivePlan =
@@ -83,6 +92,28 @@ export default function App() {
       if (q != null) next.price = roundPrice(q, asset.decimals);
 
       const current = planRef.current;
+
+      // SCALPING-ONLY: fresh trend-confirmation trigger. Reuses the existing regime
+      // classifier + ATR + HTF-agreement. Never runs for intraday, so the
+      // session-lock ("1 zone/day") path below is completely unaffected.
+      let trendConfirmedNow = false;
+      if (mode === "scalping") {
+        const htfR = [
+          frames.confirmation.length ? computeRegime(frames.confirmation) : null,
+          frames.bias.length ? computeRegime(frames.bias) : null,
+        ];
+        const barTime = frames.primary.length
+          ? frames.primary[frames.primary.length - 1].time
+          : Date.now();
+        const res = evaluateTrendConfirm(
+          trendTrackerRef.current,
+          next.diagnostics.regime,
+          frames.primary,
+          htfR,
+          barTime,
+        );
+        trendConfirmedNow = res.armed && res.dir === next.side;
+      }
 
       // HARD RULE: if locked plan exists for this pair+mode — NEVER change entry/SL/TP
       if (
@@ -163,18 +194,30 @@ export default function App() {
       ) {
         if (!current || current.status === "INVALIDATED" || current.assetId !== assetId || current.mode !== mode) {
           const extras = buildSessionExtras(assetId, mode, next.side, next.levels!, next);
-          setPlan(
-            createFrozenPlan(
-              assetId,
-              mode,
-              next.side,
-              next.levels!,
-              next.confidence,
-              next.rangePrediction.winProbability,
-              extras,
-            ),
+          const created = createFrozenPlan(
+            assetId,
+            mode,
+            next.side,
+            next.levels!,
+            next.confidence,
+            next.rangePrediction.winProbability,
+            extras,
           );
-          void logSignalViaApi(next);
+          // SCALPING-ONLY: tag + log a fresh trend-confirmed lock (distinct alert).
+          if (
+            mode === "scalping" &&
+            trendConfirmedNow &&
+            created.status !== "INVALIDATED"
+          ) {
+            created.trendConfirmed = true;
+            created.trendConfirmedAt = Date.now();
+            markTrendConsumed(trendTrackerRef.current);
+          }
+          setPlan(created);
+          // Ensure the row is inserted before stamping trendConfirmedAt on it.
+          void logSignalViaApi(next).then(() => {
+            if (created.trendConfirmed) return trendConfirmedViaApi(created);
+          });
         }
       }
 
@@ -195,6 +238,7 @@ export default function App() {
       setPlan(null);
       setSignal(null);
       setLoading(true);
+      trendTrackerRef.current = newTrendTracker();
     }
     void refresh();
   }, [assetId, mode]); // eslint-disable-line react-hooks/exhaustive-deps

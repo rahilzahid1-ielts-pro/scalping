@@ -288,6 +288,31 @@ export function markLiquiditySweep(planKey: string, at: number): void {
 }
 
 /**
+ * SCALPING-ONLY: stamp the row that was locked off a fresh trend-confirmation
+ * trigger. Idempotent (first stamp wins).
+ */
+export function markTrendConfirmed(planKey: string, at: number): void {
+  const sig = findByPlanKey(planKey);
+  if (!sig) return;
+  if (sig.trendConfirmedAt != null) return;
+  sig.trendConfirmedAt = at;
+  updateSignal(sig);
+}
+
+/**
+ * SCALPING-ONLY: record how many closed bars the confirmed trend lasted before it
+ * reverted to RANGE / flipped. Only applies to trend-confirmed rows; first fill wins.
+ */
+export function setTrendDuration(planKey: string, bars: number): void {
+  const sig = findByPlanKey(planKey);
+  if (!sig) return;
+  if (sig.trendConfirmedAt == null) return;
+  if (sig.trendDurationBars != null) return;
+  sig.trendDurationBars = bars;
+  updateSignal(sig);
+}
+
+/**
  * Informational shadow: after a regime-flip invalidation, keep watching the
  * ORIGINAL SL vs TP1. First one touched sets wouldHaveHitSlFirst (true=SL, false=TP1).
  * This validates whether the flip trigger actually saved trades from losses.

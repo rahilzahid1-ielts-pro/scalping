@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import type { AssetId, Candle, RegimeTag, TradeMode } from "../types";
+import type { AssetId, Candle, RegimeTag, Side, TradeMode } from "../types";
 import { ASSETS } from "../config/assets";
 import { computeRegime, generateSignal } from "../strategies/signalEngine";
 import { makePlanKey } from "../calibration/db";
@@ -18,8 +18,18 @@ import {
   sessionDayKey,
 } from "../utils/sessionPlan";
 import { isLiquiditySweepAgainst } from "../utils/liquidityWarning";
+import {
+  evaluateTrendConfirm,
+  markTrendConsumed,
+  newTrendTracker,
+  type TrendTracker,
+} from "../utils/trendConfirm";
 import { framesAtIndex, isClosedFifteenEnd, precomputeHtfs } from "./frames";
-import { insertBacktestSignal, updateBacktestSignal } from "./store";
+import {
+  insertBacktestSignal,
+  setBacktestTrendDuration,
+  updateBacktestSignal,
+} from "./store";
 
 export interface BacktestOptions {
   assetId: AssetId;
@@ -28,6 +38,8 @@ export interface BacktestOptions {
   spread: number;
   /** First M5 index inside the reported window (warmup bars before this exist). */
   windowStartIdx: number;
+  /** SCALPING-ONLY trend-confirmation M (consecutive confirm bars). Default 4. */
+  trendConfirmBars?: number;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -54,6 +66,17 @@ export interface BacktestStats {
   regimeFlipWouldHitTp1: number;
   /** Of those, neither level reached before end of data (undetermined). */
   regimeFlipUnknown: number;
+  /** SCALPING-ONLY: fresh trend-confirmation triggers fired (once per trend run). */
+  trendConfirmations: number;
+  /** SCALPING-ONLY: plans locked off a fresh trend-confirmation trigger. */
+  trendConfirmedLocks: number;
+  /** Scalping TP1 outcomes for trend-confirmed vs non-confirmed locks. */
+  trendConfirmedTp1Wins: number;
+  trendConfirmedTp1Losses: number;
+  nonTrendTp1Wins: number;
+  nonTrendTp1Losses: number;
+  /** Bars each confirmed trend lasted before reverting to RANGE / flipping. */
+  trendDurations: number[];
   byMonth: Map<string, number>;
   byRegime: Map<string, RegimeFunnelBucket>;
   equityR: number[];
@@ -266,6 +289,13 @@ export function runWalkForward(
     regimeFlipWouldHitSl: 0,
     regimeFlipWouldHitTp1: 0,
     regimeFlipUnknown: 0,
+    trendConfirmations: 0,
+    trendConfirmedLocks: 0,
+    trendConfirmedTp1Wins: 0,
+    trendConfirmedTp1Losses: 0,
+    nonTrendTp1Wins: 0,
+    nonTrendTp1Losses: 0,
+    trendDurations: [],
     byMonth: new Map(),
     byRegime: new Map(),
     equityR: [],
@@ -274,6 +304,20 @@ export function runWalkForward(
   let equity = 0;
   const total = m5.length;
   const htfs = precomputeHtfs(m5);
+
+  // SCALPING-ONLY trend-confirmation trigger state (per mode, though only scalping
+  // is ever populated). Intraday never touches these.
+  const trendConfirmBars = opts.trendConfirmBars ?? undefined; // undefined → default M
+  const trendTrackers = new Map<TradeMode, TrendTracker>();
+  // Per confirmation EVENT (not per lock): track its trend-run duration; attach the
+  // duration to the tagged lock row (if any) once the trend ends.
+  const trendEventRuns = new Map<
+    TradeMode,
+    { dir: Side; confirmIndex: number; row: LoggedSignal | null }
+  >();
+  for (const mode of opts.modes) {
+    if (mode === "scalping") trendTrackers.set(mode, newTrendTracker());
+  }
 
   for (let i = 0; i < m5.length; i++) {
     const bar = m5[i];
@@ -365,6 +409,56 @@ export function runWalkForward(
         frames && activeNow && state.plan
           ? isLiquiditySweepAgainst(state.plan.side, frames.primary)
           : false;
+
+      // ── SCALPING-ONLY: trend-confirmation trigger (fresh trend start) ─────
+      // Runs every closed bar (any phase) so transitions + trend duration are
+      // tracked. Intraday is untouched.
+      let trendArmedThisBar = false;
+      let trendDirThisBar: Side = "WAIT";
+      if (mode === "scalping" && frames) {
+        const scRegime = computeRegime(frames.primary);
+        const scHtf: (RegimeTag | null)[] = [
+          frames.confirmation.length ? computeRegime(frames.confirmation) : null,
+          frames.bias.length ? computeRegime(frames.bias) : null,
+        ];
+        const tracker = trendTrackers.get(mode)!;
+        const res = evaluateTrendConfirm(
+          tracker,
+          scRegime,
+          frames.primary,
+          scHtf,
+          bar.time,
+          trendConfirmBars,
+        );
+        trendArmedThisBar = res.armed;
+        trendDirThisBar = res.dir;
+
+        // Finalize the previous event's trend-run duration when it reverts / flips,
+        // BEFORE possibly starting a new event this bar.
+        const run = trendEventRuns.get(mode);
+        if (run) {
+          const stillTrending =
+            (run.dir === "BUY" && scRegime === "TREND_UP") ||
+            (run.dir === "SELL" && scRegime === "TREND_DOWN");
+          if (!stillTrending) {
+            const dur = i - run.confirmIndex;
+            stats.trendDurations.push(dur);
+            if (run.row) setBacktestTrendDuration(db, run.row.id, dur);
+            trendEventRuns.delete(mode);
+          }
+        }
+
+        // New confirmation event fired this bar → count it + start a duration run
+        // (independent of whether a trade is taken).
+        if (res.newEvent) {
+          stats.trendConfirmations += 1;
+          trendEventRuns.set(mode, {
+            dir: res.dir,
+            confirmIndex: i,
+            row: null,
+          });
+        }
+      }
 
       // ── Advance locked / in-trade plans (frozen levels — no generateSignal) ─
       if (state.phase === "PLAN_LOCKED" && state.plan && state.row) {
@@ -489,12 +583,22 @@ export function runWalkForward(
           if (next.outcomeTp1 === "WIN" || next.outcomeTp1 === "LOSS") {
             // Count TP1 only once (first time outcomeTp1 appears)
             if (state.row.outcomeTp1 == null) {
+              const confirmed =
+                next.mode === "scalping" && next.trendConfirmedAt != null;
               if (next.outcomeTp1 === "WIN") {
                 stats.tp1WinsAfterTouch += 1;
                 bumpRegime(stats.byRegime, next.regime, "tp1Wins");
+                if (next.mode === "scalping") {
+                  if (confirmed) stats.trendConfirmedTp1Wins += 1;
+                  else stats.nonTrendTp1Wins += 1;
+                }
               } else {
                 stats.tp1LossesAfterTouch += 1;
                 bumpRegime(stats.byRegime, next.regime, "tp1Losses");
+                if (next.mode === "scalping") {
+                  if (confirmed) stats.trendConfirmedTp1Losses += 1;
+                  else stats.nonTrendTp1Losses += 1;
+                }
               }
             }
           }
@@ -579,6 +683,23 @@ export function runWalkForward(
         continue;
       }
 
+      // SCALPING-ONLY: tag this lock as trend-confirmed when the fresh-trend
+      // trigger fired this bar in the same direction as the locked plan.
+      if (
+        mode === "scalping" &&
+        trendArmedThisBar &&
+        row.side === trendDirThisBar
+      ) {
+        row.trendConfirmedAt = asOfClose;
+        plan.trendConfirmed = true;
+        plan.trendConfirmedAt = asOfClose;
+        stats.trendConfirmedLocks += 1;
+        markTrendConsumed(trendTrackers.get(mode)!);
+        // Attach this lock to the current event run so it inherits trendDurationBars.
+        const run = trendEventRuns.get(mode);
+        if (run && run.row == null) run.row = row;
+      }
+
       insertBacktestSignal(db, row);
       state = { phase: "PLAN_LOCKED", plan, row };
       stats.signalsFired += 1;
@@ -606,6 +727,14 @@ export function runWalkForward(
         "End of data — zone never touched",
       );
     }
+  }
+
+  // Finalize any still-running confirmation-event duration counters.
+  for (const [mode, run] of trendEventRuns) {
+    if (mode !== "scalping") continue;
+    const dur = m5.length - 1 - run.confirmIndex;
+    stats.trendDurations.push(dur);
+    if (run.row) setBacktestTrendDuration(db, run.row.id, dur);
   }
 
   opts.onProgress?.(total, total);

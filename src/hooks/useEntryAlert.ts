@@ -62,11 +62,19 @@ function notifyPlanLocked(plan: FrozenPlan) {
     plan.safeZoneLow != null && plan.safeZoneHigh != null
       ? ` · Safe ${plan.safeZoneLow.toFixed(d)}–${plan.safeZoneHigh.toFixed(d)}`
       : "";
+  // SCALPING-ONLY: distinct "new trend starting" wording for trend-confirmed locks.
+  const trendAlert = plan.trendConfirmed && plan.mode === "scalping";
   try {
     new Notification(
-      plan.mode === "intraday" ? "INTRADAY ZONE LOCKED" : "TRADE PLAN LOCKED",
+      trendAlert
+        ? "🔥 NEW TREND STARTING"
+        : plan.mode === "intraday"
+          ? "INTRADAY ZONE LOCKED"
+          : "TRADE PLAN LOCKED",
       {
-        body: `${plan.side} zone ${zone} · SL ${plan.levels.stopLoss.toFixed(d)} · TP1 ${plan.levels.takeProfit1.toFixed(d)} · TP2 ${plan.levels.takeProfit2.toFixed(d)}${safe}`,
+        body: trendAlert
+          ? `🔥 New trend starting — ${plan.side} scalping, SL ${plan.levels.stopLoss.toFixed(d)} TP1 ${plan.levels.takeProfit1.toFixed(d)} — chart confirm karke lo.`
+          : `${plan.side} zone ${zone} · SL ${plan.levels.stopLoss.toFixed(d)} · TP1 ${plan.levels.takeProfit1.toFixed(d)} · TP2 ${plan.levels.takeProfit2.toFixed(d)}${safe}`,
         tag: "plan-lock-alert",
         requireInteraction: true,
       },
@@ -91,7 +99,12 @@ export function usePlanLockAlert(plan: FrozenPlan | null, enabled: boolean) {
     const key = `${plan.assetId}-${plan.mode}-${plan.lockedAt}-LOCK`;
     if (firedRef.current === key) return;
     firedRef.current = key;
-    playBeep(520, 260, 4);
+    // Distinct cue for a scalping trend-confirmation lock vs a normal plan lock.
+    if (plan.trendConfirmed && plan.mode === "scalping") {
+      playBeep(660, 200, 6);
+    } else {
+      playBeep(520, 260, 4);
+    }
     notifyPlanLocked(plan);
   }, [plan, enabled]);
 }

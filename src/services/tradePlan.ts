@@ -65,6 +65,14 @@ export interface FrozenPlan {
    * Resets to 0 when regime reverts. Flip invalidation needs it ≥ confirm bars.
    */
   flipStreak?: number;
+  /**
+   * SCALPING-ONLY: set when this plan was locked off a fresh trend-confirmation
+   * trigger (regime just transitioned + ATR expanding + HTF agreement). Drives the
+   * distinct "🔥 New trend starting" alert wording. Never set for intraday.
+   */
+  trendConfirmed?: boolean;
+  /** Timestamp of the trend-confirmation that produced this plan (scalping only). */
+  trendConfirmedAt?: number;
 }
 
 const STORAGE_KEY = "smc_trade_desk_v2";

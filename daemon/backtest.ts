@@ -52,6 +52,7 @@ Options:
   const spread = Number(argValue(argv, "--spread") ?? 0.25);
   const modeArg = (argValue(argv, "--mode") ?? "both").toLowerCase();
   const asset = (argValue(argv, "--asset") ?? "XAUUSD") as AssetId;
+  const tcb = Number(argValue(argv, "--trend-confirm-bars") ?? 4);
 
   let modes: TradeMode[] = ["scalping", "intraday"];
   if (modeArg === "scalping") modes = ["scalping"];
@@ -63,6 +64,7 @@ Options:
     spread: Number.isFinite(spread) && spread >= 0 ? spread : 0.25,
     modes,
     asset,
+    trendConfirmBars: Number.isFinite(tcb) && tcb >= 1 ? Math.floor(tcb) : 4,
   };
 }
 
@@ -88,6 +90,7 @@ Asset   : ${opts.asset}
 Modes   : ${opts.modes.join(", ")}
 Days    : ${opts.days}
 Spread  : ${opts.spread} (BUY entry += spread, SELL entry -= spread)
+TrendM  : ${opts.trendConfirmBars} confirm bars (scalping trend-confirmation, ATR>1.3x + HTF fixed)
 Store   : ${getBacktestDbPath()}  ← SEPARATE from live data/signals.db
 `);
 
@@ -144,6 +147,7 @@ Suspicious gaps (>1 bar, weekends excluded): ${loaded.quality.suspiciousGaps}
     modes: opts.modes,
     spread: opts.spread,
     windowStartIdx: winStart,
+    trendConfirmBars: opts.trendConfirmBars,
     onProgress: (done, total) => {
       if (done === 0 || done === total || done % 5000 === 0) {
         const pct = ((done / total) * 100).toFixed(1);
@@ -196,6 +200,32 @@ Suspicious gaps (>1 bar, weekends excluded): ${loaded.quality.suspiciousGaps}
           : "similar win rate → likely noise; consider removing the penalty"
       : "insufficient data";
 
+  // Scalping trend-confirmation early trigger: avg trend duration + win rate of
+  // scalping trades locked during confirmed-trend windows vs outside them.
+  const tcWins = stats.trendConfirmedTp1Wins;
+  const tcLosses = stats.trendConfirmedTp1Losses;
+  const ntWins = stats.nonTrendTp1Wins;
+  const ntLosses = stats.nonTrendTp1Losses;
+  const tcN = tcWins + tcLosses;
+  const ntN = ntWins + ntLosses;
+  const tcWr = tcN > 0 ? (tcWins / tcN) * 100 : null;
+  const ntWr = ntN > 0 ? (ntWins / ntN) * 100 : null;
+  const avgTrendDur =
+    stats.trendDurations.length > 0
+      ? stats.trendDurations.reduce((a, b) => a + b, 0) / stats.trendDurations.length
+      : null;
+  const trendWrDelta =
+    tcWr != null && ntWr != null
+      ? `${tcWr - ntWr >= 0 ? "+" : ""}${(tcWr - ntWr).toFixed(1)}pts`
+      : "—";
+  // False-alert proxy: % of confirmation events whose trend ran < FALSE_ALERT_BARS.
+  const FALSE_ALERT_BARS = 5;
+  const shortRuns = stats.trendDurations.filter((d) => d < FALSE_ALERT_BARS).length;
+  const falseAlertRate =
+    stats.trendDurations.length > 0
+      ? (shortRuns / stats.trendDurations.length) * 100
+      : null;
+
   console.log(`
 ════════════════════════════════════════════════════════
 SESSION-LOCK FUNNEL (mirrors live plan-lock → entry-hit)
@@ -235,6 +265,17 @@ Conditional TP1win% — swept    : ${fmtWr(sweptWr)} (n=${sweptResolved.length},
 Conditional TP1win% — no sweep : ${fmtWr(noSweepWr)} (n=${noSweepResolved.length})
 Predictive delta               : ${wrDelta}
 Verdict                        : ${predictiveVerdict}
+
+TIER-3 SCALPING TREND-CONFIRMATION EARLY TRIGGER (M=${opts.trendConfirmBars}, ATR>1.3x + HTF fixed; scalping-only, intraday untouched)
+────────────────────────────────────────────────────────────────────
+Confirmation alerts fired      : ${stats.trendConfirmations}
+Avg trend duration (bars)      : ${avgTrendDur == null ? "—" : avgTrendDur.toFixed(1)} (n=${stats.trendDurations.length} confirmed runs)
+False-alert rate (<5 bars)     : ${falseAlertRate == null ? "—" : falseAlertRate.toFixed(1) + "%"} (${shortRuns}/${stats.trendDurations.length})
+Trend-confirmed locks (trades) : ${stats.trendConfirmedLocks}
+Conditional TP1win% — confirmed: ${fmtWr(tcWr)} (n=${tcN}, W=${tcWins} L=${tcLosses})
+Conditional TP1win% — other    : ${fmtWr(ntWr)} (n=${ntN}, W=${ntWins} L=${ntLosses})
+Trend-window edge              : ${trendWrDelta}
+TREND-COMPARE M=${opts.trendConfirmBars} | alerts=${stats.trendConfirmations} | avgDur=${avgTrendDur == null ? "-" : avgTrendDur.toFixed(1)} | winRate=${fmtWr(tcWr)} (n=${tcN}) | falseAlert=${falseAlertRate == null ? "-" : falseAlertRate.toFixed(1) + "%"}
 `);
 
   console.log("Funnel by regime:");

@@ -62,6 +62,32 @@ export async function regimeFlipInvalidateViaApi(plan: FrozenPlan): Promise<void
   }
 }
 
+/**
+ * Browser → API: stamp trendConfirmedAt on a freshly locked SCALPING plan.
+ * Scalping-only; intraday plans are never sent here.
+ */
+export async function trendConfirmedViaApi(plan: FrozenPlan): Promise<void> {
+  if (plan.mode !== "scalping") return;
+  if (plan.side !== "BUY" && plan.side !== "SELL") return;
+  try {
+    await fetch("/api/calibration/trend-confirmed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol: plan.assetId,
+        mode: plan.mode,
+        side: plan.side,
+        entry: plan.levels.entry,
+        sl: plan.levels.stopLoss,
+        tp1: plan.levels.takeProfit1,
+        at: plan.trendConfirmedAt ?? Date.now(),
+      }),
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Browser → API: record a Tier-1 liquidity-sweep warning on the open plan row. */
 export async function liquiditySweepViaApi(plan: FrozenPlan): Promise<void> {
   if (plan.side !== "BUY" && plan.side !== "SELL") return;
