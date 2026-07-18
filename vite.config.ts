@@ -51,10 +51,27 @@ function calibrationApiPlugin(): Plugin {
 
         try {
           const { logEmittedSignal } = await import("./src/calibration/logSignal");
-          const { resolveOpenSignalsForSymbol } = await import(
-            "./src/calibration/resolveOutcomes"
+          const { resolveOpenSignalsForSymbol, invalidateLoggedPlanRegimeFlip } =
+            await import("./src/calibration/resolveOutcomes");
+          const { listAllSignals, SIGNAL_DB_PATH, makePlanKey } = await import(
+            "./src/calibration/db"
           );
-          const { listAllSignals, SIGNAL_DB_PATH } = await import("./src/calibration/db");
+
+          if (req.method === "POST" && req.url === "/api/calibration/regime-flip") {
+            const b = JSON.parse(await readBody(req)) as {
+              symbol: string;
+              mode: string;
+              side: string;
+              entry: number;
+              sl: number;
+              tp1: number;
+            };
+            const planKey = makePlanKey(b.symbol, b.mode, b.side, b.entry, b.sl, b.tp1);
+            invalidateLoggedPlanRegimeFlip(planKey);
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: true }));
+            return;
+          }
 
           if (req.method === "POST" && req.url === "/api/calibration/log") {
             const body = JSON.parse(await readBody(req));

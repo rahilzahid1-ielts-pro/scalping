@@ -119,7 +119,9 @@ CREATE TABLE IF NOT EXISTS signals (
   atr14 REAL,
   atr_pct_of_price REAL,
   regime TEXT,
-  resolve_note TEXT
+  resolve_note TEXT,
+  zone_touched_at INTEGER,
+  would_have_hit_sl_first INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_signals_symbol_outcome ON signals(symbol, outcome);
@@ -134,6 +136,16 @@ function boolToInt(v: boolean): number {
 }
 
 function intToBool(v: unknown): boolean {
+  return v === 1 || v === true;
+}
+
+function nullableBoolToInt(v: boolean | null | undefined): number | null {
+  if (v == null) return null;
+  return v ? 1 : 0;
+}
+
+function intToNullableBool(v: unknown): boolean | null {
+  if (v == null) return null;
   return v === 1 || v === true;
 }
 
@@ -181,6 +193,8 @@ function rowToSignal(row: DbRow): LoggedSignal {
     atrPctOfPrice: row.atr_pct_of_price == null ? null : Number(row.atr_pct_of_price),
     regime: (row.regime as RegimeTag | null) ?? null,
     resolveNote: row.resolve_note == null ? undefined : String(row.resolve_note),
+    zoneTouchedAt: row.zone_touched_at == null ? null : Number(row.zone_touched_at),
+    wouldHaveHitSlFirst: intToNullableBool(row.would_have_hit_sl_first),
   };
 }
 
@@ -227,6 +241,8 @@ function signalToParams(s: LoggedSignal): DbRow {
     atr_pct_of_price: s.atrPctOfPrice,
     regime: s.regime,
     resolve_note: s.resolveNote ?? null,
+    zone_touched_at: s.zoneTouchedAt ?? null,
+    would_have_hit_sl_first: nullableBoolToInt(s.wouldHaveHitSlFirst),
   };
 }
 
@@ -238,6 +254,7 @@ function openDatabase(): Database.Database {
     db.pragma("journal_mode = WAL");
     db.pragma("busy_timeout = 5000");
     db.exec(SCHEMA);
+    ensureColumns(db);
     // Tag connection so dumps / ATTACH mistakes are auditable
     db.pragma("application_id = 0x4C495645"); // 'LIVE'
     return db;
@@ -256,6 +273,18 @@ function openDatabase(): Database.Database {
       );
     }
     throw new Error(`[calibration] Failed to open SQLite store (${SIGNAL_DB_PATH}): ${msg}`);
+  }
+}
+
+/** Add columns introduced after the original schema (idempotent). */
+function ensureColumns(db: Database.Database): void {
+  const cols = db.prepare("PRAGMA table_info(signals)").all() as { name: string }[];
+  const have = new Set(cols.map((c) => c.name));
+  if (!have.has("zone_touched_at")) {
+    db.exec("ALTER TABLE signals ADD COLUMN zone_touched_at INTEGER");
+  }
+  if (!have.has("would_have_hit_sl_first")) {
+    db.exec("ALTER TABLE signals ADD COLUMN would_have_hit_sl_first INTEGER");
   }
 }
 
@@ -357,6 +386,9 @@ function coerceLegacyRow(raw: unknown, index: number): LoggedSignal | null {
     atrPctOfPrice: r.atrPctOfPrice == null ? null : Number(r.atrPctOfPrice),
     regime: (r.regime as RegimeTag | null) ?? null,
     resolveNote: r.resolveNote == null ? undefined : String(r.resolveNote),
+    zoneTouchedAt: r.zoneTouchedAt == null ? null : Number(r.zoneTouchedAt),
+    wouldHaveHitSlFirst:
+      r.wouldHaveHitSlFirst == null ? null : Boolean(r.wouldHaveHitSlFirst),
   };
 }
 
@@ -380,7 +412,8 @@ function migrateJsonIfNeeded(db: Database.Database): MigrationReport {
       outcome, outcome_tp1, resolved_at, realized_r, realized_r_full,
       full_plan_closed, tp2_hit, tp3_hit, sl_after_tp1,
       tp1_hit_at, tp2_hit_at, tp3_hit_at, sl_after_tp1_at,
-      atr14, atr_pct_of_price, regime, resolve_note
+      atr14, atr_pct_of_price, regime, resolve_note,
+      zone_touched_at, would_have_hit_sl_first
     ) VALUES (
       @id, @timestamp, @symbol, @mode, @side, @entry, @sl, @tp1, @tp2, @tp3,
       @confidence, @win_chance_displayed, @win_chance_calibrated,
@@ -389,7 +422,8 @@ function migrateJsonIfNeeded(db: Database.Database): MigrationReport {
       @outcome, @outcome_tp1, @resolved_at, @realized_r, @realized_r_full,
       @full_plan_closed, @tp2_hit, @tp3_hit, @sl_after_tp1,
       @tp1_hit_at, @tp2_hit_at, @tp3_hit_at, @sl_after_tp1_at,
-      @atr14, @atr_pct_of_price, @regime, @resolve_note
+      @atr14, @atr_pct_of_price, @regime, @resolve_note,
+      @zone_touched_at, @would_have_hit_sl_first
     )
   `);
 
@@ -539,7 +573,8 @@ export function insertSignal(signal: LoggedSignal): LoggedSignal {
         outcome, outcome_tp1, resolved_at, realized_r, realized_r_full,
         full_plan_closed, tp2_hit, tp3_hit, sl_after_tp1,
         tp1_hit_at, tp2_hit_at, tp3_hit_at, sl_after_tp1_at,
-        atr14, atr_pct_of_price, regime, resolve_note
+        atr14, atr_pct_of_price, regime, resolve_note,
+        zone_touched_at, would_have_hit_sl_first
       ) VALUES (
         @id, @timestamp, @symbol, @mode, @side, @entry, @sl, @tp1, @tp2, @tp3,
         @confidence, @win_chance_displayed, @win_chance_calibrated,
@@ -548,7 +583,8 @@ export function insertSignal(signal: LoggedSignal): LoggedSignal {
         @outcome, @outcome_tp1, @resolved_at, @realized_r, @realized_r_full,
         @full_plan_closed, @tp2_hit, @tp3_hit, @sl_after_tp1,
         @tp1_hit_at, @tp2_hit_at, @tp3_hit_at, @sl_after_tp1_at,
-        @atr14, @atr_pct_of_price, @regime, @resolve_note
+        @atr14, @atr_pct_of_price, @regime, @resolve_note,
+        @zone_touched_at, @would_have_hit_sl_first
       )
     `);
     const result = stmt.run(signalToParams(signal));
@@ -582,13 +618,33 @@ export function updateSignal(signal: LoggedSignal): void {
         sl_after_tp1=@sl_after_tp1, tp1_hit_at=@tp1_hit_at, tp2_hit_at=@tp2_hit_at,
         tp3_hit_at=@tp3_hit_at, sl_after_tp1_at=@sl_after_tp1_at,
         atr14=@atr14, atr_pct_of_price=@atr_pct_of_price, regime=@regime,
-        resolve_note=@resolve_note
+        resolve_note=@resolve_note, zone_touched_at=@zone_touched_at,
+        would_have_hit_sl_first=@would_have_hit_sl_first
       WHERE id=@id
     `);
     stmt.run(signalToParams(signal));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     throw new Error(`[calibration] Failed to update signal id=${signal.id}: ${msg}`);
+  }
+}
+
+/** REGIME_FLIP_INVALIDATED rows still awaiting the informational wouldHaveHitSlFirst verdict. */
+export function listRegimeFlipPendingForSymbol(symbol: string): LoggedSignal[] {
+  const db = getDb();
+  try {
+    const rows = db
+      .prepare(
+        `SELECT * FROM signals
+         WHERE symbol = ?
+           AND outcome = 'REGIME_FLIP_INVALIDATED'
+           AND would_have_hit_sl_first IS NULL`,
+      )
+      .all(symbol) as DbRow[];
+    return rows.map(rowToSignal);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`[calibration] Failed to list regime-flip pending for ${symbol}: ${msg}`);
   }
 }
 

@@ -87,10 +87,28 @@ async function handleCalibration(
 ): Promise<void> {
   try {
     const { logEmittedSignal } = await import("../src/calibration/logSignal");
-    const { resolveOpenSignalsForSymbol } = await import(
+    const { resolveOpenSignalsForSymbol, invalidateLoggedPlanRegimeFlip } = await import(
       "../src/calibration/resolveOutcomes"
     );
-    const { listAllSignals, SIGNAL_DB_PATH } = await import("../src/calibration/db");
+    const { listAllSignals, SIGNAL_DB_PATH, makePlanKey } = await import(
+      "../src/calibration/db"
+    );
+
+    if (req.method === "POST" && urlPath === "/api/calibration/regime-flip") {
+      const raw = (await readBody(req)).toString("utf8");
+      const b = JSON.parse(raw || "{}") as {
+        symbol: string;
+        mode: string;
+        side: string;
+        entry: number;
+        sl: number;
+        tp1: number;
+      };
+      const planKey = makePlanKey(b.symbol, b.mode, b.side, b.entry, b.sl, b.tp1);
+      invalidateLoggedPlanRegimeFlip(planKey);
+      sendJson(res, 200, { ok: true });
+      return;
+    }
 
     if (req.method === "POST" && urlPath === "/api/calibration/log") {
       const raw = (await readBody(req)).toString("utf8");

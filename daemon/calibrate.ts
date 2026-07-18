@@ -36,6 +36,14 @@ function main() {
   const signals = all.filter((s) => s.timestamp >= cutoff);
   const resolved = resolvedTp1Samples(signals);
 
+  const flips = signals.filter((s) => s.outcome === "REGIME_FLIP_INVALIDATED");
+  const flipRate = signals.length > 0 ? (flips.length / signals.length) * 100 : 0;
+  const flipSaved = flips.filter((s) => s.wouldHaveHitSlFirst === true).length;
+  const flipCutWin = flips.filter((s) => s.wouldHaveHitSlFirst === false).length;
+  const flipPending = flips.filter((s) => s.wouldHaveHitSlFirst == null).length;
+  const flipDetermined = flipSaved + flipCutWin;
+  const savedPct = flipDetermined > 0 ? (flipSaved / flipDetermined) * 100 : null;
+
   console.log(`
 SMC Calibration Report (LIVE)
 ─────────────────────────────
@@ -49,6 +57,9 @@ Open (pre-TP1)        : ${signals.filter((s) => s.outcome === "OPEN").length}
 Post-TP1 tracking     : ${signals.filter((s) => s.outcomeTp1 === "WIN" && !s.fullPlanClosed).length}
 Full-plan closed      : ${signals.filter((s) => s.fullPlanClosed).length}
 Invalidated           : ${signals.filter((s) => s.outcome === "INVALIDATED").length}
+Regime-flip invalidated: ${flips.length} (${flipRate.toFixed(1)}% of locked plans)
+  wouldHaveHitSlFirst  : true=${flipSaved} (saved loss)  false=${flipCutWin} (cut a win)  pending=${flipPending}
+  → saved-loss rate    : ${savedPct == null ? "n/a (none resolved yet)" : `${savedPct.toFixed(1)}% of ${flipDetermined} resolved flips`}
 Regimes in window     : ${distinctRegimes(resolved).join(", ") || "(none)"}
 Calendar days (TP1)   : ${distinctCalendarDays(resolved).length}
 Display recal gate    : ${calibrationDisplayGateOk(all) ? "OPEN (≥14d data)" : `CLOSED (need ≥${MIN_DAYS_BEFORE_DISPLAY_RECAL}d resolved history)`}

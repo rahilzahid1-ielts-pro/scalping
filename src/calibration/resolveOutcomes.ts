@@ -1,6 +1,7 @@
 import {
   listActiveSignalsForSymbol,
   listAllSignals,
+  listRegimeFlipPendingForSymbol,
   updateSignal,
   findByPlanKey,
 } from "./db";
@@ -249,4 +250,46 @@ export function listOpenSignals(): LoggedSignal[] {
   return listAllSignals().filter(
     (s) => s.outcome === "OPEN" || (s.outcomeTp1 === "WIN" && !s.fullPlanClosed),
   );
+}
+
+/**
+ * Mark an OPEN (pre-TP1) plan as REGIME_FLIP_INVALIDATED — trend reversed against side.
+ * wouldHaveHitSlFirst stays null; a later tick fills it via resolveRegimeFlipShadows.
+ */
+export function invalidateLoggedPlanRegimeFlip(planKey: string): void {
+  const sig = findByPlanKey(planKey);
+  if (!sig) return;
+  if (sig.outcome !== "OPEN" || sig.outcomeTp1 != null) return;
+  sig.outcome = "REGIME_FLIP_INVALIDATED";
+  sig.resolvedAt = Date.now();
+  sig.realizedR = 0;
+  sig.realizedRFull = 0;
+  sig.fullPlanClosed = true;
+  sig.wouldHaveHitSlFirst = null;
+  sig.resolveNote = "Regime flip vs plan side — invalidated before SL/TP";
+  updateSignal(sig);
+}
+
+/**
+ * Informational shadow: after a regime-flip invalidation, keep watching the
+ * ORIGINAL SL vs TP1. First one touched sets wouldHaveHitSlFirst (true=SL, false=TP1).
+ * This validates whether the flip trigger actually saved trades from losses.
+ */
+export function resolveRegimeFlipShadows(symbol: string, tick: PriceTick): LoggedSignal[] {
+  const pending = listRegimeFlipPendingForSymbol(symbol);
+  const updated: LoggedSignal[] = [];
+  const { open, high, low } = barBounds(tick);
+
+  for (const sig of pending) {
+    const winner = resolveGapAmongLevels(sig.side, open, high, low, [
+      { kind: "SL", level: sig.sl },
+      { kind: "TP1", level: sig.tp1 },
+    ]);
+    if (!winner) continue;
+    sig.wouldHaveHitSlFirst = winner.kind === "SL";
+    updateSignal(sig);
+    updated.push(sig);
+  }
+
+  return updated;
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ASSET_LIST, ASSETS } from "./config/assets";
 import { fetchMultiTimeframe } from "./services/marketData";
-import { generateSignal } from "./strategies/signalEngine";
+import { computeRegime, generateSignal } from "./strategies/signalEngine";
 import type { AssetId, LiveSignal, TradeMode } from "./types";
 import { TradingViewChart } from "./components/TradingViewChart";
 import { ActionNow } from "./components/ActionNow";
@@ -26,9 +26,14 @@ import {
   loadSession,
   saveSession,
   shouldKeepFrozenPlan,
+  REGIME_FLIP_NOTE,
   type FrozenPlan,
 } from "./services/tradePlan";
-import { logSignalViaApi, resolveSignalsViaApi } from "./calibration/browserClient";
+import {
+  logSignalViaApi,
+  regimeFlipInvalidateViaApi,
+  resolveSignalsViaApi,
+} from "./calibration/browserClient";
 import { CONFLICT_CAP_PCT } from "./calibration/types";
 
 const boot = loadSession();
@@ -94,8 +99,24 @@ export default function App() {
                 next.rangePrediction.winProbability,
               )
             : current;
-        const kept = shouldKeepFrozenPlan(scoredPlan, next.side, q);
-        if (kept) {
+        const htfRegimes = [
+          frames.confirmation.length ? computeRegime(frames.confirmation) : null,
+          frames.bias.length ? computeRegime(frames.bias) : null,
+        ];
+        const kept = shouldKeepFrozenPlan(
+          scoredPlan,
+          next.side,
+          q,
+          next.diagnostics.regime,
+          htfRegimes,
+        );
+        // Regime flip: trend reversed vs plan side. Drop plan (allow immediate
+        // re-lock next refresh) and log it; no entry/resolution alert.
+        if (kept && kept.status === "INVALIDATED" && kept.note === REGIME_FLIP_NOTE) {
+          setPlan(null);
+          planRef.current = null;
+          void regimeFlipInvalidateViaApi(current);
+        } else if (kept) {
           setPlan(kept);
           next.levels = kept.levels;
           next.side = kept.side;

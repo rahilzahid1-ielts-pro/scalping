@@ -1,4 +1,5 @@
 import type { LiveSignal } from "../types";
+import type { FrozenPlan } from "../services/tradePlan";
 
 /** Browser → Vite calibration API (persists to data/signals.db via Node middleware) */
 export async function logSignalViaApi(signal: LiveSignal): Promise<void> {
@@ -37,6 +38,27 @@ export async function logSignalViaApi(signal: LiveSignal): Promise<void> {
     });
   } catch {
     /* offline / API down — measurement best-effort */
+  }
+}
+
+/** Browser → API: mark a locked plan REGIME_FLIP_INVALIDATED (trend reversed vs side). */
+export async function regimeFlipInvalidateViaApi(plan: FrozenPlan): Promise<void> {
+  if (plan.side !== "BUY" && plan.side !== "SELL") return;
+  try {
+    await fetch("/api/calibration/regime-flip", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbol: plan.assetId,
+        mode: plan.mode,
+        side: plan.side,
+        entry: plan.levels.entry,
+        sl: plan.levels.stopLoss,
+        tp1: plan.levels.takeProfit1,
+      }),
+    });
+  } catch {
+    /* best-effort */
   }
 }
 

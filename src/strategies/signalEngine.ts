@@ -8,6 +8,7 @@ import type {
   TradeLevels,
   TradeMode,
 } from "../types";
+import type { RegimeTag } from "../calibration/types";
 import { ASSETS } from "../config/assets";
 import { atr, roundPrice, swingHighsLows } from "./indicators";
 import { deriveRegimeTag } from "../calibration/regime";
@@ -16,6 +17,17 @@ import { analyzeMovingAverages } from "./movingAverages";
 import { analyzeSmartMoney } from "./smartMoney";
 import { analyzePriceAction } from "./priceAction";
 import { buildRangePrediction } from "./rangePrediction";
+
+/**
+ * Regime tag for a primary series using the SAME classifier logged per signal
+ * (analyzeMovingAverages + deriveRegimeTag). Lets the backtest recompute regime
+ * on a locked bar without re-running the full generateSignal.
+ */
+export function computeRegime(primary: Candle[]): RegimeTag {
+  const price = primary[primary.length - 1]?.close ?? 0;
+  const ma = analyzeMovingAverages(primary);
+  return deriveRegimeTag(ma, price);
+}
 
 function biasFromVotes(votes: Bias[]): Bias {
   const bull = votes.filter((v) => v === "BULLISH").length;

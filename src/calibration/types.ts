@@ -1,7 +1,13 @@
 import type { AssetId, TradeMode } from "../types";
 
 /** Lifecycle status of the logged plan row */
-export type SignalOutcome = "OPEN" | "TP1_HIT" | "SL_HIT" | "INVALIDATED";
+export type SignalOutcome =
+  | "OPEN"
+  | "TP1_HIT"
+  | "SL_HIT"
+  | "INVALIDATED"
+  /** Plan dropped because live/backtest regime flipped against its side. */
+  | "REGIME_FLIP_INVALIDATED";
 
 /**
  * Primary win definition for calibration / Brier / UNTRUSTED:
@@ -68,6 +74,14 @@ export interface LoggedSignal {
    * Null = locked zone never touched before invalidate / session end.
    */
   zoneTouchedAt?: number | null;
+  /**
+   * Informational only (REGIME_FLIP_INVALIDATED rows): had the plan NOT been
+   * invalidated, would price have hit the original SL before TP1?
+   * true  = flip likely saved a loss
+   * false = flip cancelled a trade that would have won TP1 first
+   * null  = not yet determined (live: still watching; or never resolved)
+   */
+  wouldHaveHitSlFirst?: boolean | null;
 }
 
 /** @deprecated JSON file shape — only used during one-time migration */

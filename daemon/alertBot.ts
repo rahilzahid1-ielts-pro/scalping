@@ -6,22 +6,30 @@
 import { ASSETS } from "../src/config/assets";
 import { fetchLiveQuote } from "../src/services/liveQuotes";
 import { fetchMultiTimeframe } from "../src/services/marketData";
-import { generateSignal } from "../src/strategies/signalEngine";
+import { computeRegime, generateSignal } from "../src/strategies/signalEngine";
 import { computeNowAction } from "../src/utils/nowAction";
 import { roundPrice } from "../src/strategies/indicators";
-import type { AssetId, TradeMode } from "../src/types";
+import type { AssetId, RegimeTag, TradeMode } from "../src/types";
 import {
   loadDaemonState,
   saveDaemonState,
   planKey,
   type DaemonState,
 } from "./planStore";
-import { createFrozenPlan, shouldKeepFrozenPlan } from "../src/services/tradePlan";
+import {
+  createFrozenPlan,
+  shouldKeepFrozenPlan,
+  REGIME_FLIP_NOTE,
+} from "../src/services/tradePlan";
 import { buildSessionExtras, canAutoLockPlan } from "../src/utils/sessionPlan";
 import { logSignalFromLive } from "../src/calibration";
-import { resolveOpenSignalsForSymbol } from "../src/calibration/resolveOutcomes";
+import {
+  resolveOpenSignalsForSymbol,
+  resolveRegimeFlipShadows,
+  invalidateLoggedPlan,
+  invalidateLoggedPlanRegimeFlip,
+} from "../src/calibration/resolveOutcomes";
 import { makePlanKey } from "../src/calibration/signalStore";
-import { invalidateLoggedPlan } from "../src/calibration/resolveOutcomes";
 import {
   alertChannelsStatus,
   assetLabel,
@@ -45,6 +53,7 @@ function lockPlan(
   mode: TradeMode,
   signal: ReturnType<typeof generateSignal>,
   live: number,
+  htfRegimes: (RegimeTag | null | undefined)[],
 ) {
   const key = planKey(assetId, mode);
   let current = state.plans[key] ?? null;
@@ -76,11 +85,35 @@ function lockPlan(
     current.assetId === assetId &&
     current.mode === mode
   ) {
-    state.plans[key] = shouldKeepFrozenPlan(current, signal.side, live);
-    return state.plans[key];
+    const kept = shouldKeepFrozenPlan(
+      current,
+      signal.side,
+      live,
+      signal.diagnostics.regime,
+      htfRegimes,
+    );
+    // Regime flip: log REGIME_FLIP_INVALIDATED, clear plan, allow immediate re-lock
+    if (kept && kept.status === "INVALIDATED" && kept.note === REGIME_FLIP_NOTE) {
+      invalidateLoggedPlanRegimeFlip(
+        makePlanKey(
+          assetId,
+          mode,
+          current.side,
+          current.levels.entry,
+          current.levels.stopLoss,
+          current.levels.takeProfit1,
+        ),
+      );
+      state.plans[key] = null;
+      // fall through to canAutoLockPlan for immediate fresh evaluation
+    } else {
+      state.plans[key] = kept;
+      return state.plans[key];
+    }
   }
 
-  if (canAutoLockPlan(mode, signal, current, assetId)) {
+  const currentForLock = state.plans[key] ?? null;
+  if (canAutoLockPlan(mode, signal, currentForLock, assetId)) {
     const extras = buildSessionExtras(
       assetId,
       mode,
@@ -116,7 +149,14 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
   const signal = generateSignal(assetId, mode, frames);
   signal.price = roundPrice(live, asset.decimals);
 
-  let plan = lockPlan(state, assetId, mode, signal, live);
+  // HTF regimes (same computeRegime/deriveRegimeTag on the higher-TF series) —
+  // gate 2 of regime-flip invalidation: at least one HTF must also oppose.
+  const htfRegimes: (RegimeTag | null | undefined)[] = [
+    frames.confirmation.length ? computeRegime(frames.confirmation) : null,
+    frames.bias.length ? computeRegime(frames.bias) : null,
+  ];
+
+  let plan = lockPlan(state, assetId, mode, signal, live, htfRegimes);
   if (plan && plan.status !== "INVALIDATED") {
     signal.side = plan.side;
     signal.levels = plan.levels;
@@ -210,12 +250,15 @@ async function tick(state: DaemonState) {
             : signal;
         logSignalFromLive(toLog);
       }
-      resolveOpenSignalsForSymbol(w.assetId, {
+      const priceCtx = {
         price: quote.price,
         high: quote.high,
         low: quote.low,
         open: quote.price,
-      });
+      };
+      resolveOpenSignalsForSymbol(w.assetId, priceCtx);
+      // Informational: fill wouldHaveHitSlFirst on past regime-flip drops
+      resolveRegimeFlipShadows(w.assetId, priceCtx);
 
       if (
         verbose ||

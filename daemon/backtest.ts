@@ -10,6 +10,7 @@ import { MIN_DAYS_BEFORE_DISPLAY_RECAL, MIN_SAMPLES_FOR_CALIBRATION } from "../s
 import { listAllSignals as listLiveSignals } from "../src/calibration/db";
 import { resolvedTp1Samples } from "../src/calibration/recalibrate";
 import { printStandardCalibrationTables } from "../src/calibration/report";
+import { REGIME_FLIP_ENABLED } from "../src/services/tradePlan";
 import { loadHistoricalFile, windowStartIndex } from "../src/backtest/loadData";
 import {
   closeBacktestDb,
@@ -183,6 +184,24 @@ Avg realizedR_full (touch) : ${avgRf == null ? "—" : avgRf.toFixed(3)}
 Max drawdown (R)           : ${maxDd}
 Longest losing streak      : ${loseStreak}
 Spread assumption          : ${opts.spread} price units on entry
+
+REGIME-FLIP INVALIDATION (${REGIME_FLIP_ENABLED ? "ENABLED" : "DISABLED — clean session-lock baseline; measurement pipeline still wired"})
+────────────────────────────────────────────────────────────────────
+Regime flips               : ${stats.regimeFlips}${
+    stats.signalsFired > 0
+      ? ` (${((stats.regimeFlips / stats.signalsFired) * 100).toFixed(1)}% of locked plans)`
+      : ""
+  }
+  wouldHaveHitSlFirst      : true=${stats.regimeFlipWouldHitSl} (saved loss)  false=${stats.regimeFlipWouldHitTp1} (cut a win)  undetermined=${stats.regimeFlipUnknown}
+  saved-loss rate          : ${
+    stats.regimeFlipWouldHitSl + stats.regimeFlipWouldHitTp1 > 0
+      ? (
+          (stats.regimeFlipWouldHitSl /
+            (stats.regimeFlipWouldHitSl + stats.regimeFlipWouldHitTp1)) *
+          100
+        ).toFixed(1) + "% of resolved flips"
+      : "n/a"
+  }
 `);
 
   console.log("Funnel by regime:");

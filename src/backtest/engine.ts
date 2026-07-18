@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { AssetId, Candle, RegimeTag, TradeMode } from "../types";
 import { ASSETS } from "../config/assets";
-import { generateSignal } from "../strategies/signalEngine";
+import { computeRegime, generateSignal } from "../strategies/signalEngine";
 import { makePlanKey } from "../calibration/db";
-import { advanceSignalOnBar } from "../calibration/resolveOutcomes";
+import { advanceSignalOnBar, resolveGapAmongLevels } from "../calibration/resolveOutcomes";
 import type { LoggedSignal } from "../calibration/types";
 import {
   createFrozenPlan,
   shouldKeepFrozenPlan,
+  REGIME_FLIP_NOTE,
   type FrozenPlan,
 } from "../services/tradePlan";
 import {
@@ -44,6 +45,14 @@ export interface BacktestStats {
   /** Among touched plans that resolved TP1 WIN/LOSS. */
   tp1WinsAfterTouch: number;
   tp1LossesAfterTouch: number;
+  /** Plans dropped mid-session because regime flipped against side. */
+  regimeFlips: number;
+  /** Of those, shadow shows price would have hit SL first (flip saved a loss). */
+  regimeFlipWouldHitSl: number;
+  /** Of those, price would have hit TP1 first (flip cancelled a would-be win). */
+  regimeFlipWouldHitTp1: number;
+  /** Of those, neither level reached before end of data (undetermined). */
+  regimeFlipUnknown: number;
   byMonth: Map<string, number>;
   byRegime: Map<string, RegimeFunnelBucket>;
   equityR: number[];
@@ -141,11 +150,35 @@ function toLogged(
     regime: d.regime,
     resolveNote: "PLAN_LOCKED",
     zoneTouchedAt: null,
+    wouldHaveHitSlFirst: null,
   };
 }
 
 function monthKey(ts: number): string {
   return new Date(ts).toISOString().slice(0, 7);
+}
+
+/**
+ * Informational shadow (backtest has future data live does not): had the plan
+ * NOT been invalidated, would the ORIGINAL SL be hit before TP1 from here on?
+ * true = flip saved a loss; false = flip cancelled a would-be win; null = neither.
+ */
+function shadowWouldHitSlFirst(
+  m5: Candle[],
+  fromIdx: number,
+  side: "BUY" | "SELL",
+  sl: number,
+  tp1: number,
+): boolean | null {
+  for (let j = fromIdx; j < m5.length; j++) {
+    const b = m5[j];
+    const winner = resolveGapAmongLevels(side, b.open, b.high, b.low, [
+      { kind: "SL", level: sl },
+      { kind: "TP1", level: tp1 },
+    ]);
+    if (winner) return winner.kind === "SL";
+  }
+  return null;
 }
 
 /** Mirror live nowAction entry-zone hit using frozen zone bounds. */
@@ -226,6 +259,10 @@ export function runWalkForward(
     zoneTouched: 0,
     tp1WinsAfterTouch: 0,
     tp1LossesAfterTouch: 0,
+    regimeFlips: 0,
+    regimeFlipWouldHitSl: 0,
+    regimeFlipWouldHitTp1: 0,
+    regimeFlipUnknown: 0,
     byMonth: new Map(),
     byRegime: new Map(),
     equityR: [],
@@ -247,6 +284,33 @@ export function runWalkForward(
       open: bar.open,
       high: bar.high,
       low: bar.low,
+    };
+
+    // Regime-flip invalidation: log REGIME_FLIP_INVALIDATED + shadow verdict,
+    // drop the plan, return to IDLE (immediate re-lock allowed next bar).
+    const flipInvalidate = (st: ModeState): ModeState => {
+      const row = st.row;
+      if (row) {
+        row.outcome = "REGIME_FLIP_INVALIDATED";
+        row.resolvedAt = asOfClose;
+        row.realizedR = 0;
+        row.realizedRFull = 0;
+        row.fullPlanClosed = true;
+        row.wouldHaveHitSlFirst = shadowWouldHitSlFirst(
+          m5,
+          i,
+          row.side,
+          row.sl,
+          row.tp1,
+        );
+        row.resolveNote = "Regime flip vs plan side — invalidated";
+        updateBacktestSignal(db, row);
+        stats.regimeFlips += 1;
+        if (row.wouldHaveHitSlFirst === true) stats.regimeFlipWouldHitSl += 1;
+        else if (row.wouldHaveHitSlFirst === false) stats.regimeFlipWouldHitTp1 += 1;
+        else stats.regimeFlipUnknown += 1;
+      }
+      return { phase: "IDLE", plan: null, row: null };
     };
 
     for (const mode of opts.modes) {
@@ -276,22 +340,48 @@ export function runWalkForward(
         byMode.set(mode, state);
       }
 
+      // Recompute regime on the current closed bar (same classifier as logged)
+      // only while a plan is active — IDLE re-derives it inside generateSignal.
+      const frames =
+        i >= opts.windowStartIdx ? framesAtIndex(m5, i, mode, htfs) : null;
+      const activeNow = state.phase !== "IDLE";
+      const barRegime = frames && activeNow ? computeRegime(frames.primary) : null;
+      // Gate 2: HTF regimes on the higher-TF series (same computeRegime).
+      const htfRegimes: (RegimeTag | null)[] =
+        frames && activeNow
+          ? [
+              frames.confirmation.length ? computeRegime(frames.confirmation) : null,
+              frames.bias.length ? computeRegime(frames.bias) : null,
+            ]
+          : [];
+
       // ── Advance locked / in-trade plans (frozen levels — no generateSignal) ─
       if (state.phase === "PLAN_LOCKED" && state.plan && state.row) {
-        const plan = state.plan;
         const row = state.row;
 
-        const kept = shouldKeepFrozenPlan(plan, plan.side, bar.close);
+        const kept = shouldKeepFrozenPlan(
+          state.plan,
+          state.plan.side,
+          bar.close,
+          barRegime,
+          htfRegimes,
+        );
         if (kept?.status === "INVALIDATED") {
-          state = invalidateWaiting(
-            db,
-            { ...state, plan: kept },
-            asOfClose,
-            kept.note || "Plan invalidated before zone touch",
-          );
+          state =
+            kept.note === REGIME_FLIP_NOTE
+              ? flipInvalidate(state)
+              : invalidateWaiting(
+                  db,
+                  { ...state, plan: kept },
+                  asOfClose,
+                  kept.note || "Plan invalidated before zone touch",
+                );
           byMode.set(mode, state);
           continue;
         }
+        // Persist rolling flip-confirmation counter for next bar.
+        const plan = kept ?? state.plan;
+        state = { ...state, plan };
 
         if (
           barTouchesZone(
@@ -344,6 +434,32 @@ export function runWalkForward(
       }
 
       if (state.phase === "ENTRY_HIT" && state.plan && state.row) {
+        // Regime flip on an active trade → exit early (mirror PLAN_LOCKED rule).
+        const keptActive = shouldKeepFrozenPlan(
+          state.plan,
+          state.plan.side,
+          bar.close,
+          barRegime,
+          htfRegimes,
+        );
+        if (
+          keptActive?.status === "INVALIDATED" &&
+          keptActive.note === REGIME_FLIP_NOTE &&
+          state.row.outcome === "OPEN" &&
+          state.row.outcomeTp1 == null
+        ) {
+          state = flipInvalidate(state);
+          byMode.set(mode, state);
+          continue;
+        }
+        // Persist rolling flip-confirmation counter for next bar (keep IN_TRADE status).
+        if (keptActive) {
+          state = {
+            ...state,
+            plan: { ...state.plan, flipStreak: keptActive.flipStreak },
+          };
+        }
+
         const next = advanceSignalOnBar({ ...state.row }, tick, asOfClose);
         if (next) {
           updateBacktestSignal(db, next);
@@ -388,7 +504,6 @@ export function runWalkForward(
         continue;
       }
 
-      const frames = framesAtIndex(m5, i, mode, htfs);
       if (!frames) {
         byMode.set(mode, state);
         continue;

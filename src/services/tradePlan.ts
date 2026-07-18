@@ -1,7 +1,46 @@
-import type { AssetId, Side, TradeLevels, TradeMode } from "../types";
+import type { AssetId, RegimeTag, Side, TradeLevels, TradeMode } from "../types";
 import { isTooLateToEnter, minRiskPct } from "../utils/tradeSafety";
 
 export type PlanStatus = "WAITING_ENTRY" | "IN_TRADE_HINT" | "INVALIDATED";
+
+/** Sentinel note so callers can distinguish a regime-flip drop (allow immediate re-lock + log). */
+export const REGIME_FLIP_NOTE =
+  "Regime flip vs plan side — plan invalidated (trend reversed mid-session)";
+
+/**
+ * Consecutive opposing-regime closed bars required before a flip is treated as real.
+ * (Only relevant while REGIME_FLIP_ENABLED is true.) Tunable from calibration data.
+ */
+export const REGIME_FLIP_CONFIRM_BARS = 3;
+
+/**
+ * Master switch for regime-flip invalidation.
+ *
+ * DISABLED — 1-year XAUUSD backtest showed the deriveRegimeTag flip is NOT
+ * predictive of adverse outcomes for frozen plans:
+ *   • single-bar trigger : 36.1% saved-loss (63.9% cut a would-be TP1 win)
+ *   • N=3 + HTF gate      : 28.4% saved-loss (worsened, not a tuning problem)
+ * Both sit well below the 50% breakeven, so acting on it live cost more winners
+ * than it saved. Plans now end only via SL_HIT / TP1_HIT / price-invalidation /
+ * session rollover (prior behavior).
+ *
+ * The measurement pipeline stays wired (regime logged per bar,
+ * REGIME_FLIP_INVALIDATED + wouldHaveHitSlFirst in schema, backtest shadow):
+ * flip this to `true` to re-experiment with a different flip definition later
+ * without re-plumbing.
+ */
+export const REGIME_FLIP_ENABLED = false;
+
+/**
+ * Trend reversed against the plan's direction.
+ * Uses the SAME regime tag already logged per signal (deriveRegimeTag): no new indicator.
+ */
+export function isRegimeFlip(side: Side, regime: RegimeTag | null | undefined): boolean {
+  if (!regime) return false;
+  if (side === "SELL" && regime === "TREND_UP") return true;
+  if (side === "BUY" && regime === "TREND_DOWN") return true;
+  return false;
+}
 
 export interface FrozenPlan {
   assetId: AssetId;
@@ -21,6 +60,11 @@ export interface FrozenPlan {
   /** Expected intraday range (SMC/PA path) — frozen at lock time. */
   safeZoneLow?: number;
   safeZoneHigh?: number;
+  /**
+   * Rolling count of consecutive closed bars whose regime opposed the plan side.
+   * Resets to 0 when regime reverts. Flip invalidation needs it ≥ confirm bars.
+   */
+  flipStreak?: number;
 }
 
 const STORAGE_KEY = "smc_trade_desk_v2";
@@ -92,35 +136,70 @@ export function shouldKeepFrozenPlan(
   plan: FrozenPlan | null,
   nextSide: Side,
   livePrice: number | undefined,
+  /** Current PRIMARY-TF regime tag (deriveRegimeTag). */
+  regime?: RegimeTag | null,
+  /**
+   * Higher-timeframe regime tags (e.g. 15m + 1H via computeRegime on the HTF series).
+   * Flip only fires when at least one HTF also opposes the plan side.
+   */
+  htfRegimes?: (RegimeTag | null | undefined)[],
 ): FrozenPlan | null {
   if (!plan || plan.side === "WAIT") return null;
 
-  if (livePrice != null && Number.isFinite(livePrice)) {
-    if (plan.side === "BUY" && livePrice < plan.levels.stopLoss) {
+  // Regime-flip invalidation is DISABLED (see REGIME_FLIP_ENABLED). Kept behind
+  // the flag — not deleted — so the measurement pipeline can be re-enabled later.
+  let base: FrozenPlan = plan;
+  if (REGIME_FLIP_ENABLED) {
+    // Rolling confirmation counter: only sustained opposing regime counts.
+    const primaryOpposing = isRegimeFlip(plan.side, regime);
+    const nextStreak = primaryOpposing ? (plan.flipStreak ?? 0) + 1 : 0;
+    base =
+      (plan.flipStreak ?? 0) === nextStreak ? plan : { ...plan, flipStreak: nextStreak };
+
+    // Flip fires only when BOTH gates hold:
+    //  (1) opposing regime confirmed for ≥ N consecutive closed bars, AND
+    //  (2) at least one higher timeframe also shows the opposing regime.
+    const htfOpposing = (htfRegimes ?? []).some((r) => isRegimeFlip(plan.side, r));
+    if (
+      base.status !== "INVALIDATED" &&
+      primaryOpposing &&
+      nextStreak >= REGIME_FLIP_CONFIRM_BARS &&
+      htfOpposing
+    ) {
       return {
-        ...plan,
+        ...base,
+        status: "INVALIDATED",
+        note: REGIME_FLIP_NOTE,
+      };
+    }
+  }
+
+  if (livePrice != null && Number.isFinite(livePrice)) {
+    if (base.side === "BUY" && livePrice < base.levels.stopLoss) {
+      return {
+        ...base,
         status: "INVALIDATED",
         note: "SL hit. New plan only after fresh setup.",
       };
     }
-    if (plan.side === "SELL" && livePrice > plan.levels.stopLoss) {
+    if (base.side === "SELL" && livePrice > base.levels.stopLoss) {
       return {
-        ...plan,
+        ...base,
         status: "INVALIDATED",
         note: "SL hit. New plan only after fresh setup.",
       };
     }
     if (
-      plan.status === "WAITING_ENTRY" &&
-      isTooLateToEnter(plan.side, livePrice, plan.levels.entry, plan.levels.stopLoss)
+      base.status === "WAITING_ENTRY" &&
+      isTooLateToEnter(base.side, livePrice, base.levels.entry, base.levels.stopLoss)
     ) {
       // Only invalidate when clearly past entry deep into risk — keep waiting if still below entry for SELL
       if (
-        (plan.side === "SELL" && livePrice > plan.levels.entry) ||
-        (plan.side === "BUY" && livePrice < plan.levels.entry)
+        (base.side === "SELL" && livePrice > base.levels.entry) ||
+        (base.side === "BUY" && livePrice < base.levels.entry)
       ) {
         return {
-          ...plan,
+          ...base,
           status: "INVALIDATED",
           note: "Price SL zone mein — entry miss. Chase mat karo. New plan lo.",
         };
@@ -128,31 +207,31 @@ export function shouldKeepFrozenPlan(
     }
   }
 
-  if (isPlanLevelsUnsafe(plan)) {
+  if (isPlanLevelsUnsafe(base)) {
     return {
-      ...plan,
+      ...base,
       status: "INVALIDATED",
       note: "SL/TP bohot tight tha (unsafe). New plan lo.",
     };
   }
 
-  if (nextSide === "WAIT" || nextSide === plan.side) {
+  if (nextSide === "WAIT" || nextSide === base.side) {
     return {
-      ...plan,
+      ...base,
       // Never downgrade an entered trade back to WAITING_ENTRY on refresh.
-      status: plan.status,
+      status: base.status,
       note:
-        plan.status === "INVALIDATED"
-          ? plan.note
-          : plan.status === "IN_TRADE_HINT"
-            ? plan.note
+        base.status === "INVALIDATED"
+          ? base.note
+          : base.status === "IN_TRADE_HINT"
+            ? base.note
           : "Entry LOCKED. Chart pe confirm karke limit rakho — chase mat karo.",
     };
   }
 
   return {
-    ...plan,
-    note: `Engine leans ${nextSide}, locked stays ${plan.side} until New plan.`,
+    ...base,
+    note: `Engine leans ${nextSide}, locked stays ${base.side} until New plan.`,
   };
 }
 
