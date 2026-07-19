@@ -409,7 +409,8 @@ function coerceLegacyRow(raw: unknown, index: number): LoggedSignal | null {
           ? null
           : Number(r.realizedR)
         : Number(r.realizedRFull),
-    fullPlanClosed: fullClosed || outcome === "SL_HIT",
+    // fullClosed already covers outcome === "SL_HIT" (see above), so no extra check needed.
+    fullPlanClosed: fullClosed,
     tp2Hit: Boolean(r.tp2Hit),
     tp3Hit: Boolean(r.tp3Hit),
     slAfterTp1: Boolean(r.slAfterTp1),

@@ -267,8 +267,12 @@ async function serveStatic(
   }
 
   const ext = extname(filePath).toLowerCase();
+  const baseName = filePath.replace(/\\/g, "/").split("/").pop() ?? "";
   res.setHeader("Content-Type", MIME[ext] ?? "application/octet-stream");
-  if (ext === ".html") {
+  // Service worker + manifest must never be cached long-term or the PWA can't update.
+  if (baseName === "sw.js" || baseName === "manifest.json") {
+    res.setHeader("Cache-Control", "no-cache");
+  } else if (ext === ".html") {
     res.setHeader("Cache-Control", "no-cache");
   } else if (ext === ".js" || ext === ".css") {
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
@@ -302,6 +306,43 @@ const server = createServer(async (req, res) => {
           ? "Telegram ON — phone pe Gold/Silver/Bitcoin alerts aayenge (web band bhi)."
           : "Railway Variables mein TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID set karo.",
       });
+      return;
+    }
+
+    if (path === "/api/push/public-key" && req.method === "GET") {
+      const { getVapidPublicKey } = await import("../src/services/webPush");
+      sendJson(res, 200, { ok: true, publicKey: getVapidPublicKey() });
+      return;
+    }
+
+    if (path === "/api/push/subscribe" && req.method === "POST") {
+      try {
+        const raw = (await readBody(req)).toString("utf8");
+        const sub = JSON.parse(raw || "{}");
+        const { savePushSubscription } = await import("../src/push/subscriptionsDb");
+        savePushSubscription({
+          endpoint: sub.endpoint,
+          keys: sub.keys,
+          expirationTime: sub.expirationTime ?? null,
+          userAgent: (req.headers["user-agent"] as string) ?? null,
+        });
+        sendJson(res, 200, { ok: true });
+      } catch (e) {
+        sendJson(res, 400, { ok: false, error: e instanceof Error ? e.message : "bad subscription" });
+      }
+      return;
+    }
+
+    if (path === "/api/push/unsubscribe" && req.method === "POST") {
+      try {
+        const raw = (await readBody(req)).toString("utf8");
+        const { endpoint } = JSON.parse(raw || "{}");
+        const { removePushSubscription } = await import("../src/push/subscriptionsDb");
+        removePushSubscription(endpoint);
+        sendJson(res, 200, { ok: true });
+      } catch (e) {
+        sendJson(res, 400, { ok: false, error: e instanceof Error ? e.message : "bad request" });
+      }
       return;
     }
 

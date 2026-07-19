@@ -2,15 +2,35 @@ import type { NowActionResult } from "../utils/nowAction";
 import type { AssetId } from "../types";
 import { ASSETS } from "../config/assets";
 
+import type { PushState } from "../services/pushClient";
+
 interface Props {
   now: NowActionResult;
   assetId: AssetId;
   alertsOn: boolean;
   onToggleAlerts: () => void;
   onTestSound: () => void;
+  pushState: PushState;
+  onEnablePush: () => void;
 }
 
-export function ActionNow({ now, assetId, alertsOn, onToggleAlerts, onTestSound }: Props) {
+const PUSH_LABEL: Record<PushState, string> = {
+  unsupported: "Push N/A",
+  default: "🔔 Enable Push",
+  denied: "Push Blocked",
+  granted: "🔔 Enable Push",
+  subscribed: "✅ Push ON",
+};
+
+export function ActionNow({
+  now,
+  assetId,
+  alertsOn,
+  onToggleAlerts,
+  onTestSound,
+  pushState,
+  onEnablePush,
+}: Props) {
   const asset = ASSETS[assetId];
   const d = asset.decimals;
   const tone =
@@ -131,6 +151,21 @@ export function ActionNow({ now, assetId, alertsOn, onToggleAlerts, onTestSound 
       <div className="alert-controls">
         <button type="button" className={alertsOn ? "active" : ""} onClick={onToggleAlerts}>
           {alertsOn ? "🔔 Alerts ON" : "🔕 Alerts OFF"}
+        </button>
+        <button
+          type="button"
+          className={pushState === "subscribed" ? "active" : ""}
+          onClick={onEnablePush}
+          disabled={pushState === "unsupported" || pushState === "denied"}
+          title={
+            pushState === "denied"
+              ? "Notifications blocked — enable them in browser/site settings"
+              : pushState === "unsupported"
+                ? "This browser doesn't support push notifications"
+                : "Get trade alerts on your phone even when the app is closed"
+          }
+        >
+          {PUSH_LABEL[pushState]}
         </button>
         <button type="button" onClick={onTestSound}>
           Test sound

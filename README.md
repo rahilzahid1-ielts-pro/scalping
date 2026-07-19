@@ -42,6 +42,51 @@ Browser band hone pe notifications ke liye Railway Variables set karo:
 
 Open the URL Vite prints (default `http://localhost:5173`).
 
+### Web Push notifications (no Telegram, no VPN, works when browser closed)
+
+Web Push delivers native OS notifications to your phone even when Chrome/the app is
+closed — over the deployment's own HTTPS domain, so no VPN or third-party app is needed.
+It runs **in parallel** with Telegram; you can use either or both. Each channel is
+guarded independently (missing VAPID keys never affect Telegram, and vice-versa).
+
+**One-time setup (generate VAPID keys):**
+
+```bash
+npm run gen-vapid
+```
+
+This prints a public/private key pair. Add them to your environment (Railway → Variables,
+or a local `.env`):
+
+```
+WEB_PUSH_VAPID_PUBLIC_KEY=<public key>
+WEB_PUSH_VAPID_PRIVATE_KEY=<private key>   # secret — never commit
+# WEB_PUSH_CONTACT=mailto:you@example.com  # optional
+```
+
+Redeploy. The public key is served to the browser at `GET /api/push/public-key`; the
+private key stays server-side. Subscriptions are stored in **`data/push-subscriptions.db`**
+(a separate SQLite file — `signals.db` is never touched). Expired subscriptions (HTTP
+410 Gone) are pruned automatically.
+
+> **HTTPS required.** Web Push only works over HTTPS. Railway gives every service a
+> public `*.up.railway.app` domain (or your custom domain), which satisfies this. Plain
+> `http://localhost` works only for local desktop testing via the browser dev exception;
+> phones need the HTTPS Railway URL.
+
+**Install the PWA + enable notifications on your phone:**
+
+1. Open the HTTPS app URL in **Chrome (Android)** or **Safari (iOS 16.4+)**.
+2. **Android Chrome:** menu ⋮ → *Add to Home screen* / *Install app*.
+   **iOS Safari:** Share → *Add to Home Screen* (push requires the app be installed to Home Screen).
+3. Open the installed app, then tap **🔔 Enable Push** (next to *Alerts ON*).
+4. Accept the notification permission prompt. The button shows **✅ Push ON** once subscribed.
+5. You'll now get *ZONE LOCKED* / *ENTRY HIT* / *🔥 New trend starting* alerts even with the
+   app closed. (If it shows *Push Blocked*, re-enable notifications in the browser/site settings.)
+
+Icons come from the "GO" brand mark — regenerate them any time with `npm run gen-icons`
+(edits `assets/icon.svg` → `public/icon-*.png`).
+
 ### Backtest (past results of the SAME formula)
 
 ```bash

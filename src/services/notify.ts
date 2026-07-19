@@ -1,5 +1,6 @@
 import type { AssetId } from "../types";
 import { ASSETS } from "../config/assets";
+import { isWebPushConfigured, sendWebPushToAll, webPushStatus } from "./webPush";
 
 export type TradeAlertKind = "PLAN_LOCK" | "ENTRY_HIT";
 
@@ -29,9 +30,20 @@ export function isTelegramConfigured(): boolean {
 }
 
 export function alertChannelsStatus() {
+  let webPush = false;
+  let webPushSubscriptions = 0;
+  try {
+    const s = webPushStatus();
+    webPush = s.webPush;
+    webPushSubscriptions = s.webPushSubscriptions;
+  } catch {
+    /* web-push not available — leave defaults */
+  }
   return {
     telegram: isTelegramConfigured(),
     windows: process.platform === "win32",
+    webPush,
+    webPushSubscriptions,
     workerEnv: process.env.ENABLE_ALERT_WORKER ?? "auto",
   };
 }
@@ -123,17 +135,25 @@ $n.Dispose()
   }
 }
 
-/** Fan-out: Telegram (Railway/phone) + Windows (local). */
+/** Fan-out: Telegram (Railway/phone) + Web Push (phone, no VPN) + Windows (local). */
 export async function dispatchTradeAlert(payload: TradeAlertPayload): Promise<void> {
   const label = assetLabel(payload.assetId);
   const title = `${label} | ${payload.title}`;
-  const [tg] = await Promise.all([
-    sendTelegramAlert(payload),
-    sendWindowsAlert(title, payload.body),
+  // Each channel is guarded independently — a failure in one never blocks the others.
+  const [tg, push] = await Promise.all([
+    sendTelegramAlert(payload).catch((e) => {
+      console.error("[notify] telegram error:", e instanceof Error ? e.message : e);
+      return false;
+    }),
+    sendWebPushToAll(payload).catch((e) => {
+      console.error("[notify] web-push error:", e instanceof Error ? e.message : e);
+      return 0;
+    }),
+    sendWindowsAlert(title, payload.body).catch(() => undefined),
   ]);
-  if (!tg && !isTelegramConfigured() && process.platform !== "win32") {
+  if (!tg && push === 0 && !isTelegramConfigured() && !isWebPushConfigured() && process.platform !== "win32") {
     console.warn(
-      "[notify] No delivery channel — set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID on Railway",
+      "[notify] No delivery channel — set TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID or WEB_PUSH_VAPID_* on Railway",
     );
   }
 }

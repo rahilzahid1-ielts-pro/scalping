@@ -12,6 +12,7 @@ import { StrategyBreakdown } from "./components/StrategyBreakdown";
 import { useLivePrice } from "./hooks/useLivePrice";
 import { requestAlertPermission, testAlertSound, useEntryAlert, usePlanLockAlert } from "./hooks/useEntryAlert";
 import { useServiceWorkerAlerts } from "./hooks/useServiceWorkerAlerts";
+import { enablePush, getPushState, type PushState } from "./services/pushClient";
 import { BackgroundAlertBanner } from "./components/BackgroundAlertBanner";
 import { roundPrice } from "./strategies/indicators";
 import { computeNowAction } from "./utils/nowAction";
@@ -56,6 +57,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [alertsOn, setAlertsOn] = useState(boot.alertsOn);
+  const [pushState, setPushState] = useState<PushState>("default");
   const [now, setNow] = useState(Date.now());
   const [booted, setBooted] = useState(false);
   const [liquidityWarn, setLiquidityWarn] = useState(false);
@@ -317,9 +319,19 @@ export default function App() {
   useEntryAlert({ now: nowAction, enabled: alertsOn, planKey });
   useServiceWorkerAlerts(nowAction, alertsOn, planKey, plan);
 
+  useEffect(() => {
+    void getPushState().then(setPushState);
+  }, []);
+
   const toggleAlerts = async () => {
     await requestAlertPermission();
     setAlertsOn((a) => !a);
+  };
+
+  const enablePushNotifications = async () => {
+    const { state, error } = await enablePush();
+    setPushState(state);
+    if (error) console.warn("[push]", error);
   };
 
   const requestNewPlan = () => {
@@ -460,6 +472,8 @@ export default function App() {
               alertsOn={alertsOn}
               onToggleAlerts={() => void toggleAlerts()}
               onTestSound={testAlertSound}
+              pushState={pushState}
+              onEnablePush={() => void enablePushNotifications()}
             />
           )}
 

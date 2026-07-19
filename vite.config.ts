@@ -47,6 +47,49 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
+        if (req.url?.startsWith("/api/push/")) {
+          try {
+            const url = req.url.split("?")[0];
+            if (url === "/api/push/public-key" && req.method === "GET") {
+              const { getVapidPublicKey } = await import("./src/services/webPush");
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ ok: true, publicKey: getVapidPublicKey() }));
+              return;
+            }
+            if (url === "/api/push/subscribe" && req.method === "POST") {
+              const sub = JSON.parse((await readBody(req)) || "{}");
+              const { savePushSubscription } = await import("./src/push/subscriptionsDb");
+              savePushSubscription({
+                endpoint: sub.endpoint,
+                keys: sub.keys,
+                expirationTime: sub.expirationTime ?? null,
+                userAgent: (req.headers["user-agent"] as string) ?? null,
+              });
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ ok: true }));
+              return;
+            }
+            if (url === "/api/push/unsubscribe" && req.method === "POST") {
+              const { endpoint } = JSON.parse((await readBody(req)) || "{}");
+              const { removePushSubscription } = await import("./src/push/subscriptionsDb");
+              removePushSubscription(endpoint);
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify({ ok: true }));
+              return;
+            }
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: "unknown push route" }));
+          } catch (e) {
+            res.statusCode = 400;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "push error" }),
+            );
+          }
+          return;
+        }
+
         if (!req.url?.startsWith("/api/calibration/")) return next();
 
         try {
@@ -179,10 +222,10 @@ function calibrationApiPlugin(): Plugin {
 export default defineConfig({
   plugins: [react(), calibrationApiPlugin()],
   optimizeDeps: {
-    exclude: ["better-sqlite3"],
+    exclude: ["better-sqlite3", "web-push"],
   },
   ssr: {
-    external: ["better-sqlite3"],
+    external: ["better-sqlite3", "web-push"],
   },
   server: {
     port: 5173,

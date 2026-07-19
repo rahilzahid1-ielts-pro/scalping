@@ -544,8 +544,11 @@ export function shouldAutoStartAlertWorker(): boolean {
   const flag = (process.env.ENABLE_ALERT_WORKER ?? "auto").toLowerCase();
   if (flag === "0" || flag === "false" || flag === "off") return false;
   if (flag === "1" || flag === "true" || flag === "on") return true;
-  // auto: start on Railway / when Telegram is configured
-  return isTelegramConfigured() || Boolean(process.env.RAILWAY_ENVIRONMENT);
+  // auto: start on Railway / when Telegram or Web Push is configured
+  const webPushConfigured = Boolean(
+    process.env.WEB_PUSH_VAPID_PUBLIC_KEY && process.env.WEB_PUSH_VAPID_PRIVATE_KEY,
+  );
+  return isTelegramConfigured() || webPushConfigured || Boolean(process.env.RAILWAY_ENVIRONMENT);
 }
 
 /** CLI entry: npm run alerts */
