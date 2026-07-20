@@ -16,6 +16,7 @@ import {
   planKey,
   type DaemonState,
 } from "./planStore";
+import { planFromOpenSignal } from "./resumeOpenPlan";
 import {
   createFrozenPlan,
   shouldKeepFrozenPlan,
@@ -32,6 +33,7 @@ import {
   markLiquiditySweep,
   markTrendConfirmed,
   setTrendDuration,
+  listOpenSignals,
 } from "../src/calibration/resolveOutcomes";
 import { isLiquiditySweepAgainst } from "../src/utils/liquidityWarning";
 import {
@@ -235,6 +237,20 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
     htfRegimes,
     trendConfirmedNow,
   );
+
+  // Daemon plan missing after redeploy but History still has OPEN → resume
+  if (!plan || plan.status === "INVALIDATED") {
+    try {
+      const resumed = planFromOpenSignal(assetId, mode);
+      if (resumed) {
+        state.plans[planKey(assetId, mode)] = resumed;
+        plan = resumed;
+        log(`checkOne resumed OPEN ${assetId}/${mode} @ ${resumed.levels.entry}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
 
   // Start a duration run when a fresh trend-confirmed scalping plan just locked.
   if (
@@ -513,14 +529,31 @@ async function tick(state: DaemonState) {
 
 /**
  * Authoritative locked plan for asset+mode (alertBot lock cycle).
- * Prefers live in-memory state; falls back to persisted daemon state file.
+ * Prefers live in-memory state; falls back to persisted daemon state file;
+ * then resumes from OPEN calibration row so Scalp UI matches History.
  */
 export function getAuthoritativePlan(
   assetId: AssetId,
   mode: TradeMode,
 ): FrozenPlan | null {
   const state = liveState ?? loadDaemonState();
-  return state.plans[planKey(assetId, mode)] ?? null;
+  const key = planKey(assetId, mode);
+  const existing = state.plans[key] ?? null;
+  if (existing && existing.status !== "INVALIDATED") return existing;
+
+  try {
+    const resumed = planFromOpenSignal(assetId, mode);
+    if (resumed) {
+      state.plans[key] = resumed;
+      saveDaemonState(state);
+      liveState = state;
+      log(`Resumed OPEN plan ${assetId}/${mode} @ ${resumed.levels.entry}`);
+      return resumed;
+    }
+  } catch (e) {
+    log("resume OPEN failed:", e instanceof Error ? e.message : e);
+  }
+  return existing;
 }
 
 /** Clear server lock for this mode (UI "New plan"). Next tick may re-lock. */
@@ -533,6 +566,16 @@ export function clearAuthoritativePlan(assetId: AssetId, mode: TradeMode): void 
     if (k.startsWith(lockPrefix) || k.startsWith(entryPrefix)) {
       delete state.lastAlertAt[k];
     }
+  }
+  // Keep History consistent — don't leave an OPEN row that would auto-resume
+  try {
+    for (const s of listOpenSignals().filter(
+      (row) => row.symbol === assetId && row.mode === mode && row.outcome === "OPEN",
+    )) {
+      invalidateLoggedPlan(s.planKey, "UI New plan — lock cleared");
+    }
+  } catch {
+    /* db may be unavailable */
   }
   saveDaemonState(state);
   if (!liveState) liveState = state;
@@ -557,6 +600,21 @@ export function startAlertWorker(): void {
 
   const state = loadDaemonState();
   liveState = state;
+  // Hydrate missing plans from OPEN History rows before first tick
+  for (const w of state.watches) {
+    const key = planKey(w.assetId, w.mode);
+    const cur = state.plans[key];
+    if (cur && cur.status !== "INVALIDATED") continue;
+    try {
+      const resumed = planFromOpenSignal(w.assetId, w.mode);
+      if (resumed) {
+        state.plans[key] = resumed;
+        log(`boot resume OPEN ${w.assetId}/${w.mode} @ ${resumed.levels.entry}`);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   saveDaemonState(state);
   const ch = alertChannelsStatus();
 
