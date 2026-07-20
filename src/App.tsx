@@ -5,6 +5,7 @@ import { computeRegime, generateSignal } from "./strategies/signalEngine";
 import type { AssetId, LiveSignal, TradeMode } from "./types";
 import { TradingViewChart } from "./components/TradingViewChart";
 import { ActionNow } from "./components/ActionNow";
+import { QuickScalpCard } from "./components/QuickScalpCard";
 import { DetailsAccordion } from "./components/DetailsAccordion";
 import { BiasCard } from "./components/BiasCard";
 import { PredictionPanel } from "./components/PredictionPanel";
@@ -51,6 +52,8 @@ const boot = loadSession();
 export default function App() {
   const [assetId] = useState<AssetId>("XAUUSD");
   const [mode, setMode] = useState<TradeMode>(boot.mode);
+  /** Isolated Quick Scalp desk view — does not change main Scalp/Intraday mode. */
+  const [deskView, setDeskView] = useState<"main" | "quick_scalp">("main");
   const [signal, setSignal] = useState<LiveSignal | null>(null);
   const [plan, setPlan] = useState<FrozenPlan | null>(boot.plan);
   const [forceNewPlan, setForceNewPlan] = useState(0);
@@ -405,17 +408,30 @@ export default function App() {
         <div className="mode-toggle">
           <button
             type="button"
-            className={mode === "scalping" ? "active" : ""}
-            onClick={() => requestModeChange("scalping")}
+            className={deskView === "main" && mode === "scalping" ? "active" : ""}
+            onClick={() => {
+              setDeskView("main");
+              requestModeChange("scalping");
+            }}
           >
             Scalp
           </button>
           <button
             type="button"
-            className={mode === "intraday" ? "active" : ""}
-            onClick={() => requestModeChange("intraday")}
+            className={deskView === "main" && mode === "intraday" ? "active" : ""}
+            onClick={() => {
+              setDeskView("main");
+              requestModeChange("intraday");
+            }}
           >
             Intraday
+          </button>
+          <button
+            type="button"
+            className={deskView === "quick_scalp" ? "active" : ""}
+            onClick={() => setDeskView("quick_scalp")}
+          >
+            Quick Scalp
           </button>
         </div>
         <button
@@ -443,19 +459,23 @@ export default function App() {
               <p>{error || quoteError}</p>
             </div>
           )}
-          {nowAction && (
-            <ActionNow
-              now={nowAction}
-              assetId={assetId}
-              alertsOn={alertsOn}
-              onToggleAlerts={() => void toggleAlerts()}
-              onTestSound={testAlertSound}
-              pushState={pushState}
-              onEnablePush={() => void enablePushNotifications()}
-            />
+          {deskView === "quick_scalp" ? (
+            <QuickScalpCard />
+          ) : (
+            nowAction && (
+              <ActionNow
+                now={nowAction}
+                assetId={assetId}
+                alertsOn={alertsOn}
+                onToggleAlerts={() => void toggleAlerts()}
+                onTestSound={testAlertSound}
+                pushState={pushState}
+                onEnablePush={() => void enablePushNotifications()}
+              />
+            )
           )}
 
-          {signal && (
+          {deskView === "main" && signal && (
             <DetailsAccordion title="Advanced — bias, path, SMC detail">
               <PredictionPanel prediction={signal.rangePrediction} assetId={assetId} />
               <div className="bias-row">

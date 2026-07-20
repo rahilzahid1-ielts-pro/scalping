@@ -309,6 +309,40 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/quickscalp/latest" && req.method === "GET") {
+      const {
+        getLiveQuickScalpDb,
+        getLatestQuickScalp,
+        getBacktestQuickScalpDb,
+        summarizeQuickScalp,
+        countResolvedQuickScalp,
+      } = await import("../src/quickScalp/store");
+      const liveDb = getLiveQuickScalpDb();
+      const latest = getLatestQuickScalp(liveDb);
+      let backtestSummary = null;
+      let validated = false;
+      try {
+        const bt = getBacktestQuickScalpDb(false);
+        const n = countResolvedQuickScalp(bt);
+        if (n > 0) {
+          validated = true;
+          backtestSummary = summarizeQuickScalp(bt);
+        }
+      } catch {
+        /* no backtest history yet */
+      }
+      sendJson(res, 200, {
+        ok: true,
+        validated,
+        latest,
+        backtestSummary,
+        badge: validated
+          ? null
+          : "UNVALIDATED — no backtest history yet",
+      });
+      return;
+    }
+
     if (path === "/api/push/public-key" && req.method === "GET") {
       const { getVapidPublicKey } = await import("../src/services/webPush");
       sendJson(res, 200, { ok: true, publicKey: getVapidPublicKey() });
@@ -392,5 +426,19 @@ server.listen(PORT, "0.0.0.0", () => {
     }
   }).catch((e) => {
     console.error("[prodServer] Failed to start alert worker:", e);
+  });
+
+  void import("../daemon/quickScalpBot").then(
+    ({ startQuickScalpWorker, shouldAutoStartQuickScalpWorker }) => {
+      if (shouldAutoStartQuickScalpWorker()) {
+        startQuickScalpWorker();
+      } else {
+        console.log(
+          "[prodServer] Quick Scalp worker OFF — set ENABLE_QUICK_SCALP_WORKER=1 to enable",
+        );
+      }
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Failed to start Quick Scalp worker:", e);
   });
 });

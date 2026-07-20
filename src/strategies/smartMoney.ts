@@ -57,7 +57,8 @@ function findOrderBlock(candles: Candle[], bias: SmcSignal["structure"]) {
   return undefined;
 }
 
-function findFVG(candles: Candle[]) {
+/** Exported for Quick Scalp (and any other isolated strategy) — same 3-candle FVG. */
+export function findFVG(candles: Candle[]) {
   for (let i = candles.length - 2; i >= Math.max(2, candles.length - 30); i--) {
     const c0 = candles[i - 2];
     const c2 = candles[i];

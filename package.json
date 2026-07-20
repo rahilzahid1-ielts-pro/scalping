@@ -11,6 +11,7 @@
     "alerts": "tsx daemon/alertBot.ts",
     "calibrate": "tsx daemon/calibrate.ts",
     "backtest": "tsx daemon/backtest.ts",
+    "quickscalp": "tsx daemon/quickScalpBot.ts",
     "gen-vapid": "node scripts/gen-vapid.mjs",
     "gen-icons": "node scripts/gen-icons.mjs"
   },

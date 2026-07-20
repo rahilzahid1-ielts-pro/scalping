@@ -25,6 +25,8 @@ import {
   runWalkForward,
   zoneTouchRate,
 } from "../src/backtest/engine";
+import { runQuickScalpBacktest } from "../src/quickScalp/backtest";
+import { BACKTEST_DB_PATH } from "../src/quickScalp/store";
 
 function argValue(argv: string[], name: string): string | undefined {
   const hit = argv.find((a) => a.startsWith(`${name}=`));
@@ -37,13 +39,16 @@ function parseArgs(argv: string[]) {
     console.error(`
 Usage:
   npm run backtest -- --file=C:\\path\\to\\XAUUSD_M5.json [--days=365] [--spread=0.25] [--mode=both]
+  npm run backtest -- --file=... --strategy=quick_scalp [--days=365] [--spread=0.25]
 
 Options:
-  --file=     ForexSB/Dukas M5 JSON (required). Confirmed schema: time/open/high/low/close arrays.
-  --days=     Lookback from last bar (default 365). Warmup history kept before window.
-  --spread=   Absolute price spread for Gold (default 0.25 = $0.25). BUY pays +spread on entry.
-  --mode=     scalping | intraday | both (default both)
-  --asset=    XAUUSD | XAGUSD | BTCUSD (default XAUUSD)
+  --file=              ForexSB/Dukas M5 JSON (required).
+  --days=              Lookback from last bar (default 365).
+  --spread=            Absolute price spread for Gold (default 0.25).
+  --mode=              scalping | intraday | both (default both) — ignored for quick_scalp
+  --asset=             XAUUSD | XAGUSD | BTCUSD (default XAUUSD)
+  --strategy=          main (default) | quick_scalp  — isolated Quick Scalp walk-forward
+  --trend-confirm-bars=  scalping trend-confirmation M (default 4; main strategy only)
 `);
     process.exit(1);
   }
@@ -53,6 +58,7 @@ Options:
   const modeArg = (argValue(argv, "--mode") ?? "both").toLowerCase();
   const asset = (argValue(argv, "--asset") ?? "XAUUSD") as AssetId;
   const tcb = Number(argValue(argv, "--trend-confirm-bars") ?? 4);
+  const strategy = (argValue(argv, "--strategy") ?? "main").toLowerCase();
 
   let modes: TradeMode[] = ["scalping", "intraday"];
   if (modeArg === "scalping") modes = ["scalping"];
@@ -65,6 +71,7 @@ Options:
     modes,
     asset,
     trendConfirmBars: Number.isFinite(tcb) && tcb >= 1 ? Math.floor(tcb) : 4,
+    strategy: strategy === "quick_scalp" ? ("quick_scalp" as const) : ("main" as const),
   };
 }
 
@@ -80,8 +87,61 @@ function tryLiveWinRate(): number | null {
   }
 }
 
+function runQuickScalpMain(opts: ReturnType<typeof parseArgs>) {
+  console.log(`
+Quick Scalp Backtest (isolated — does NOT use generateSignal / session-lock)
+──────────────────────────────────────────────────────
+File    : ${opts.file}
+Asset   : ${opts.asset}
+Days    : ${opts.days}
+Spread  : ${opts.spread}
+Store   : ${BACKTEST_DB_PATH}  table=quick_scalp_signals (main signals table untouched)
+`);
+
+  const loaded = loadHistoricalFile(opts.file);
+  console.log(`
+Data quality
+────────────
+${loaded.timezoneNote}
+Bars    : ${loaded.quality.bars}
+Range   : ${loaded.quality.firstIso} → ${loaded.quality.lastIso}
+`);
+
+  const t0 = Date.now();
+  const stats = runQuickScalpBacktest({
+    candles: loaded.candles,
+    days: opts.days,
+    spread: opts.spread,
+    symbol: opts.asset,
+  });
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+  const wr = stats.winRate == null ? "n/a" : `${stats.winRate.toFixed(1)}%`;
+  const avgR = stats.avgR == null ? "n/a" : stats.avgR.toFixed(3);
+  const dd = stats.maxDrawdownR == null ? "n/a" : stats.maxDrawdownR.toFixed(2);
+
+  console.log(`
+Quick Scalp results (${elapsed}s)
+────────────────────────────────
+Signals fired     : ${stats.signals}
+Resolved (TP1/SL) : ${stats.resolved}  (still OPEN: ${stats.openLeft})
+TP1 wins / losses : ${stats.wins} / ${stats.losses}
+TP1 win rate      : ${wr}
+Avg R (TP1)       : ${avgR}
+Max drawdown R    : ${dd}
+
+QUICK-SCALP-COMPARE  signals=${stats.signals} resolved=${stats.resolved} winRate=${wr} avgR=${avgR} maxDdR=${dd}
+`);
+}
+
 function main() {
   const opts = parseArgs(process.argv.slice(2));
+
+  if (opts.strategy === "quick_scalp") {
+    void runQuickScalpMain(opts);
+    return;
+  }
+
   console.log(`
 SMC Backtest (walk-forward, live session-lock state machine)
 ──────────────────────────────────────────────────────

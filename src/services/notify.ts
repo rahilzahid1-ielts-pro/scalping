@@ -11,6 +11,8 @@ export interface TradeAlertPayload {
   side: string;
   title: string;
   body: string;
+  /** Optional channel tag, e.g. "[Quick Scalp]" — prepended so channels stay distinct. */
+  tagPrefix?: string;
 }
 
 /** Clear labels for notifications: Gold / Silver / Bitcoin */
@@ -60,9 +62,10 @@ export async function sendTelegramAlert(payload: TradeAlertPayload): Promise<boo
   const label = assetLabel(payload.assetId);
   const emoji = assetEmoji(payload.assetId);
   const kindLabel = payload.kind === "PLAN_LOCK" ? "ZONE / PLAN LOCKED" : "ENTRY HIT — TRADE NOW";
+  const prefix = payload.tagPrefix ? `${payload.tagPrefix} ` : "";
 
   const text = [
-    `${emoji} <b>${label}</b> · ${kindLabel}`,
+    `${emoji} <b>${prefix}${label}</b> · ${kindLabel}`,
     `<b>${payload.side}</b> · ${payload.mode}`,
     "",
     payload.body,
@@ -138,14 +141,19 @@ $n.Dispose()
 /** Fan-out: Telegram (Railway/phone) + Web Push (phone, no VPN) + Windows (local). */
 export async function dispatchTradeAlert(payload: TradeAlertPayload): Promise<void> {
   const label = assetLabel(payload.assetId);
-  const title = `${label} | ${payload.title}`;
+  const prefix = payload.tagPrefix ? `${payload.tagPrefix} ` : "";
+  const titled = {
+    ...payload,
+    title: `${prefix}${payload.title}`,
+  };
+  const title = `${label} | ${titled.title}`;
   // Each channel is guarded independently — a failure in one never blocks the others.
   const [tg, push] = await Promise.all([
-    sendTelegramAlert(payload).catch((e) => {
+    sendTelegramAlert(titled).catch((e) => {
       console.error("[notify] telegram error:", e instanceof Error ? e.message : e);
       return false;
     }),
-    sendWebPushToAll(payload).catch((e) => {
+    sendWebPushToAll(titled).catch((e) => {
       console.error("[notify] web-push error:", e instanceof Error ? e.message : e);
       return 0;
     }),
