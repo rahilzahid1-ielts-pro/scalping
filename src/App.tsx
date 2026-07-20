@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ASSETS } from "./config/assets";
 import { fetchMultiTimeframe } from "./services/marketData";
-import { computeRegime, generateSignal } from "./strategies/signalEngine";
+import { generateSignal } from "./strategies/signalEngine";
 import type { AssetId, LiveSignal, TradeMode } from "./types";
 import { TradingViewChart } from "./components/TradingViewChart";
 import { ActionNow } from "./components/ActionNow";
@@ -16,34 +16,10 @@ import { useServiceWorkerAlerts } from "./hooks/useServiceWorkerAlerts";
 import { enablePush, getPushState, type PushState } from "./services/pushClient";
 import { roundPrice } from "./strategies/indicators";
 import { computeNowAction } from "./utils/nowAction";
-import {
-  buildSessionExtras,
-  canAutoLockPlan,
-  signalInterval,
-} from "./utils/sessionPlan";
-import {
-  createFrozenPlan,
-  ensureLockedScores,
-  loadSession,
-  saveSession,
-  shouldKeepFrozenPlan,
-  REGIME_FLIP_NOTE,
-  type FrozenPlan,
-} from "./services/tradePlan";
-import {
-  logSignalViaApi,
-  liquiditySweepViaApi,
-  regimeFlipInvalidateViaApi,
-  resolveSignalsViaApi,
-  trendConfirmedViaApi,
-} from "./calibration/browserClient";
+import { signalInterval } from "./utils/sessionPlan";
+import { loadSession, saveSession, type FrozenPlan } from "./services/tradePlan";
+import { clearCurrentPlan, fetchCurrentPlan } from "./services/planClient";
 import { isLiquiditySweepAgainst } from "./utils/liquidityWarning";
-import {
-  evaluateTrendConfirm,
-  markTrendConsumed,
-  newTrendTracker,
-  type TrendTracker,
-} from "./utils/trendConfirm";
 import { CONFLICT_CAP_PCT } from "./calibration/types";
 import { displayedWinChance } from "./calibration/winChanceDisplay";
 
@@ -55,6 +31,7 @@ export default function App() {
   /** Isolated Quick Scalp desk view — does not change main Scalp/Intraday mode. */
   const [deskView, setDeskView] = useState<"main" | "quick_scalp">("main");
   const [signal, setSignal] = useState<LiveSignal | null>(null);
+  /** Display cache of server plan; lock decisions live in alertBot only. */
   const [plan, setPlan] = useState<FrozenPlan | null>(boot.plan);
   const [forceNewPlan, setForceNewPlan] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -71,18 +48,18 @@ export default function App() {
   const planRef = useRef(plan);
   planRef.current = plan;
   const skipClearRef = useRef(true);
-  // SCALPING-ONLY trend-confirmation tracker (intraday never uses it).
-  const trendTrackerRef = useRef<TrendTracker>(newTrendTracker());
 
   const asset = ASSETS[assetId];
+  // Display-only mode filter (Issue 1): never show another mode's cached plan.
+  const planForThisMode = plan && plan.mode === mode ? plan : null;
   const hasActivePlan =
-    !!plan &&
-    plan.assetId === assetId &&
-    plan.mode === mode &&
-    plan.status !== "INVALIDATED";
+    !!planForThisMode &&
+    planForThisMode.assetId === assetId &&
+    planForThisMode.status !== "INVALIDATED";
   const refreshMs = signalInterval(mode, hasActivePlan);
 
   useEffect(() => {
+    // localStorage = paint cache only — not lock authority.
     saveSession({ assetId, mode, plan, alertsOn });
   }, [assetId, mode, plan, alertsOn]);
 
@@ -91,151 +68,53 @@ export default function App() {
       setError(null);
       setLiquidityWarn(false);
       const livePx = quoteRef.current?.price;
-      const frames = await fetchMultiTimeframe(assetId, mode, livePx);
+      const [frames, serverPlan] = await Promise.all([
+        fetchMultiTimeframe(assetId, mode, livePx),
+        fetchCurrentPlan(mode, assetId),
+      ]);
       const next = generateSignal(assetId, mode, frames);
       const q = quoteRef.current?.price;
       if (q != null) next.price = roundPrice(q, asset.decimals);
 
-      const current = planRef.current;
+      setPlan(serverPlan);
+      planRef.current = serverPlan;
 
-      // SCALPING-ONLY: fresh trend-confirmation trigger. Reuses the existing regime
-      // classifier + ATR + HTF-agreement. Never runs for intraday, so the
-      // session-lock ("1 zone/day") path below is completely unaffected.
-      let trendConfirmedNow = false;
-      if (mode === "scalping") {
-        const htfR = [
-          frames.confirmation.length ? computeRegime(frames.confirmation) : null,
-          frames.bias.length ? computeRegime(frames.bias) : null,
-        ];
-        const barTime = frames.primary.length
-          ? frames.primary[frames.primary.length - 1].time
-          : Date.now();
-        const res = evaluateTrendConfirm(
-          trendTrackerRef.current,
-          next.diagnostics.regime,
-          frames.primary,
-          htfR,
-          barTime,
-        );
-        trendConfirmedNow = res.armed && res.dir === next.side;
-      }
+      const active =
+        serverPlan &&
+        serverPlan.mode === mode &&
+        serverPlan.status !== "INVALIDATED" &&
+        (serverPlan.side === "BUY" || serverPlan.side === "SELL")
+          ? serverPlan
+          : null;
 
-      // HARD RULE: if locked plan exists for this pair+mode — NEVER change entry/SL/TP
-      if (
-        current &&
-        current.assetId === assetId &&
-        current.mode === mode &&
-        current.status !== "INVALIDATED" &&
-        (current.side === "BUY" || current.side === "SELL")
-      ) {
-        // Never backfill locked scores from a later WAIT (confidence hard-capped ≤58).
-        const scoredPlan =
-          current.lockedConfidence == null &&
-          next.side === current.side &&
-          next.confidence >= 68
-            ? ensureLockedScores(
-                current,
-                next.confidence,
-                next.rangePrediction.winProbability,
-              )
-            : current;
-        const htfRegimes = [
-          frames.confirmation.length ? computeRegime(frames.confirmation) : null,
-          frames.bias.length ? computeRegime(frames.bias) : null,
-        ];
-        const kept = shouldKeepFrozenPlan(
-          scoredPlan,
-          next.side,
-          q,
-          next.diagnostics.regime,
-          htfRegimes,
-        );
-        // Regime flip: trend reversed vs plan side. Drop plan (allow immediate
-        // re-lock next refresh) and log it; no entry/resolution alert.
-        if (kept && kept.status === "INVALIDATED" && kept.note === REGIME_FLIP_NOTE) {
-          setPlan(null);
-          planRef.current = null;
-          setLiquidityWarn(false);
-          void regimeFlipInvalidateViaApi(current);
-        } else if (kept) {
-          setPlan(kept);
-          // Tier-1 early warning (display/log only): sweep against the locked side.
-          const swept =
-            kept.status !== "INVALIDATED" &&
-            isLiquiditySweepAgainst(kept.side, frames.primary);
-          setLiquidityWarn(swept);
-          if (swept) void liquiditySweepViaApi(kept);
-          next.levels = kept.levels;
-          next.side = kept.side;
-          // Keep the scores the user saw when this plan locked — do not let a
-          // later WAIT refresh (confidence capped at 58) rewrite the card.
-          // Win chance tracks confidence (identity until calibration gate opens).
-          if (kept.lockedConfidence != null) {
-            next.confidence = kept.lockedConfidence;
-            next.rangePrediction = {
-              ...next.rangePrediction,
-              confidence: kept.lockedConfidence,
-              winProbability: displayedWinChance(kept.lockedConfidence, {
-                conflictCapped:
-                  next.diagnostics.conflictCapped || next.diagnostics.conflictingSignals,
-              }),
-            };
-          } else if (kept.lockedWinProbability != null) {
-            // Legacy locks that only stored win%: treat as confidence-derived.
-            next.rangePrediction = {
-              ...next.rangePrediction,
-              winProbability: kept.lockedWinProbability,
-            };
-          }
-          // Conflict refresh must not leave locked scores above the cap while
-          // diagnostics still show the ≤65% warning.
-          if (next.diagnostics.conflictCapped || next.diagnostics.conflictingSignals) {
-            next.confidence = Math.min(next.confidence, CONFLICT_CAP_PCT);
-            next.rangePrediction = {
-              ...next.rangePrediction,
-              confidence: Math.min(next.rangePrediction.confidence, CONFLICT_CAP_PCT),
-              winProbability: displayedWinChance(next.confidence, { conflictCapped: true }),
-            };
-          }
-          void logSignalViaApi(next);
+      if (active) {
+        next.levels = active.levels;
+        next.side = active.side;
+        const swept = isLiquiditySweepAgainst(active.side, frames.primary);
+        setLiquidityWarn(swept);
+        if (active.lockedConfidence != null) {
+          next.confidence = active.lockedConfidence;
+          next.rangePrediction = {
+            ...next.rangePrediction,
+            confidence: active.lockedConfidence,
+            winProbability: displayedWinChance(active.lockedConfidence, {
+              conflictCapped:
+                next.diagnostics.conflictCapped || next.diagnostics.conflictingSignals,
+            }),
+          };
+        } else if (active.lockedWinProbability != null) {
+          next.rangePrediction = {
+            ...next.rangePrediction,
+            winProbability: active.lockedWinProbability,
+          };
         }
-      } else if (
-        // Don't replace a parked active/waiting trade from another mode while browsing tabs.
-        !(
-          current &&
-          current.status !== "INVALIDATED" &&
-          (current.status === "IN_TRADE_HINT" || current.status === "WAITING_ENTRY") &&
-          current.mode !== mode
-        ) &&
-        (!current || current.status === "INVALIDATED" || current.assetId !== assetId || current.mode !== mode) &&
-        canAutoLockPlan(mode, next, current, assetId)
-      ) {
-        if (!current || current.status === "INVALIDATED" || current.assetId !== assetId || current.mode !== mode) {
-          const extras = buildSessionExtras(assetId, mode, next.side, next.levels!, next);
-          const created = createFrozenPlan(
-            assetId,
-            mode,
-            next.side,
-            next.levels!,
-            next.confidence,
-            next.rangePrediction.winProbability,
-            extras,
-          );
-          // SCALPING-ONLY: tag + log a fresh trend-confirmed lock (distinct alert).
-          if (
-            mode === "scalping" &&
-            trendConfirmedNow &&
-            created.status !== "INVALIDATED"
-          ) {
-            created.trendConfirmed = true;
-            created.trendConfirmedAt = Date.now();
-            markTrendConsumed(trendTrackerRef.current);
-          }
-          setPlan(created);
-          // Ensure the row is inserted before stamping trendConfirmedAt on it.
-          void logSignalViaApi(next).then(() => {
-            if (created.trendConfirmed) return trendConfirmedViaApi(created);
-          });
+        if (next.diagnostics.conflictCapped || next.diagnostics.conflictingSignals) {
+          next.confidence = Math.min(next.confidence, CONFLICT_CAP_PCT);
+          next.rangePrediction = {
+            ...next.rangePrediction,
+            confidence: Math.min(next.rangePrediction.confidence, CONFLICT_CAP_PCT),
+            winProbability: displayedWinChance(next.confidence, { conflictCapped: true }),
+          };
         }
       }
 
@@ -252,17 +131,10 @@ export default function App() {
     if (skipClearRef.current) {
       skipClearRef.current = false;
     } else {
-      // Switching Scalp/Intraday: keep an active/waiting locked plan so the user
-      // can browse other tabs without wiping the live trade. Only clear when idle.
-      const current = planRef.current;
-      const preserveActive =
-        !!current &&
-        current.status !== "INVALIDATED" &&
-        (current.status === "IN_TRADE_HINT" || current.status === "WAITING_ENTRY");
-      if (!preserveActive) {
-        setPlan(null);
-        trendTrackerRef.current = newTrendTracker();
-      }
+      // Mode switch: drop paint-cache until this mode's server plan arrives.
+      // Server keeps each mode's lock independently (no client preserveActive).
+      setPlan(null);
+      planRef.current = null;
       setSignal(null);
       setLoading(true);
     }
@@ -276,10 +148,17 @@ export default function App() {
 
   useEffect(() => {
     if (forceNewPlan === 0) return;
-    setPlan(null);
-    planRef.current = null;
-    saveSession({ assetId, mode, plan: null, alertsOn });
-    void refresh();
+    void (async () => {
+      try {
+        await clearCurrentPlan(mode, assetId);
+        setPlan(null);
+        planRef.current = null;
+        saveSession({ assetId, mode, plan: null, alertsOn });
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "New plan failed");
+      }
+    })();
   }, [forceNewPlan]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -287,61 +166,31 @@ export default function App() {
     return () => window.clearInterval(id);
   }, []);
 
-  // Soft SL check only — do NOT rewrite entry
-  useEffect(() => {
-    const current = planRef.current;
-    if (!current || !quote?.price || current.status === "INVALIDATED") return;
-    void resolveSignalsViaApi(assetId, quote.price, {
-      high: quote.high,
-      low: quote.low,
-      open: quote.price,
-    });
-    if (current.side === "SELL" && quote.price >= current.levels.stopLoss) {
-      setPlan({
-        ...current,
-        status: "INVALIDATED",
-        note: "SL hit on live price.",
-      });
-    } else if (current.side === "BUY" && quote.price <= current.levels.stopLoss) {
-      setPlan({
-        ...current,
-        status: "INVALIDATED",
-        note: "SL hit on live price.",
-      });
-    }
-  }, [quote?.price, quote?.high, quote?.low, assetId]);
-
   const livePrice = quote?.price ?? signal?.price ?? 0;
 
   const nowAction = useMemo(() => {
     if (!signal || !livePrice) return null;
-    return computeNowAction(signal, plan, livePrice, asset, quote, liquidityWarn);
-  }, [signal, plan, livePrice, asset, quote, liquidityWarn]);
-
-  // Once the app instructed ENTER NOW, persist an active-trade state. From this
-  // point a refresh/New plan must not turn that instruction into WAIT/opposite.
-  useEffect(() => {
-    if (nowAction?.action !== "ENTER_NOW") return;
-    setPlan((current) => {
-      if (!current || current.status !== "WAITING_ENTRY") return current;
-      const active: FrozenPlan = {
-        ...current,
-        status: "IN_TRADE_HINT",
-        note: `Entry hit @ ${current.levels.entry}. Trade active; manage original SL/TP.`,
-      };
-      planRef.current = active;
-      return active;
-    });
-  }, [nowAction?.action]);
+    return computeNowAction(
+      signal,
+      planForThisMode,
+      livePrice,
+      asset,
+      quote,
+      liquidityWarn,
+    );
+  }, [signal, planForThisMode, livePrice, asset, quote, liquidityWarn]);
 
   // Key ONLY on locked entry — refresh must not reset alert arming wrongly
-  const planKey = plan
-    ? `${plan.assetId}-${plan.mode}-${plan.side}-${plan.levels.entry}-${plan.lockedAt}`
+  const planKey = planForThisMode
+    ? `${planForThisMode.assetId}-${planForThisMode.mode}-${planForThisMode.side}-${planForThisMode.levels.entry}-${planForThisMode.lockedAt}`
     : "none";
 
-  usePlanLockAlert(plan?.status !== "INVALIDATED" ? plan : null, alertsOn);
+  usePlanLockAlert(
+    planForThisMode?.status !== "INVALIDATED" ? planForThisMode : null,
+    alertsOn,
+  );
   useEntryAlert({ now: nowAction, enabled: alertsOn, planKey });
-  useServiceWorkerAlerts(nowAction, alertsOn, planKey, plan);
+  useServiceWorkerAlerts(nowAction, alertsOn, planKey, planForThisMode);
 
   useEffect(() => {
     void getPushState().then(setPushState);
@@ -359,7 +208,7 @@ export default function App() {
   };
 
   const requestNewPlan = () => {
-    const current = planRef.current;
+    const current = planForThisMode;
     if (current?.status === "IN_TRADE_HINT") {
       window.alert(
         `${current.side} trade @ ${current.levels.entry} ACTIVE hai. ` +
@@ -379,8 +228,7 @@ export default function App() {
   };
 
   const requestModeChange = (nextMode: TradeMode) => {
-    // Allow free tab navigation even while a trade is active/locked.
-    // The locked plan is preserved across mode switches (see effect below).
+    // Free tab navigation — each mode's lock lives on the server independently.
     setMode(nextMode);
   };
 
@@ -397,13 +245,13 @@ export default function App() {
         <div className="topbar-meta">
           <span className={`live-dot ${quote && now - quote.ts < 2000 ? "on" : ""}`} />
           Live {pollMs}ms
-          {plan && plan.status !== "INVALIDATED" && (
+          {planForThisMode && planForThisMode.status !== "INVALIDATED" && (
             <span className="updated">
-              LOCKED {plan.side}
-              {plan.entryZoneLow != null && plan.entryZoneHigh != null
-                ? ` zone ${plan.entryZoneLow}–${plan.entryZoneHigh}`
-                : ` @ ${plan.levels.entry}`}
-              {plan.sessionDate ? ` · ${plan.sessionDate}` : ""}
+              LOCKED {planForThisMode.side}
+              {planForThisMode.entryZoneLow != null && planForThisMode.entryZoneHigh != null
+                ? ` zone ${planForThisMode.entryZoneLow}–${planForThisMode.entryZoneHigh}`
+                : ` @ ${planForThisMode.levels.entry}`}
+              {planForThisMode.sessionDate ? ` · ${planForThisMode.sessionDate}` : ""}
             </span>
           )}
         </div>
@@ -448,14 +296,16 @@ export default function App() {
           type="button"
           className="refresh-btn"
           onClick={requestNewPlan}
-          disabled={plan?.status === "IN_TRADE_HINT"}
+          disabled={planForThisMode?.status === "IN_TRADE_HINT"}
           title={
-            plan?.status === "IN_TRADE_HINT"
+            planForThisMode?.status === "IN_TRADE_HINT"
               ? "Active trade complete/SL hone tak plan locked hai"
               : "Waiting plan cancel karke fresh setup check karein"
           }
         >
-          {plan?.status === "IN_TRADE_HINT" ? "Trade active · locked" : "New plan"}
+          {planForThisMode?.status === "IN_TRADE_HINT"
+            ? "Trade active · locked"
+            : "New plan"}
         </button>
       </nav>
 

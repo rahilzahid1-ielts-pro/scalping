@@ -20,6 +20,7 @@ import {
   createFrozenPlan,
   shouldKeepFrozenPlan,
   REGIME_FLIP_NOTE,
+  type FrozenPlan,
 } from "../src/services/tradePlan";
 import { buildSessionExtras, canAutoLockPlan } from "../src/utils/sessionPlan";
 import { logSignalFromLive } from "../src/calibration";
@@ -52,6 +53,8 @@ const SIGNAL_EVERY_N = 8;
 
 let tickCount = 0;
 let workerRunning = false;
+/** In-process SoT while the worker loop is alive (same object tick() mutates). */
+let liveState: DaemonState | null = null;
 
 // SCALPING-ONLY trend-confirmation state (keyed by daemon planKey assetId-mode).
 // Intraday keys are never inserted here.
@@ -281,6 +284,17 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
 
   let now = computeNowAction(signal, plan, live, asset, quote);
 
+  // Promote waiting → active when entry zone is hit (UI ACTIVE TRADE).
+  // Keep `now` as ENTER_NOW for this tick so entry alerts still fire once.
+  if (plan?.status === "WAITING_ENTRY" && now.action === "ENTER_NOW") {
+    plan = {
+      ...plan,
+      status: "IN_TRADE_HINT",
+      note: `Entry hit @ ${plan.levels.entry}. Trade active; manage original SL/TP.`,
+    };
+    state.plans[planKey(assetId, mode)] = plan;
+  }
+
   if (now.action === "TOO_LATE" || now.action === "PLAN_DEAD") {
     if (plan?.levels && (plan.side === "BUY" || plan.side === "SELL")) {
       invalidateLoggedPlan(
@@ -497,6 +511,42 @@ async function tick(state: DaemonState) {
   saveDaemonState(state);
 }
 
+/**
+ * Authoritative locked plan for asset+mode (alertBot lock cycle).
+ * Prefers live in-memory state; falls back to persisted daemon state file.
+ */
+export function getAuthoritativePlan(
+  assetId: AssetId,
+  mode: TradeMode,
+): FrozenPlan | null {
+  const state = liveState ?? loadDaemonState();
+  return state.plans[planKey(assetId, mode)] ?? null;
+}
+
+/** Clear server lock for this mode (UI "New plan"). Next tick may re-lock. */
+export function clearAuthoritativePlan(assetId: AssetId, mode: TradeMode): void {
+  const state = liveState ?? loadDaemonState();
+  state.plans[planKey(assetId, mode)] = null;
+  const lockPrefix = `LOCK:${assetId}:${mode}:`;
+  const entryPrefix = `ENTRY:${assetId}:${mode}:`;
+  for (const k of Object.keys(state.lastAlertAt)) {
+    if (k.startsWith(lockPrefix) || k.startsWith(entryPrefix)) {
+      delete state.lastAlertAt[k];
+    }
+  }
+  saveDaemonState(state);
+  if (!liveState) liveState = state;
+}
+
+export function isAlertWorkerRunning(): boolean {
+  return workerRunning;
+}
+
+/** Idempotent — call from plan API so local Vite also has a lock SoT. */
+export function ensureAlertWorker(): void {
+  startAlertWorker();
+}
+
 /** Start background poll loop (idempotent). Used by CLI and Railway prodServer. */
 export function startAlertWorker(): void {
   if (workerRunning) {
@@ -506,6 +556,7 @@ export function startAlertWorker(): void {
   workerRunning = true;
 
   const state = loadDaemonState();
+  liveState = state;
   saveDaemonState(state);
   const ch = alertChannelsStatus();
 

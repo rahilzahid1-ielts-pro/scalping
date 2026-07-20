@@ -309,6 +309,20 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/plan/current" && req.method === "GET") {
+      const { handleGetCurrentPlan } = await import("../daemon/planHttp");
+      const result = await handleGetCurrentPlan(url.searchParams);
+      sendJson(res, result.status, result.body);
+      return;
+    }
+
+    if (path === "/api/plan/clear" && req.method === "POST") {
+      const { handleClearCurrentPlan } = await import("../daemon/planHttp");
+      const result = await handleClearCurrentPlan(url.searchParams);
+      sendJson(res, result.status, result.body);
+      return;
+    }
+
     if (path === "/api/quickscalp/latest" && req.method === "GET") {
       const {
         getLiveQuickScalpDb,

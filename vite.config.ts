@@ -47,6 +47,42 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
+        if (req.url?.startsWith("/api/plan/")) {
+          try {
+            const u = new URL(req.url, "http://localhost");
+            const pathOnly = u.pathname;
+            if (pathOnly === "/api/plan/current" && (req.method === "GET" || !req.method)) {
+              const { handleGetCurrentPlan } = await import("./daemon/planHttp");
+              const result = await handleGetCurrentPlan(u.searchParams);
+              res.statusCode = result.status;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result.body));
+              return;
+            }
+            if (pathOnly === "/api/plan/clear" && req.method === "POST") {
+              const { handleClearCurrentPlan } = await import("./daemon/planHttp");
+              const result = await handleClearCurrentPlan(u.searchParams);
+              res.statusCode = result.status;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(result.body));
+              return;
+            }
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: "unknown plan route" }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "plan api error",
+              }),
+            );
+          }
+          return;
+        }
+
         if (req.url?.startsWith("/api/quickscalp/")) {
           try {
             const url = req.url.split("?")[0];
