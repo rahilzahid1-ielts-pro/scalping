@@ -2,7 +2,7 @@ import { fetchMultiTimeframe } from "../services/marketData";
 import { generatePulseSignal } from "../strategies/pulseEngine";
 import {
   getLivePulseDb,
-  getLatestPulse,
+  getOpenOrLatestPulse,
   getBacktestPulseDb,
   summarizePulse,
   countResolvedPulse,
@@ -14,7 +14,7 @@ import {
 
 export async function buildPulseLatestPayload() {
   const liveDb = getLivePulseDb();
-  const latest = getLatestPulse(liveDb);
+  const latest = getOpenOrLatestPulse(liveDb);
   let backtestSummary: ReturnType<typeof summarizePulse> | null = null;
   let validated = false;
 

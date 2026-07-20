@@ -8,6 +8,7 @@ import { generateQuickScalpSignal } from "../src/strategies/quickScalpEngine";
 import { dispatchTradeAlert } from "../src/services/notify";
 import {
   getLiveQuickScalpDb,
+  getOpenOrLatestQuickScalp,
   insertQuickScalpRow,
   signalToRow,
   updateQuickScalpOutcome,
@@ -50,6 +51,15 @@ async function tick(): Promise<void> {
   const db = getLiveQuickScalpDb();
   const last = frames.primary[frames.primary.length - 1];
   const d = ASSETS[ASSET].decimals;
+
+  // After redeploy, resume OPEN from SQLite so lock does not vanish / double-fire.
+  if (!openTrade) {
+    const resumed = getOpenOrLatestQuickScalp(db);
+    if (resumed?.outcome === "OPEN") {
+      openTrade = resumed;
+      log("resumed OPEN", openTrade.direction, openTrade.entry);
+    }
+  }
 
   if (openTrade) {
     const hit = resolveBar(openTrade, last);

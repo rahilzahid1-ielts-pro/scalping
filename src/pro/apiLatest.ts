@@ -6,7 +6,7 @@ import { generateProSignal } from "../strategies/proEngine";
 import { diagnoseSmcGateBlock } from "../strategies/smcGateStatus";
 import {
   getLiveProDb,
-  getLatestPro,
+  getOpenOrLatestPro,
   getBacktestProDb,
   summarizePro,
   countResolvedPro,
@@ -16,7 +16,7 @@ import { PRO_BACKTEST_SNAPSHOT } from "./backtestSnapshot";
 
 export async function buildProLatestPayload() {
   const liveDb = getLiveProDb();
-  const latest = getLatestPro(liveDb);
+  const latest = getOpenOrLatestPro(liveDb);
   let backtestSummary: {
     resolved: number;
     wins: number;

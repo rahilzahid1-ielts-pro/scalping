@@ -8,6 +8,7 @@ import { ActionNow } from "./components/ActionNow";
 import { QuickScalpCard } from "./components/QuickScalpCard";
 import { ProCard } from "./components/ProCard";
 import { PulseCard } from "./components/PulseCard";
+import { HistoryCard } from "./components/HistoryCard";
 import { StrategyCompareCard } from "./components/StrategyCompareCard";
 import { DetailsAccordion } from "./components/DetailsAccordion";
 import { BiasCard } from "./components/BiasCard";
@@ -33,7 +34,7 @@ export default function App() {
   const [mode, setMode] = useState<TradeMode>(boot.mode);
   /** Isolated Quick Scalp desk view — does not change main Scalp/Intraday mode. */
   const [deskView, setDeskView] = useState<
-    "main" | "quick_scalp" | "pro" | "pulse" | "cipher_b" | "fractal"
+    "main" | "quick_scalp" | "pro" | "pulse" | "cipher_b" | "fractal" | "history"
   >("main");
   const [signal, setSignal] = useState<LiveSignal | null>(null);
   /** Display cache of server plan; lock decisions live in alertBot only. */
@@ -82,15 +83,27 @@ export default function App() {
       const q = quoteRef.current?.price;
       if (q != null) next.price = roundPrice(q, asset.decimals);
 
-      setPlan(serverPlan);
-      planRef.current = serverPlan;
+      // Keep paint-cache plan if server briefly returns null (worker restart / redeploy).
+      let nextPlan = serverPlan;
+      if (
+        !nextPlan &&
+        planRef.current &&
+        planRef.current.mode === mode &&
+        planRef.current.assetId === assetId &&
+        planRef.current.status !== "INVALIDATED" &&
+        (planRef.current.side === "BUY" || planRef.current.side === "SELL")
+      ) {
+        nextPlan = planRef.current;
+      }
+      setPlan(nextPlan);
+      planRef.current = nextPlan;
 
       const active =
-        serverPlan &&
-        serverPlan.mode === mode &&
-        serverPlan.status !== "INVALIDATED" &&
-        (serverPlan.side === "BUY" || serverPlan.side === "SELL")
-          ? serverPlan
+        nextPlan &&
+        nextPlan.mode === mode &&
+        nextPlan.status !== "INVALIDATED" &&
+        (nextPlan.side === "BUY" || nextPlan.side === "SELL")
+          ? nextPlan
           : null;
 
       if (active) {
@@ -321,6 +334,13 @@ export default function App() {
         <div className="mode-toggle">
           <button
             type="button"
+            className={deskView === "history" ? "active" : ""}
+            onClick={() => setDeskView("history")}
+          >
+            History
+          </button>
+          <button
+            type="button"
             className={deskView === "main" && mode === "scalping" ? "active" : ""}
             onClick={() => {
               setDeskView("main");
@@ -402,7 +422,9 @@ export default function App() {
               <p>{error || quoteError}</p>
             </div>
           )}
-          {deskView === "quick_scalp" ? (
+          {deskView === "history" ? (
+            <HistoryCard />
+          ) : deskView === "quick_scalp" ? (
             <QuickScalpCard />
           ) : deskView === "pro" ? (
             <ProCard />

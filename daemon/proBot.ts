@@ -11,6 +11,7 @@ import { generateProSignal } from "../src/strategies/proEngine";
 import { dispatchTradeAlert } from "../src/services/notify";
 import {
   getLiveProDb,
+  getOpenOrLatestPro,
   insertProRow,
   signalToRow,
   updateProOutcome,
@@ -53,6 +54,14 @@ async function tick(): Promise<void> {
   const db = getLiveProDb();
   const last = frames.primary[frames.primary.length - 1];
   const d = ASSETS[ASSET].decimals;
+
+  if (!openTrade) {
+    const resumed = getOpenOrLatestPro(db);
+    if (resumed?.outcome === "OPEN") {
+      openTrade = resumed;
+      log("resumed OPEN", openTrade.direction, openTrade.entry);
+    }
+  }
 
   if (openTrade) {
     const hit = resolveBar(openTrade, last);

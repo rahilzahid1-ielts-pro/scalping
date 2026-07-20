@@ -158,6 +158,35 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
+        if (req.url?.startsWith("/api/history")) {
+          try {
+            const u = new URL(req.url, "http://localhost");
+            if (u.pathname === "/api/history" && (req.method === "GET" || !req.method)) {
+              const { buildHistoryPayload } = await import("./src/history/apiHistory");
+              const payload = await buildHistoryPayload({
+                date: u.searchParams.get("date"),
+                module: u.searchParams.get("module"),
+              });
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(payload));
+              return;
+            }
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: "unknown history route" }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "history api error",
+              }),
+            );
+          }
+          return;
+        }
+
         if (req.url?.startsWith("/api/cipherbclone/") || req.url?.startsWith("/api/fractal/")) {
           try {
             const url = req.url.split("?")[0];

@@ -11,6 +11,7 @@ import { generatePulseSignal } from "../src/strategies/pulseEngine";
 import { dispatchTradeAlert } from "../src/services/notify";
 import {
   getLivePulseDb,
+  getOpenOrLatestPulse,
   insertPulseRow,
   signalToRow,
   updatePulseOutcome,
@@ -52,6 +53,14 @@ async function tick(): Promise<void> {
   const db = getLivePulseDb();
   const last = frames.primary[frames.primary.length - 1];
   const d = ASSETS[ASSET].decimals;
+
+  if (!openTrade) {
+    const resumed = getOpenOrLatestPulse(db);
+    if (resumed?.outcome === "OPEN") {
+      openTrade = resumed;
+      log("resumed OPEN", openTrade.direction, openTrade.entry);
+    }
+  }
 
   if (openTrade) {
     const hit = resolveBar(openTrade, last);

@@ -174,6 +174,17 @@ export function getLatestQuickScalp(db: Database.Database): QuickScalpRow | null
   return r ? rowFromDb(r) : null;
 }
 
+/** Prefer OPEN (active trade) so UI does not jump to WAIT after redeploy. */
+export function getOpenOrLatestQuickScalp(db: Database.Database): QuickScalpRow | null {
+  const open = db
+    .prepare(
+      `SELECT * FROM quick_scalp_signals WHERE outcome = 'OPEN' ORDER BY timestamp DESC LIMIT 1`,
+    )
+    .get() as Record<string, unknown> | undefined;
+  if (open) return rowFromDb(open);
+  return getLatestQuickScalp(db);
+}
+
 export function listQuickScalpRows(db: Database.Database): QuickScalpRow[] {
   const rows = db
     .prepare(`SELECT * FROM quick_scalp_signals ORDER BY timestamp ASC`)

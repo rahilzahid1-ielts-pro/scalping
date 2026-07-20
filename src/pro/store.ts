@@ -178,6 +178,17 @@ export function getLatestPro(db: Database.Database): ProRow | null {
   return r ? rowFromDb(r) : null;
 }
 
+/** Prefer OPEN so active Pro lock stays visible after worker restart. */
+export function getOpenOrLatestPro(db: Database.Database): ProRow | null {
+  const open = db
+    .prepare(
+      `SELECT * FROM pro_signals WHERE outcome = 'OPEN' ORDER BY timestamp DESC LIMIT 1`,
+    )
+    .get() as Record<string, unknown> | undefined;
+  if (open) return rowFromDb(open);
+  return getLatestPro(db);
+}
+
 export function listProRows(db: Database.Database): ProRow[] {
   const rows = db
     .prepare(`SELECT * FROM pro_signals ORDER BY timestamp ASC`)

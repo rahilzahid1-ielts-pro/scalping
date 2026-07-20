@@ -1,0 +1,243 @@
+import { useEffect, useMemo, useState } from "react";
+
+type ModuleId =
+  | "all"
+  | "scalp"
+  | "intraday"
+  | "quick_scalp"
+  | "qs_pro"
+  | "pro"
+  | "cipher_b"
+  | "fractal";
+
+interface HistoryTrade {
+  id: string;
+  module: string;
+  moduleLabel: string;
+  side: "BUY" | "SELL";
+  entry: number;
+  sl: number;
+  tp1: number;
+  tp2: number | null;
+  outcome: string;
+  outcomeLabel: string;
+  realizedR: number | null;
+  at: number;
+  atKarachi: string;
+  resolvedAt: number | null;
+  resolvedKarachi: string | null;
+  description: string;
+}
+
+interface ModuleStats {
+  module: string;
+  moduleLabel: string;
+  trades: number;
+  open: number;
+  wins: number;
+  losses: number;
+  other: number;
+  winRate: number | null;
+  avgR: number | null;
+}
+
+interface HistoryPayload {
+  ok: boolean;
+  date: string;
+  timezone: string;
+  moduleFilter: string;
+  trades: HistoryTrade[];
+  byModule: ModuleStats[];
+  totals: ModuleStats;
+  error?: string;
+}
+
+function karachiTodayInput(): string {
+  const shift = 5 * 60 * 60 * 1000;
+  const d = new Date(Date.now() + shift);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function px(n: number): string {
+  return Number.isFinite(n) ? n.toFixed(2) : "—";
+}
+
+function outcomeClass(outcome: string): string {
+  if (outcome === "TP1_HIT") return "hist-out win";
+  if (outcome === "SL_HIT") return "hist-out loss";
+  if (outcome === "OPEN") return "hist-out open";
+  return "hist-out other";
+}
+
+const MODULES: { id: ModuleId; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "scalp", label: "Scalp" },
+  { id: "intraday", label: "Intraday" },
+  { id: "quick_scalp", label: "Quick Scalp" },
+  { id: "qs_pro", label: "QS Pro" },
+  { id: "pro", label: "Pro" },
+  { id: "cipher_b", label: "Cipher B" },
+  { id: "fractal", label: "Fractal" },
+];
+
+export function HistoryCard() {
+  const [date, setDate] = useState(karachiTodayInput);
+  const [module, setModule] = useState<ModuleId>("all");
+  const [data, setData] = useState<HistoryPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      setLoading(true);
+      const q = new URLSearchParams({ date, module });
+      void fetch(`/api/history?${q}`)
+        .then(async (r) => {
+          const j = (await r.json()) as HistoryPayload;
+          if (!r.ok || j.ok === false) {
+            throw new Error(j.error || `HTTP ${r.status}`);
+          }
+          return j;
+        })
+        .then((j) => {
+          if (!cancelled) {
+            setData(j);
+            setError(null);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) setError(e instanceof Error ? e.message : "fetch failed");
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    };
+    load();
+    const id = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [date, module]);
+
+  const totalsLine = useMemo(() => {
+    const t = data?.totals;
+    if (!t) return null;
+    const wr = t.winRate == null ? "—" : `${t.winRate.toFixed(1)}%`;
+    const ar = t.avgR == null ? "—" : `${t.avgR >= 0 ? "+" : ""}${t.avgR.toFixed(2)}R`;
+    return `${t.trades} trades · ${t.wins}W / ${t.losses}L · ${t.open} open · WR ${wr} · avg ${ar}`;
+  }, [data]);
+
+  return (
+    <section className="panel history-panel">
+      <div className="panel-head">
+        <h3>TRADE HISTORY</h3>
+        <span className="badge">Asia/Karachi</span>
+      </div>
+
+      <div className="history-filters">
+        <label className="history-field">
+          <span>Date</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <div className="history-modules" role="tablist" aria-label="Module filter">
+          {MODULES.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={module === m.id ? "active" : ""}
+              onClick={() => setModule(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="refresh-btn history-today"
+          onClick={() => setDate(karachiTodayInput())}
+        >
+          Today
+        </button>
+      </div>
+
+      {loading && !data && <p className="muted">Loading history…</p>}
+      {error && <p className="history-error">{error}</p>}
+
+      {data && (
+        <>
+          <div className="history-summary">
+            <strong>{data.date}</strong>
+            <span>{totalsLine}</span>
+          </div>
+
+          {data.byModule.length > 0 && (
+            <div className="history-module-stats">
+              {data.byModule.map((s) => (
+                <div key={s.module} className="history-stat-chip">
+                  <strong>{s.moduleLabel}</strong>
+                  <span>
+                    {s.trades} · {s.wins}W/{s.losses}L
+                    {s.winRate != null ? ` · ${s.winRate.toFixed(0)}%` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {data.trades.length === 0 ? (
+            <p className="muted">
+              Is din koi recorded trade nahi — jab module lock karega yahan dikhega (TP1/SL
+              ke sath).
+            </p>
+          ) : (
+            <div className="history-table-wrap">
+              <table className="history-table">
+                <thead>
+                  <tr>
+                    <th>Time (PKT)</th>
+                    <th>Module</th>
+                    <th>Side</th>
+                    <th>Entry</th>
+                    <th>SL</th>
+                    <th>TP1</th>
+                    <th>Result</th>
+                    <th>R</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.trades.map((t) => (
+                    <tr key={t.id}>
+                      <td>{t.atKarachi}</td>
+                      <td>{t.moduleLabel}</td>
+                      <td className={t.side === "BUY" ? "side-buy" : "side-sell"}>
+                        {t.side}
+                      </td>
+                      <td>{px(t.entry)}</td>
+                      <td>{px(t.sl)}</td>
+                      <td>{px(t.tp1)}</td>
+                      <td>
+                        <span className={outcomeClass(t.outcome)}>{t.outcomeLabel}</span>
+                      </td>
+                      <td>
+                        {t.realizedR == null
+                          ? "—"
+                          : `${t.realizedR >= 0 ? "+" : ""}${t.realizedR.toFixed(2)}`}
+                      </td>
+                      <td className="history-desc">{t.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}

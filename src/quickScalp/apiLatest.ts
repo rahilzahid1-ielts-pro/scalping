@@ -7,7 +7,7 @@ import { generateQuickScalpSignal } from "../strategies/quickScalpEngine";
 import { diagnoseSmcGateBlock } from "../strategies/smcGateStatus";
 import {
   getLiveQuickScalpDb,
-  getLatestQuickScalp,
+  getOpenOrLatestQuickScalp,
   getBacktestQuickScalpDb,
   summarizeQuickScalp,
   countResolvedQuickScalp,
@@ -19,7 +19,7 @@ import {
 
 export async function buildQuickScalpLatestPayload() {
   const liveDb = getLiveQuickScalpDb();
-  const latest = getLatestQuickScalp(liveDb);
+  const latest = getOpenOrLatestQuickScalp(liveDb);
   let backtestSummary: ReturnType<typeof summarizeQuickScalp> | null = null;
   let validated = false;
 

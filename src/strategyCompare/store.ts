@@ -217,6 +217,20 @@ export function getLatestStrategySignal(
   return r ? rowFromDb(r) : null;
 }
 
+/** Prefer OPEN so Fractal/Cipher lock stays visible after redeploy. */
+export function getOpenOrLatestStrategySignal(
+  db: Database.Database,
+  strategy: CompareStrategy,
+): StrategySignalRow | null {
+  const open = db
+    .prepare(
+      `SELECT * FROM strategy_signals WHERE strategy = ? AND outcome = 'OPEN' ORDER BY time DESC LIMIT 1`,
+    )
+    .get(strategy) as Record<string, unknown> | undefined;
+  if (open) return rowFromDb(open);
+  return getLatestStrategySignal(db, strategy);
+}
+
 export function listStrategyRows(
   db: Database.Database,
   strategy?: CompareStrategy,

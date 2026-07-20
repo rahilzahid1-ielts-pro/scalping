@@ -11,6 +11,7 @@ import { generateIctSignal } from "../strategies/archived/ictSignal";
 import { candlesAsUnixSeconds, resolveBarOutcome } from "./resolve";
 import {
   getLiveStrategyDb,
+  getOpenOrLatestStrategySignal,
   insertStrategyRow,
   makeStrategyRow,
   updateStrategyOutcome,
@@ -71,6 +72,14 @@ export function createCompareBot(cfg: CompareBotConfig) {
     const db = getLiveStrategyDb();
     const last = frames.primary[frames.primary.length - 1];
     const d = ASSETS[ASSET].decimals;
+
+    if (!openTrade) {
+      const resumed = getOpenOrLatestStrategySignal(db, cfg.strategy);
+      if (resumed?.outcome === "OPEN") {
+        openTrade = resumed;
+        log("resumed OPEN", openTrade.direction, openTrade.entry);
+      }
+    }
 
     if (openTrade) {
       const hit = resolveBarOutcome(openTrade.direction, openTrade.sl, openTrade.tp1, last);

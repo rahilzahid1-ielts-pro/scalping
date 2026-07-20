@@ -176,6 +176,17 @@ export function getLatestPulse(db: Database.Database): PulseRow | null {
   return r ? rowFromDb(r) : null;
 }
 
+/** Prefer OPEN so QS Pro lock stays visible after worker restart. */
+export function getOpenOrLatestPulse(db: Database.Database): PulseRow | null {
+  const open = db
+    .prepare(
+      `SELECT * FROM pulse_signals WHERE outcome = 'OPEN' ORDER BY timestamp DESC LIMIT 1`,
+    )
+    .get() as Record<string, unknown> | undefined;
+  if (open) return rowFromDb(open);
+  return getLatestPulse(db);
+}
+
 export function listPulseRows(db: Database.Database): PulseRow[] {
   const rows = db
     .prepare(`SELECT * FROM pulse_signals ORDER BY timestamp ASC`)

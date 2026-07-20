@@ -341,6 +341,20 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/history" && req.method === "GET") {
+      const { buildHistoryPayload } = await import("../src/history/apiHistory");
+      const u = new URL(req.url || "/api/history", "http://localhost");
+      sendJson(
+        res,
+        200,
+        await buildHistoryPayload({
+          date: u.searchParams.get("date"),
+          module: u.searchParams.get("module"),
+        }),
+      );
+      return;
+    }
+
     if (path === "/api/cipherbclone/latest" && req.method === "GET") {
       const { buildLatestPayload } = await import("../src/strategyCompare/apiLatest");
       sendJson(res, 200, await buildLatestPayload("cipher_b_clone"));

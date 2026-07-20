@@ -2,7 +2,7 @@ import type { CompareStrategy } from "./store";
 import {
   countResolvedStrategy,
   getBacktestStrategyDb,
-  getLatestStrategySignal,
+  getOpenOrLatestStrategySignal,
   getLiveStrategyDb,
   summarizeStrategy,
 } from "./store";
@@ -19,7 +19,7 @@ import { generateCipherBLiveSignal } from "../strategies/cipherBLive";
 /** Shared JSON shape for GET /api/{cipherbclone|fractal}/latest */
 export async function buildLatestPayload(strategy: CompareStrategy) {
   const liveDb = getLiveStrategyDb();
-  const latest = getLatestStrategySignal(liveDb, strategy);
+  const latest = getOpenOrLatestStrategySignal(liveDb, strategy);
   let validated = false;
   let backtestSummary: ReturnType<typeof summarizeStrategy> | null = null;
   try {

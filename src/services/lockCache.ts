@@ -48,27 +48,31 @@ export function clearCachedLock(moduleKey: string): void {
   }
 }
 
-/** Keep OPEN locks; drop cache once server says resolved (or clear stale > 36h). */
+/**
+ * Server row wins when present.
+ * If server empty (redeploy wipe): keep OPEN forever (until 7d), keep resolved 48h.
+ */
 export function syncCachedLock(
   moduleKey: string,
   latest: CachedLock | null | undefined,
 ): CachedLock | null {
   if (latest) {
     saveCachedLock(moduleKey, latest);
-    if (latest.outcome !== "OPEN") {
-      // Keep resolved briefly so UI still shows what hit, then leave it.
-      return latest;
-    }
     return latest;
   }
   const cached = loadCachedLock(moduleKey);
   if (!cached) return null;
   const age = Date.now() - (cached.time || 0);
-  if (age > 36 * 60 * 60 * 1000) {
+  if (cached.outcome === "OPEN") {
+    if (age > 7 * 24 * 60 * 60 * 1000) {
+      clearCachedLock(moduleKey);
+      return null;
+    }
+    return cached;
+  }
+  if (age > 48 * 60 * 60 * 1000) {
     clearCachedLock(moduleKey);
     return null;
   }
-  // Server empty (redeploy wipe) — keep last OPEN so levels don't vanish mid-trade.
-  if (cached.outcome === "OPEN") return cached;
   return cached;
 }
