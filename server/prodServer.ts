@@ -357,6 +357,12 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/pro/latest" && req.method === "GET") {
+      const { buildProLatestPayload } = await import("../src/pro/apiLatest");
+      sendJson(res, 200, buildProLatestPayload());
+      return;
+    }
+
     if (path === "/api/cipherbclone/latest" || path === "/api/ict/latest" || path === "/api/fractal/latest") {
       sendJson(res, 410, {
         ok: false,
@@ -464,5 +470,19 @@ server.listen(PORT, "0.0.0.0", () => {
     },
   ).catch((e) => {
     console.error("[prodServer] Failed to start Quick Scalp worker:", e);
+  });
+
+  void import("../daemon/proBot").then(
+    ({ startProWorker, shouldAutoStartProWorker }) => {
+      if (shouldAutoStartProWorker()) {
+        startProWorker();
+      } else {
+        console.log(
+          "[prodServer] Pro worker OFF — set ENABLE_PRO_WORKER=1 to enable",
+        );
+      }
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Failed to start Pro worker:", e);
   });
 });

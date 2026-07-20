@@ -27,6 +27,8 @@ import {
 } from "../src/backtest/engine";
 import { runQuickScalpBacktest } from "../src/quickScalp/backtest";
 import { BACKTEST_DB_PATH } from "../src/quickScalp/store";
+import { runProBacktest } from "../src/pro/backtest";
+import { BACKTEST_DB_PATH as PRO_BT_DB, isProBacktestValidated } from "../src/pro/store";
 import { runCompareStrategyBacktest } from "../src/strategyCompare/backtest";
 import {
   BACKTEST_DB_PATH as COMPARE_BT_DB,
@@ -36,6 +38,7 @@ import {
 type CliStrategy =
   | "main"
   | "quick_scalp"
+  | "pro"
   | "cipher_b_clone"
   | "ict"
   | "fractal";
@@ -45,6 +48,7 @@ const COMPARE_STRATEGIES: CompareStrategy[] = ["cipher_b_clone", "ict", "fractal
 function parseStrategy(raw: string): CliStrategy {
   const s = raw.toLowerCase();
   if (s === "quick_scalp") return "quick_scalp";
+  if (s === "pro") return "pro";
   if (s === "cipher_b_clone") return "cipher_b_clone";
   if (s === "ict") return "ict";
   if (s === "fractal") return "fractal";
@@ -63,6 +67,7 @@ function parseArgs(argv: string[]) {
 Usage:
   npm run backtest -- --file=C:\\path\\to\\XAUUSD_M5.json [--days=365] [--spread=0.25] [--mode=both]
   npm run backtest -- --file=... --strategy=quick_scalp [--days=365] [--spread=0.25]
+  npm run backtest -- --file=... --strategy=pro [--days=365] [--spread=0.25]
   npm run backtest -- --file=... --strategy=cipher_b_clone|ict|fractal
 
 Options:
@@ -71,7 +76,7 @@ Options:
   --spread=            Absolute price spread for Gold (default 0.25).
   --mode=              scalping | intraday | both (default both) — ignored for isolated strategies
   --asset=             XAUUSD | XAGUSD | BTCUSD (default XAUUSD)
-  --strategy=          main | quick_scalp | cipher_b_clone | ict | fractal
+  --strategy=          main | quick_scalp | pro | cipher_b_clone | ict | fractal
   --trend-confirm-bars=  scalping trend-confirmation M (default 4; main strategy only)
 `);
     process.exit(1);
@@ -158,6 +163,56 @@ QUICK-SCALP-COMPARE  signals=${stats.signals} resolved=${stats.resolved} winRate
 `);
 }
 
+function runProMain(opts: ReturnType<typeof parseArgs>) {
+  console.log(`
+Pro Backtest (strict SMC gates — isolated pro_signals table)
+──────────────────────────────────────────────────────
+File    : ${opts.file}
+Asset   : ${opts.asset}
+Days    : ${opts.days}
+Spread  : ${opts.spread}
+Store   : ${PRO_BT_DB}  table=pro_signals (main signals + quick_scalp untouched)
+Gates   : conf≥80, HTF aligned, no conflict, TREND only, daily bias agrees
+`);
+
+  const loaded = loadHistoricalFile(opts.file);
+  console.log(`
+Data quality
+────────────
+${loaded.timezoneNote}
+Bars    : ${loaded.quality.bars}
+Range   : ${loaded.quality.firstIso} → ${loaded.quality.lastIso}
+`);
+
+  const t0 = Date.now();
+  const stats = runProBacktest({
+    candles: loaded.candles,
+    days: opts.days,
+    spread: opts.spread,
+    symbol: opts.asset,
+  });
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+
+  const wr = stats.winRate == null ? "n/a" : `${stats.winRate.toFixed(1)}%`;
+  const avgR = stats.avgR == null ? "n/a" : stats.avgR.toFixed(3);
+  const dd = stats.maxDrawdownR == null ? "n/a" : stats.maxDrawdownR.toFixed(2);
+  const validated = isProBacktestValidated(stats);
+
+  console.log(`
+Pro results (${elapsed}s)
+────────────────────────────────
+Signals fired     : ${stats.signals}
+Resolved (TP1/SL) : ${stats.resolved}  (still OPEN: ${stats.openLeft})
+TP1 wins / losses : ${stats.wins} / ${stats.losses}
+TP1 win rate      : ${wr}
+Avg R (TP1)       : ${avgR}
+Max drawdown R    : ${dd}
+Validated badge   : ${validated ? "YES (≥58% / n≥50 / avgR>0)" : "NO — UI shows UNVALIDATED"}
+
+PRO-COMPARE  signals=${stats.signals} resolved=${stats.resolved} winRate=${wr} avgR=${avgR} maxDdR=${dd} validated=${validated}
+`);
+}
+
 function runCompareMain(opts: ReturnType<typeof parseArgs>, strategy: CompareStrategy) {
   const labels: Record<CompareStrategy, string> = {
     cipher_b_clone: "Cipher B Clone (WaveTrend-only)",
@@ -222,6 +277,10 @@ function main() {
 
   if (opts.strategy === "quick_scalp") {
     void runQuickScalpMain(opts);
+    return;
+  }
+  if (opts.strategy === "pro") {
+    void runProMain(opts);
     return;
   }
   if ((COMPARE_STRATEGIES as string[]).includes(opts.strategy)) {

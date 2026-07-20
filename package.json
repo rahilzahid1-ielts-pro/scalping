@@ -12,6 +12,8 @@
     "calibrate": "tsx daemon/calibrate.ts",
     "backtest": "tsx daemon/backtest.ts",
     "quickscalp": "tsx daemon/quickScalpBot.ts",
+    "pro": "tsx daemon/proBot.ts",
+    "backtest:pro": "tsx daemon/backtest.ts --strategy=pro --file=data/XAUUSD_M5.json --days=365 --spread=0.25",
     "gen-vapid": "node scripts/gen-vapid.mjs",
     "gen-icons": "node scripts/gen-icons.mjs"
   },

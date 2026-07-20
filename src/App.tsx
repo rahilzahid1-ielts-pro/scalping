@@ -6,6 +6,7 @@ import type { AssetId, LiveSignal, TradeMode } from "./types";
 import { TradingViewChart } from "./components/TradingViewChart";
 import { ActionNow } from "./components/ActionNow";
 import { QuickScalpCard } from "./components/QuickScalpCard";
+import { ProCard } from "./components/ProCard";
 import { DetailsAccordion } from "./components/DetailsAccordion";
 import { BiasCard } from "./components/BiasCard";
 import { PredictionPanel } from "./components/PredictionPanel";
@@ -29,7 +30,7 @@ export default function App() {
   const [assetId] = useState<AssetId>("XAUUSD");
   const [mode, setMode] = useState<TradeMode>(boot.mode);
   /** Isolated Quick Scalp desk view — does not change main Scalp/Intraday mode. */
-  const [deskView, setDeskView] = useState<"main" | "quick_scalp">("main");
+  const [deskView, setDeskView] = useState<"main" | "quick_scalp" | "pro">("main");
   const [signal, setSignal] = useState<LiveSignal | null>(null);
   /** Display cache of server plan; lock decisions live in alertBot only. */
   const [plan, setPlan] = useState<FrozenPlan | null>(boot.plan);
@@ -291,6 +292,13 @@ export default function App() {
           >
             Quick Scalp
           </button>
+          <button
+            type="button"
+            className={deskView === "pro" ? "active" : ""}
+            onClick={() => setDeskView("pro")}
+          >
+            Pro
+          </button>
         </div>
         <button
           type="button"
@@ -321,6 +329,8 @@ export default function App() {
           )}
           {deskView === "quick_scalp" ? (
             <QuickScalpCard />
+          ) : deskView === "pro" ? (
+            <ProCard />
           ) : (
             nowAction && (
               <ActionNow

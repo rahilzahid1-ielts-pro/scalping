@@ -136,6 +136,31 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
+        if (req.url?.startsWith("/api/pro/")) {
+          try {
+            const url = req.url.split("?")[0];
+            if (url === "/api/pro/latest" && (req.method === "GET" || !req.method)) {
+              const { buildProLatestPayload } = await import("./src/pro/apiLatest");
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(buildProLatestPayload()));
+              return;
+            }
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: "unknown pro route" }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "pro api error",
+              }),
+            );
+          }
+          return;
+        }
+
         if (
           req.url?.startsWith("/api/cipherbclone/") ||
           req.url?.startsWith("/api/ict/") ||
