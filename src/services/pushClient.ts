@@ -32,8 +32,11 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
   try {
-    // useServiceWorkerAlerts registers /sw.js; wait until it's active.
-    return await navigator.serviceWorker.ready;
+    // Always register ourselves so Enable Push works on any desk tab,
+    // even if useServiceWorkerAlerts hasn't finished yet.
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    return reg;
   } catch {
     return null;
   }

@@ -250,6 +250,27 @@ export default function App() {
         <div className="topbar-meta">
           <span className={`live-dot ${quote && now - quote.ts < 2000 ? "on" : ""}`} />
           Live {pollMs}ms
+          <button
+            type="button"
+            className={`topbar-push ${pushState === "subscribed" ? "on" : ""}`}
+            onClick={() => void enablePushNotifications()}
+            disabled={pushState === "unsupported" || pushState === "denied"}
+            title={
+              pushState === "subscribed"
+                ? "Closed-app push ON — phone pe alert aayega jab app band ho"
+                : pushState === "denied"
+                  ? "Notifications blocked — phone Settings → Site notifications ON karo"
+                  : "Home-screen app band hone pe bhi trade alert ke liye Push ON karo"
+            }
+          >
+            {pushState === "subscribed"
+              ? "✅ Push ON"
+              : pushState === "denied"
+                ? "Push Blocked"
+                : pushState === "unsupported"
+                  ? "Push N/A"
+                  : "🔔 Enable Push"}
+          </button>
           {planForThisMode && planForThisMode.status !== "INVALIDATED" && (
             <span className="updated">
               LOCKED {planForThisMode.side}
@@ -410,8 +431,10 @@ export default function App() {
       </main>
 
       <p className="footer-note">
-        Pehle <strong>Alerts ON</strong> + <strong>Test sound</strong> dabao (browser audio unlock).
-        Plan lock = 4 beeps · Entry zone hit = 6 beeps. Intraday = 1 zone din bhar — sirf <strong>New plan</strong> se badlegi.
+        <strong>Alerts ON</strong> = app khuli ho tab sound.{" "}
+        <strong>Enable Push</strong> (upar) = app band / home-screen pe bhi notification.
+        iPhone: Safari → Share → Add to Home Screen, phir Push ON. Plan lock = 4 beeps · Entry = 6
+        beeps.
       </p>
     </div>
   );

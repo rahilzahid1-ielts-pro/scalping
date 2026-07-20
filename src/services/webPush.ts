@@ -116,7 +116,7 @@ export async function sendWebPushToAll(payload: TradeAlertPayload): Promise<numb
             keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
           },
           json,
-          { TTL: 600, urgency: "high" },
+          { TTL: 86_400, urgency: "high" },
         );
         delivered += 1;
       } catch (e: unknown) {

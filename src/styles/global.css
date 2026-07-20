@@ -130,6 +130,26 @@ button.active {
   opacity: 0.8;
 }
 
+.topbar-push {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.topbar-push.on {
+  border-color: rgba(61, 186, 138, 0.55);
+  color: var(--buy);
+}
+
+.topbar-push:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .controls {
   display: flex;
   flex-wrap: wrap;
