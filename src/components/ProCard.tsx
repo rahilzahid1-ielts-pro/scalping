@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { syncCachedLock, type CachedLock } from "../services/lockCache";
+import { syncExitAdvisory, type ExitAdvisory } from "../services/exitAdvisory";
+import { ExitAdvisoryBanner } from "./ExitAdvisoryBanner";
 
 interface LatestPayload {
   ok: boolean;
@@ -48,12 +50,17 @@ function parseReasons(raw: string): string[] {
   }
 }
 
-function useModuleLatest(apiPath: string, cacheKey: string) {
+function useLockedModule(
+  apiPath: string,
+  cacheKey: string,
+  moduleLabel: string,
+) {
   const [data, setData] = useState<LatestPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cached, setCached] = useState<CachedLock | null>(() =>
     syncCachedLock(cacheKey, null),
   );
+  const [advisory, setAdvisory] = useState<ExitAdvisory | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +85,23 @@ function useModuleLatest(apiPath: string, cacheKey: string) {
               }
             : null;
           setCached(syncCachedLock(cacheKey, fromServer));
+          const adv = syncExitAdvisory(
+            cacheKey,
+            moduleLabel,
+            j.latest
+              ? {
+                  side: j.latest.direction,
+                  entry: j.latest.entry,
+                  sl: j.latest.sl,
+                  tp1: j.latest.tp1,
+                  outcome: j.latest.outcome,
+                  time: j.latest.timestamp,
+                }
+              : null,
+            j.waitReason,
+          );
+          setAdvisory(adv);
+          if (adv) setCached(syncCachedLock(cacheKey, fromServer));
         })
         .catch((e) => {
           if (!cancelled) setError(e instanceof Error ? e.message : "fetch failed");
@@ -89,7 +113,7 @@ function useModuleLatest(apiPath: string, cacheKey: string) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [apiPath, cacheKey]);
+  }, [apiPath, cacheKey, moduleLabel]);
 
   const locked = data?.latest
     ? data.latest
@@ -108,41 +132,54 @@ function useModuleLatest(apiPath: string, cacheKey: string) {
           timestamp: cached.time,
         }
       : null;
-  const usingPhoneCache = !data?.latest && !!cached;
 
-  return { data, error, locked, usingPhoneCache, live: !locked ? (data?.live ?? null) : null };
+  const usingPhoneCache = !data?.latest && !!cached;
+  const isConfirmed =
+    !!locked &&
+    (locked.outcome === "OPEN" ||
+      locked.outcome === "TP1_HIT" ||
+      locked.outcome === "SL_HIT" ||
+      locked.outcome === "INVALIDATED");
+
+  const shown = isConfirmed
+    ? {
+        direction: locked!.direction,
+        entry: locked!.entry,
+        sl: locked!.sl,
+        tp1: locked!.tp1,
+        tp2: locked!.tp2,
+        dailyBias: locked!.dailyBias,
+        outcome: locked!.outcome,
+        meta: usingPhoneCache
+          ? `LOCKED (phone cache) · ${locked!.outcome}`
+          : `LOCKED · ${locked!.outcome} · ${new Date(locked!.timestamp).toLocaleString()}`,
+        reasons: parseReasons(locked!.reason),
+      }
+    : null;
+
+  return {
+    data,
+    error,
+    advisory,
+    setAdvisory,
+    shown,
+    forming: !shown ? (data?.live ?? null) : null,
+  };
 }
 
-export function ProCard() {
-  const { data, error, locked, usingPhoneCache, live } = useModuleLatest(
-    "/api/pro/latest",
-    "pro",
+function ModuleCardShell(props: {
+  label: string;
+  subtitle: string;
+  apiPath: string;
+  cacheKey: string;
+  moduleLabel: string;
+  emptyHint: string;
+}) {
+  const { data, error, advisory, setAdvisory, shown, forming } = useLockedModule(
+    props.apiPath,
+    props.cacheKey,
+    props.moduleLabel,
   );
-  const shown = locked
-    ? {
-        direction: locked.direction,
-        entry: locked.entry,
-        sl: locked.sl,
-        tp1: locked.tp1,
-        tp2: locked.tp2,
-        dailyBias: locked.dailyBias,
-        meta: usingPhoneCache
-          ? `PHONE CACHE · Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`
-          : `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
-        reasons: parseReasons(locked.reason),
-      }
-    : live
-      ? {
-          direction: live.direction,
-          entry: live.entry,
-          sl: live.sl,
-          tp1: live.tp1,
-          tp2: live.tp2,
-          dailyBias: live.dailyBias,
-          meta: `LIVE preview · conf ${live.confidence}% · ${live.regime}`,
-          reasons: [] as string[],
-        }
-      : null;
 
   const tone =
     shown?.direction === "BUY"
@@ -150,16 +187,19 @@ export function ProCard() {
       : shown?.direction === "SELL"
         ? "enter-sell"
         : "wait";
+  const headline = shown
+    ? shown.outcome === "OPEN"
+      ? shown.direction
+      : `${shown.direction} · ${shown.outcome.replace("_", " ")}`
+    : "WAITING";
 
   return (
     <section className={`action-now tone-${tone}`}>
-      <p className="action-now-label">PRO · Gold</p>
-      <h2 className="action-now-headline">
-        {shown ? `${shown.direction}` : "WAITING"}
-      </h2>
-      <p className="action-now-sub">
-        Strict SMC — conf≥80 · HTF aligned · trend only · daily bias agrees
-      </p>
+      <p className="action-now-label">{props.label}</p>
+      <h2 className="action-now-headline">{headline}</h2>
+      <p className="action-now-sub">{props.subtitle}</p>
+
+      <ExitAdvisoryBanner advisory={advisory} onDismiss={() => setAdvisory(null)} />
 
       {!data?.validated && (
         <div className="liquidity-flag">
@@ -201,10 +241,18 @@ export function ProCard() {
 
       {!shown && !error && (
         <p className="action-now-detail">
-          {data?.waitReason
-            ? `Block: ${data.waitReason}`
-            : "Abhi koi Pro setup nahi — sirf high-quality trend + HTF + daily agreement pe fire."}
+          {data?.waitReason ? `Block: ${data.waitReason}` : props.emptyHint}
         </p>
+      )}
+
+      {forming && (
+        <div className="forming-preview">
+          <strong>FORMING (lock nahi hua)</strong>
+          <p>
+            {forming.direction} @ {forming.entry.toFixed(2)} · conf {forming.confidence}% —
+            abhi entry mat lo. Sirf LOCKED pe trade.
+          </p>
+        </div>
       )}
 
       {shown && (
@@ -240,5 +288,18 @@ export function ProCard() {
         </>
       )}
     </section>
+  );
+}
+
+export function ProCard() {
+  return (
+    <ModuleCardShell
+      label="PRO · Gold"
+      subtitle="Strict SMC — conf≥80 · HTF aligned · trend only · daily bias agrees"
+      apiPath="/api/pro/latest"
+      cacheKey="pro"
+      moduleLabel="Pro"
+      emptyHint="Confirmed LOCK ka wait — preview pe trade mat lo."
+    />
   );
 }

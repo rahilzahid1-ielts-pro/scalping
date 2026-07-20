@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { syncCachedLock, type CachedLock } from "../services/lockCache";
+import { syncExitAdvisory, type ExitAdvisory } from "../services/exitAdvisory";
+import { ExitAdvisoryBanner } from "./ExitAdvisoryBanner";
 
 interface LatestPayload {
   ok: boolean;
@@ -49,6 +51,7 @@ function parseReasons(raw: string): string[] {
 }
 
 const CACHE_KEY = "qs_pro";
+const MODULE_LABEL = "QS Pro";
 
 export function PulseCard() {
   const [data, setData] = useState<LatestPayload | null>(null);
@@ -56,6 +59,7 @@ export function PulseCard() {
   const [cached, setCached] = useState<CachedLock | null>(() =>
     syncCachedLock(CACHE_KEY, null),
   );
+  const [advisory, setAdvisory] = useState<ExitAdvisory | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +84,23 @@ export function PulseCard() {
               }
             : null;
           setCached(syncCachedLock(CACHE_KEY, fromServer));
+          const adv = syncExitAdvisory(
+            CACHE_KEY,
+            MODULE_LABEL,
+            j.latest
+              ? {
+                  side: j.latest.direction,
+                  entry: j.latest.entry,
+                  sl: j.latest.sl,
+                  tp1: j.latest.tp1,
+                  outcome: j.latest.outcome,
+                  time: j.latest.timestamp,
+                }
+              : null,
+            j.waitReason,
+          );
+          setAdvisory(adv);
+          if (adv) setCached(syncCachedLock(CACHE_KEY, fromServer));
         })
         .catch((e) => {
           if (!cancelled) setError(e instanceof Error ? e.message : "fetch failed");
@@ -111,50 +132,52 @@ export function PulseCard() {
         }
       : null;
   const usingPhoneCache = !data?.latest && !!cached;
-  const live = !locked ? (data?.live ?? null) : null;
-  const shown = locked
-    ? {
-        direction: locked.direction,
-        entry: locked.entry,
-        sl: locked.sl,
-        tp1: locked.tp1,
-        tp2: locked.tp2,
-        dailyBias: locked.dailyBias,
-        meta: usingPhoneCache
-          ? `PHONE CACHE · Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`
-          : `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
-        reasons: parseReasons(locked.reason),
-      }
-    : live
-      ? {
-          direction: live.direction,
-          entry: live.entry,
-          sl: live.sl,
-          tp1: live.tp1,
-          tp2: live.tp2,
-          dailyBias: live.dailyBias,
-          meta: `LIVE preview · conf ${live.confidence}% · ${live.regime}`,
-          reasons: [] as string[],
-        }
-      : null;
+  const isConfirmed =
+    !!locked &&
+    (locked.outcome === "OPEN" ||
+      locked.outcome === "TP1_HIT" ||
+      locked.outcome === "SL_HIT" ||
+      locked.outcome === "INVALIDATED");
 
+  const shown = isConfirmed
+    ? {
+        direction: locked!.direction,
+        entry: locked!.entry,
+        sl: locked!.sl,
+        tp1: locked!.tp1,
+        tp2: locked!.tp2,
+        dailyBias: locked!.dailyBias,
+        outcome: locked!.outcome,
+        meta: usingPhoneCache
+          ? `LOCKED (phone cache) · ${locked!.outcome}`
+          : `LOCKED · ${locked!.outcome} · ${new Date(locked!.timestamp).toLocaleString()}`,
+        reasons: parseReasons(locked!.reason),
+      }
+    : null;
+
+  const forming = !shown ? (data?.live ?? null) : null;
   const tone =
     shown?.direction === "BUY"
       ? "enter-buy"
       : shown?.direction === "SELL"
         ? "enter-sell"
         : "wait";
+  const headline = shown
+    ? shown.outcome === "OPEN"
+      ? shown.direction
+      : `${shown.direction} · ${shown.outcome.replace("_", " ")}`
+    : "WAITING";
 
   return (
     <section className={`action-now tone-${tone}`}>
       <p className="action-now-label">QS PRO · PULSE · Gold</p>
-      <h2 className="action-now-headline">
-        {shown ? `${shown.direction}` : "WAITING"}
-      </h2>
+      <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
         Best mix: SMC scalping + fractal agree (lean) · TP1 @ 0.85R · zyada setups,
         accuracy filter soft nahi — sirf direction agree
       </p>
+
+      <ExitAdvisoryBanner advisory={advisory} onDismiss={() => setAdvisory(null)} />
 
       {!data?.validated && (
         <div className="liquidity-flag">
@@ -198,8 +221,18 @@ export function PulseCard() {
         <p className="action-now-detail">
           {data?.waitReason
             ? `Block: ${data.waitReason}`
-            : "QS Pro: SMC BUY/SELL + fractal breakout agree chahiye (lean gate)"}
+            : "Confirmed LOCK ka wait — preview pe trade mat lo."}
         </p>
+      )}
+
+      {forming && (
+        <div className="forming-preview">
+          <strong>FORMING (lock nahi hua)</strong>
+          <p>
+            {forming.direction} @ {forming.entry.toFixed(2)} · conf {forming.confidence}% —
+            abhi entry mat lo. Sirf LOCKED pe trade.
+          </p>
+        </div>
       )}
 
       {shown && (

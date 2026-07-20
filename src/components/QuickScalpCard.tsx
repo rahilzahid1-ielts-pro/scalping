@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { syncCachedLock, type CachedLock } from "../services/lockCache";
+import { syncExitAdvisory, type ExitAdvisory } from "../services/exitAdvisory";
+import { ExitAdvisoryBanner } from "./ExitAdvisoryBanner";
 
 interface LatestPayload {
   ok: boolean;
@@ -47,6 +49,7 @@ function parseReasons(raw: string): string[] {
 }
 
 const CACHE_KEY = "quick_scalp";
+const MODULE_LABEL = "Quick Scalp";
 
 export function QuickScalpCard() {
   const [data, setData] = useState<LatestPayload | null>(null);
@@ -54,6 +57,7 @@ export function QuickScalpCard() {
   const [cached, setCached] = useState<CachedLock | null>(() =>
     syncCachedLock(CACHE_KEY, null),
   );
+  const [advisory, setAdvisory] = useState<ExitAdvisory | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,6 +82,23 @@ export function QuickScalpCard() {
               }
             : null;
           setCached(syncCachedLock(CACHE_KEY, fromServer));
+          const adv = syncExitAdvisory(
+            CACHE_KEY,
+            MODULE_LABEL,
+            j.latest
+              ? {
+                  side: j.latest.direction,
+                  entry: j.latest.entry,
+                  sl: j.latest.sl,
+                  tp1: j.latest.tp1,
+                  outcome: j.latest.outcome,
+                  time: j.latest.timestamp,
+                }
+              : null,
+            j.waitReason,
+          );
+          setAdvisory(adv);
+          if (adv) setCached(syncCachedLock(CACHE_KEY, fromServer));
         })
         .catch((e) => {
           if (!cancelled) setError(e instanceof Error ? e.message : "fetch failed");
@@ -107,32 +128,30 @@ export function QuickScalpCard() {
         }
       : null;
   const usingPhoneCache = !data?.latest && !!cached;
-  const live = !locked ? (data?.live ?? null) : null;
-  const shown = locked
+  const isConfirmed =
+    !!locked &&
+    (locked.outcome === "OPEN" ||
+      locked.outcome === "TP1_HIT" ||
+      locked.outcome === "SL_HIT" ||
+      locked.outcome === "INVALIDATED");
+
+  const shown = isConfirmed
     ? {
-        direction: locked.direction,
-        entry: locked.entry,
-        sl: locked.sl,
-        tp1: locked.tp1,
-        tp2: locked.tp2,
-        dailyTrend: locked.dailyTrend,
+        direction: locked!.direction,
+        entry: locked!.entry,
+        sl: locked!.sl,
+        tp1: locked!.tp1,
+        tp2: locked!.tp2,
+        dailyTrend: locked!.dailyTrend,
+        outcome: locked!.outcome,
         meta: usingPhoneCache
-          ? `PHONE CACHE · Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`
-          : `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
-        reasons: parseReasons(locked.reason),
+          ? `LOCKED (phone cache) · ${locked!.outcome}`
+          : `LOCKED · ${locked!.outcome} · ${new Date(locked!.timestamp).toLocaleString()}`,
+        reasons: parseReasons(locked!.reason),
       }
-    : live
-      ? {
-          direction: live.direction,
-          entry: live.entry,
-          sl: live.sl,
-          tp1: live.tp1,
-          tp2: live.tp2,
-          dailyTrend: live.dailyTrend,
-          meta: `LIVE preview · conf ${live.confidence}% · ${live.regime} (worker lock pending)`,
-          reasons: [] as string[],
-        }
-      : null;
+    : null;
+
+  const forming = !shown ? (data?.live ?? null) : null;
 
   const tone =
     shown?.direction === "BUY"
@@ -141,15 +160,21 @@ export function QuickScalpCard() {
         ? "enter-sell"
         : "wait";
 
+  const headline = shown
+    ? shown.outcome === "OPEN"
+      ? shown.direction
+      : `${shown.direction} · ${shown.outcome.replace("_", " ")}`
+    : "WAITING";
+
   return (
     <section className={`action-now tone-${tone}`}>
       <p className="action-now-label">QUICK SCALP · BLITZ · Gold</p>
-      <h2 className="action-now-headline">
-        {shown ? `${shown.direction}` : "WAITING"}
-      </h2>
+      <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
         Trend-only SMC · conf≥75 · HTF aligned · TP1 @ 0.85R (foran bank / exit)
       </p>
+
+      <ExitAdvisoryBanner advisory={advisory} onDismiss={() => setAdvisory(null)} />
 
       {!data?.validated && (
         <div className="liquidity-flag">
@@ -193,8 +218,18 @@ export function QuickScalpCard() {
         <p className="action-now-detail">
           {data?.waitReason
             ? `Block: ${data.waitReason}`
-            : "Range / weak / conflict mein signal nahi. Jab TREND + daily agree + conf≥75 ho tab BLITZ fire."}
+            : "Confirmed LOCK ka wait — preview pe trade mat lo."}
         </p>
+      )}
+
+      {forming && (
+        <div className="forming-preview">
+          <strong>FORMING (lock nahi hua)</strong>
+          <p>
+            {forming.direction} dikh raha hai @ {forming.entry.toFixed(2)} · conf{" "}
+            {forming.confidence}% — abhi entry mat lo. Jab LOCKED aaye tab trade.
+          </p>
+        </div>
       )}
 
       {shown && (

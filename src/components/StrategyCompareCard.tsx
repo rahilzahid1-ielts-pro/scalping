@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { syncCachedLock, type CachedLock } from "../services/lockCache";
+import { syncExitAdvisory, type ExitAdvisory } from "../services/exitAdvisory";
+import { ExitAdvisoryBanner } from "./ExitAdvisoryBanner";
 
 interface LatestPayload {
   ok: boolean;
@@ -46,16 +48,27 @@ interface Props {
   title: string;
   subtitle: string;
   apiPath: string;
-  /** localStorage key — e.g. fractal / cipher_b */
   cacheKey: string;
+  moduleLabel: string;
 }
 
-export function StrategyCompareCard({ title, subtitle, apiPath, cacheKey }: Props) {
+/**
+ * Confirmed trade = worker lock only (OPEN / TP1 / SL).
+ * Live preview is NOT an actionable trade — stops flip-flop "BUY then WAIT".
+ */
+export function StrategyCompareCard({
+  title,
+  subtitle,
+  apiPath,
+  cacheKey,
+  moduleLabel,
+}: Props) {
   const [data, setData] = useState<LatestPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cached, setCached] = useState<CachedLock | null>(() =>
     syncCachedLock(cacheKey, null),
   );
+  const [advisory, setAdvisory] = useState<ExitAdvisory | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +91,25 @@ export function StrategyCompareCard({ title, subtitle, apiPath, cacheKey }: Prop
                 reason: j.latest.reason,
               }
             : null;
-          setCached(syncCachedLock(cacheKey, fromServer));
+          const nextCache = syncCachedLock(cacheKey, fromServer);
+          setCached(nextCache);
+
+          const serverSnap = j.latest
+            ? {
+                side: j.latest.direction as "BUY" | "SELL",
+                entry: j.latest.entry,
+                sl: j.latest.sl,
+                tp1: j.latest.tp1,
+                outcome: j.latest.outcome,
+                time: j.latest.time,
+              }
+            : null;
+          const adv = syncExitAdvisory(cacheKey, moduleLabel, serverSnap, j.waitReason);
+          setAdvisory(adv);
+          if (adv) {
+            // Cache cleared inside syncExitAdvisory — refresh display state
+            setCached(syncCachedLock(cacheKey, fromServer));
+          }
         })
         .catch((e) => {
           if (!cancelled) setError(e instanceof Error ? e.message : "fetch failed");
@@ -90,34 +121,34 @@ export function StrategyCompareCard({ title, subtitle, apiPath, cacheKey }: Prop
       cancelled = true;
       clearInterval(id);
     };
-  }, [apiPath, cacheKey]);
+  }, [apiPath, cacheKey, moduleLabel]);
 
   const locked = data?.latest ?? cached;
   const usingPhoneCache = !data?.latest && !!cached;
-  const live = !locked ? (data?.live ?? null) : null;
-  const shown = locked
+  const isConfirmed =
+    !!locked &&
+    (locked.outcome === "OPEN" ||
+      locked.outcome === "TP1_HIT" ||
+      locked.outcome === "SL_HIT" ||
+      locked.outcome === "INVALIDATED");
+
+  // Actionable hero = confirmed lock only (never live preview)
+  const shown = isConfirmed
     ? {
-        direction: locked.direction,
-        entry: locked.entry,
-        sl: locked.sl,
-        tp1: locked.tp1,
-        tp2: locked.tp2,
+        direction: locked!.direction,
+        entry: locked!.entry,
+        sl: locked!.sl,
+        tp1: locked!.tp1,
+        tp2: locked!.tp2,
+        outcome: locked!.outcome,
         meta: usingPhoneCache
-          ? `PHONE CACHE (server DB empty / redeploy) · Outcome: ${locked.outcome} · ${new Date(locked.time).toLocaleString()}`
-          : `Outcome: ${locked.outcome} · ${new Date(locked.time).toLocaleString()}`,
-        reasons: parseReasons(locked.reason ?? "[]"),
+          ? `LOCKED (phone cache) · ${locked!.outcome} · ${new Date(locked!.time).toLocaleString()}`
+          : `LOCKED · ${locked!.outcome} · ${new Date(locked!.time).toLocaleString()}`,
+        reasons: parseReasons(locked!.reason ?? "[]"),
       }
-    : live
-      ? {
-          direction: live.direction,
-          entry: live.entry,
-          sl: live.sl,
-          tp1: live.tp1,
-          tp2: live.tp2,
-          meta: "LIVE preview (worker lock pending)",
-          reasons: [] as string[],
-        }
-      : null;
+    : null;
+
+  const forming = !shown ? (data?.live ?? null) : null;
 
   const tone =
     shown?.direction === "BUY"
@@ -126,11 +157,22 @@ export function StrategyCompareCard({ title, subtitle, apiPath, cacheKey }: Prop
         ? "enter-sell"
         : "wait";
 
+  const headline = shown
+    ? shown.outcome === "OPEN"
+      ? shown.direction
+      : `${shown.direction} · ${shown.outcome.replace("_", " ")}`
+    : "WAITING";
+
   return (
     <section className={`action-now tone-${tone}`}>
       <p className="action-now-label">{title}</p>
-      <h2 className="action-now-headline">{shown ? `${shown.direction}` : "WAITING"}</h2>
+      <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">{subtitle}</p>
+
+      <ExitAdvisoryBanner
+        advisory={advisory}
+        onDismiss={() => setAdvisory(null)}
+      />
 
       {!data?.validated && (
         <div className="liquidity-flag">
@@ -174,8 +216,18 @@ export function StrategyCompareCard({ title, subtitle, apiPath, cacheKey }: Prop
         <p className="action-now-detail">
           {data?.waitReason
             ? `Block: ${data.waitReason}`
-            : "Abhi koi setup nahi — daily trend + indicator rules match ka wait."}
+            : "Confirmed lock ka wait — sirf worker lock pe trade lo (preview pe nahi)."}
         </p>
+      )}
+
+      {forming && (
+        <div className="forming-preview">
+          <strong>FORMING (lock nahi hua)</strong>
+          <p>
+            {forming.direction} setup dikh raha hai @ {forming.entry.toFixed(2)} — abhi entry
+            mat lo. Jab LOCKED {forming.direction} aaye tab hi trade.
+          </p>
+        </div>
       )}
 
       {shown && (
