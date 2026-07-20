@@ -67,12 +67,12 @@ export function QuickScalpCard() {
 
   return (
     <section className={`action-now tone-${tone}`}>
-      <p className="action-now-label">QUICK SCALP · Gold</p>
+      <p className="action-now-label">QUICK SCALP · BLITZ · Gold</p>
       <h2 className="action-now-headline">
         {latest ? `${latest.direction}` : "WAITING"}
       </h2>
       <p className="action-now-sub">
-        Daily gate → M5 FVG mitigate → WaveTrend cross (isolated strategy)
+        Trend-only SMC · conf≥75 · HTF aligned · TP1 @ 0.85R (foran bank / exit)
       </p>
 
       {!data?.validated && (
@@ -115,13 +115,17 @@ export function QuickScalpCard() {
 
       {!latest && !error && (
         <p className="action-now-detail">
-          Abhi koi Quick Scalp setup nahi — daily trend + WaveTrend cross + FVG
-          mitigate ka wait.
+          Range / weak / conflict mein signal nahi. Jab TREND_UP/DOWN + daily agree +
+          conf≥75 ho tab BLITZ fire — entry lo, TP1 pe foran nikal jao.
         </p>
       )}
 
       {latest && (
         <>
+          <p className="action-now-detail" style={{ marginBottom: "0.5rem" }}>
+            BLITZ: TP1 pe bank karke exit. Badi lot sirf chhote SL distance pe —
+            risk aapki zimmedari.
+          </p>
           <div className="action-now-levels">
             <div>
               <span>Entry</span>
@@ -132,7 +136,7 @@ export function QuickScalpCard() {
               <strong className="sl">{latest.sl.toFixed(2)}</strong>
             </div>
             <div>
-              <span>TP1</span>
+              <span>TP1 (fast)</span>
               <strong className="tp">{latest.tp1.toFixed(2)}</strong>
             </div>
             <div>

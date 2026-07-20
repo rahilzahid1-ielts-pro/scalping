@@ -324,36 +324,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (path === "/api/quickscalp/latest" && req.method === "GET") {
-      const {
-        getLiveQuickScalpDb,
-        getLatestQuickScalp,
-        getBacktestQuickScalpDb,
-        summarizeQuickScalp,
-        countResolvedQuickScalp,
-      } = await import("../src/quickScalp/store");
-      const liveDb = getLiveQuickScalpDb();
-      const latest = getLatestQuickScalp(liveDb);
-      let backtestSummary = null;
-      let validated = false;
-      try {
-        const bt = getBacktestQuickScalpDb(false);
-        const n = countResolvedQuickScalp(bt);
-        if (n > 0) {
-          validated = true;
-          backtestSummary = summarizeQuickScalp(bt);
-        }
-      } catch {
-        /* no backtest history yet */
-      }
-      sendJson(res, 200, {
-        ok: true,
-        validated,
-        latest,
-        backtestSummary,
-        badge: validated
-          ? null
-          : "UNVALIDATED — no backtest history yet",
-      });
+      const { buildQuickScalpLatestPayload } = await import("../src/quickScalp/apiLatest");
+      sendJson(res, 200, buildQuickScalpLatestPayload());
       return;
     }
 

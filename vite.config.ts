@@ -87,37 +87,9 @@ function calibrationApiPlugin(): Plugin {
           try {
             const url = req.url.split("?")[0];
             if (url === "/api/quickscalp/latest" && (req.method === "GET" || !req.method)) {
-              const {
-                getLiveQuickScalpDb,
-                getLatestQuickScalp,
-                getBacktestQuickScalpDb,
-                summarizeQuickScalp,
-                countResolvedQuickScalp,
-              } = await import("./src/quickScalp/store");
-              const liveDb = getLiveQuickScalpDb();
-              const latest = getLatestQuickScalp(liveDb);
-              let backtestSummary = null;
-              let validated = false;
-              try {
-                const bt = getBacktestQuickScalpDb(false);
-                const n = countResolvedQuickScalp(bt);
-                if (n > 0) {
-                  validated = true;
-                  backtestSummary = summarizeQuickScalp(bt);
-                }
-              } catch {
-                /* no backtest history */
-              }
+              const { buildQuickScalpLatestPayload } = await import("./src/quickScalp/apiLatest");
               res.setHeader("Content-Type", "application/json");
-              res.end(
-                JSON.stringify({
-                  ok: true,
-                  validated,
-                  latest,
-                  backtestSummary,
-                  badge: validated ? null : "UNVALIDATED — no backtest history yet",
-                }),
-              );
+              res.end(JSON.stringify(buildQuickScalpLatestPayload()));
               return;
             }
             res.statusCode = 404;

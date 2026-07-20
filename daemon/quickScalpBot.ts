@@ -1,10 +1,6 @@
 /**
- * Quick Scalp alert bot — isolated from daemon/alertBot.ts / generateSignal.
- * Polls M5 + Daily, calls generateQuickScalpSignal, logs to quick_scalp_signals,
- * and dispatches alerts tagged "[Quick Scalp]".
- *
- * Local:  npm run quickscalp
- * Auto:   started from prodServer when ENABLE_QUICK_SCALP_WORKER=1 (or auto with alerts)
+ * Quick Scalp BLITZ bot — isolated from alertBot plan locks.
+ * Polls scalping multi-TF, generateQuickScalpSignal (SMC+trend gates+fast TP1).
  */
 import { ASSETS } from "../src/config/assets";
 import { fetchMultiTimeframe } from "../src/services/marketData";
@@ -21,7 +17,7 @@ import type { Candle } from "../src/types";
 
 const TICK_MS = Number(process.env.QUICK_SCALP_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
-const COOLDOWN_MS = 60 * 60 * 1000; // 1h between live alerts
+const COOLDOWN_MS = 45 * 60 * 1000; // 45m between blitz alerts
 
 let workerRunning = false;
 let lastAlertAt = 0;
@@ -46,22 +42,21 @@ async function tick(): Promise<void> {
     rebaseToLive: false,
   });
 
-  const m5 = frames.primary;
-  const daily = frames.daily;
-  if (!m5?.length || !daily?.length) {
+  if (!frames.primary?.length || !frames.daily?.length) {
     log("no candles");
     return;
   }
 
   const db = getLiveQuickScalpDb();
-  const last = m5[m5.length - 1];
+  const last = frames.primary[frames.primary.length - 1];
   const d = ASSETS[ASSET].decimals;
 
-  // Resolve open trade against latest bar
   if (openTrade) {
     const hit = resolveBar(openTrade, last);
     if (hit) {
-      const r = hit === "TP1_HIT" ? 1 : -1;
+      const risk = Math.abs(openTrade.entry - openTrade.sl);
+      const tp1R = risk > 0 ? Math.abs(openTrade.tp1 - openTrade.entry) / risk : 0.85;
+      const r = hit === "TP1_HIT" ? tp1R : -1;
       updateQuickScalpOutcome(db, openTrade.id, hit, r, Date.now());
       log("resolved", openTrade.direction, hit);
       openTrade = null;
@@ -73,7 +68,7 @@ async function tick(): Promise<void> {
 
   let sig;
   try {
-    sig = generateQuickScalpSignal({ m5Candles: m5, dailyCandles: daily });
+    sig = generateQuickScalpSignal(frames, ASSET, "scalping");
   } catch (e) {
     log("engine:", e instanceof Error ? e.message : e);
     return;
@@ -86,19 +81,20 @@ async function tick(): Promise<void> {
   lastAlertAt = Date.now();
 
   const body = [
-    `${sig.direction} @ ${sig.entry.toFixed(d)}`,
-    `SL ${sig.sl.toFixed(d)} · TP1 ${sig.tp1.toFixed(d)} · TP2 ${sig.tp2.toFixed(d)}`,
-    `Daily: ${sig.dailyTrend}`,
-    ...sig.reason,
+    `${sig.direction} BLITZ @ ${sig.entry.toFixed(d)}`,
+    `SL ${sig.sl.toFixed(d)} · TP1 FAST ${sig.tp1.toFixed(d)} · TP2 ${sig.tp2.toFixed(d)}`,
+    `Conf ${sig.confidence}% · ${sig.regime} · Daily ${sig.dailyTrend}`,
+    `Exit at TP1 — size up only on small risk distance`,
+    ...sig.reason.slice(0, 3),
   ].join("\n");
 
-  log("SIGNAL >>>", sig.direction, sig.entry);
+  log("SIGNAL >>>", sig.direction, sig.entry, `conf=${sig.confidence}`);
   await dispatchTradeAlert({
     kind: "PLAN_LOCK",
     assetId: ASSET,
     mode: "quick_scalp",
     side: sig.direction,
-    title: "SETUP",
+    title: "BLITZ SETUP",
     body,
     tagPrefix: "[Quick Scalp]",
   });
@@ -110,7 +106,7 @@ export function startQuickScalpWorker(): void {
     return;
   }
   workerRunning = true;
-  log("started — Gold M5 + Daily, isolated from main alertBot");
+  log("started — Gold BLITZ (SMC trend + fast TP1), isolated from main alertBot");
   void (async () => {
     for (;;) {
       try {
@@ -127,11 +123,9 @@ export function shouldAutoStartQuickScalpWorker(): boolean {
   const flag = (process.env.ENABLE_QUICK_SCALP_WORKER ?? "auto").toLowerCase();
   if (flag === "0" || flag === "false" || flag === "off") return false;
   if (flag === "1" || flag === "true" || flag === "on") return true;
-  // auto: follow main alert worker presence on Railway
   return Boolean(process.env.RAILWAY_ENVIRONMENT);
 }
 
-/** CLI: npm run quickscalp */
 async function main() {
   startQuickScalpWorker();
 }
