@@ -343,6 +343,16 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/cipherbclone/latest" || path === "/api/ict/latest" || path === "/api/fractal/latest") {
+      sendJson(res, 410, {
+        ok: false,
+        retired: true,
+        error:
+          "Strategy retired after underperforming 1yr XAUUSD backtest — see src/strategies/archived/README.md",
+      });
+      return;
+    }
+
     if (path === "/api/push/public-key" && req.method === "GET") {
       const { getVapidPublicKey } = await import("../src/services/webPush");
       sendJson(res, 200, { ok: true, publicKey: getVapidPublicKey() });

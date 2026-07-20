@@ -100,6 +100,24 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
+        if (
+          req.url?.startsWith("/api/cipherbclone/") ||
+          req.url?.startsWith("/api/ict/") ||
+          req.url?.startsWith("/api/fractal/")
+        ) {
+          res.statusCode = 410;
+          res.setHeader("Content-Type", "application/json");
+          res.end(
+            JSON.stringify({
+              ok: false,
+              retired: true,
+              error:
+                "Strategy retired after underperforming 1yr XAUUSD backtest — see src/strategies/archived/README.md",
+            }),
+          );
+          return;
+        }
+
         if (req.url?.startsWith("/api/push/")) {
           try {
             const url = req.url.split("?")[0];
