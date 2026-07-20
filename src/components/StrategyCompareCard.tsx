@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { syncCachedLock, type CachedLock } from "../services/lockCache";
 
 interface LatestPayload {
   ok: boolean;
@@ -45,11 +46,16 @@ interface Props {
   title: string;
   subtitle: string;
   apiPath: string;
+  /** localStorage key — e.g. fractal / cipher_b */
+  cacheKey: string;
 }
 
-export function StrategyCompareCard({ title, subtitle, apiPath }: Props) {
+export function StrategyCompareCard({ title, subtitle, apiPath, cacheKey }: Props) {
   const [data, setData] = useState<LatestPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cached, setCached] = useState<CachedLock | null>(() =>
+    syncCachedLock(cacheKey, null),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -57,10 +63,22 @@ export function StrategyCompareCard({ title, subtitle, apiPath }: Props) {
       void fetch(apiPath)
         .then((r) => r.json())
         .then((j: LatestPayload) => {
-          if (!cancelled) {
-            setData(j);
-            setError(null);
-          }
+          if (cancelled) return;
+          setData(j);
+          setError(null);
+          const fromServer: CachedLock | null = j.latest
+            ? {
+                direction: j.latest.direction,
+                entry: j.latest.entry,
+                sl: j.latest.sl,
+                tp1: j.latest.tp1,
+                tp2: j.latest.tp2,
+                outcome: j.latest.outcome,
+                time: j.latest.time,
+                reason: j.latest.reason,
+              }
+            : null;
+          setCached(syncCachedLock(cacheKey, fromServer));
         })
         .catch((e) => {
           if (!cancelled) setError(e instanceof Error ? e.message : "fetch failed");
@@ -72,9 +90,10 @@ export function StrategyCompareCard({ title, subtitle, apiPath }: Props) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [apiPath]);
+  }, [apiPath, cacheKey]);
 
-  const locked = data?.latest ?? null;
+  const locked = data?.latest ?? cached;
+  const usingPhoneCache = !data?.latest && !!cached;
   const live = !locked ? (data?.live ?? null) : null;
   const shown = locked
     ? {
@@ -83,8 +102,10 @@ export function StrategyCompareCard({ title, subtitle, apiPath }: Props) {
         sl: locked.sl,
         tp1: locked.tp1,
         tp2: locked.tp2,
-        meta: `Outcome: ${locked.outcome} · ${new Date(locked.time).toLocaleString()}`,
-        reasons: parseReasons(locked.reason),
+        meta: usingPhoneCache
+          ? `PHONE CACHE (server DB empty / redeploy) · Outcome: ${locked.outcome} · ${new Date(locked.time).toLocaleString()}`
+          : `Outcome: ${locked.outcome} · ${new Date(locked.time).toLocaleString()}`,
+        reasons: parseReasons(locked.reason ?? "[]"),
       }
     : live
       ? {

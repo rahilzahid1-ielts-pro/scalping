@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { syncCachedLock, type CachedLock } from "../services/lockCache";
 
 interface LatestPayload {
   ok: boolean;
@@ -47,9 +48,14 @@ function parseReasons(raw: string): string[] {
   }
 }
 
+const CACHE_KEY = "qs_pro";
+
 export function PulseCard() {
   const [data, setData] = useState<LatestPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cached, setCached] = useState<CachedLock | null>(() =>
+    syncCachedLock(CACHE_KEY, null),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -57,10 +63,23 @@ export function PulseCard() {
       void fetch("/api/pulse/latest")
         .then((r) => r.json())
         .then((j: LatestPayload) => {
-          if (!cancelled) {
-            setData(j);
-            setError(null);
-          }
+          if (cancelled) return;
+          setData(j);
+          setError(null);
+          const fromServer: CachedLock | null = j.latest
+            ? {
+                direction: j.latest.direction,
+                entry: j.latest.entry,
+                sl: j.latest.sl,
+                tp1: j.latest.tp1,
+                tp2: j.latest.tp2,
+                outcome: j.latest.outcome,
+                time: j.latest.timestamp,
+                reason: j.latest.reason,
+                metaExtra: { dailyBias: j.latest.dailyBias },
+              }
+            : null;
+          setCached(syncCachedLock(CACHE_KEY, fromServer));
         })
         .catch((e) => {
           if (!cancelled) setError(e instanceof Error ? e.message : "fetch failed");
@@ -74,7 +93,24 @@ export function PulseCard() {
     };
   }, []);
 
-  const locked = data?.latest ?? null;
+  const locked = data?.latest
+    ? data.latest
+    : cached
+      ? {
+          direction: cached.direction,
+          entry: cached.entry,
+          sl: cached.sl,
+          tp1: cached.tp1,
+          tp2: cached.tp2,
+          confidence: 0,
+          regime: "",
+          dailyBias: String(cached.metaExtra?.dailyBias ?? "—"),
+          reason: cached.reason ?? "[]",
+          outcome: cached.outcome,
+          timestamp: cached.time,
+        }
+      : null;
+  const usingPhoneCache = !data?.latest && !!cached;
   const live = !locked ? (data?.live ?? null) : null;
   const shown = locked
     ? {
@@ -84,7 +120,9 @@ export function PulseCard() {
         tp1: locked.tp1,
         tp2: locked.tp2,
         dailyBias: locked.dailyBias,
-        meta: `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
+        meta: usingPhoneCache
+          ? `PHONE CACHE · Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`
+          : `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
         reasons: parseReasons(locked.reason),
       }
     : live
@@ -110,7 +148,9 @@ export function PulseCard() {
   return (
     <section className={`action-now tone-${tone}`}>
       <p className="action-now-label">QS PRO · PULSE · Gold</p>
-      <h2 className="action-now-headline">{shown ? `${shown.direction}` : "WAITING"}</h2>
+      <h2 className="action-now-headline">
+        {shown ? `${shown.direction}` : "WAITING"}
+      </h2>
       <p className="action-now-sub">
         Best mix: SMC scalping + fractal agree (lean) · TP1 @ 0.85R · zyada setups,
         accuracy filter soft nahi — sirf direction agree
@@ -158,15 +198,12 @@ export function PulseCard() {
         <p className="action-now-detail">
           {data?.waitReason
             ? `Block: ${data.waitReason}`
-            : "SMC clear side + fractal breakout same direction — tab QS/Pro se zyada fires."}
+            : "QS Pro: SMC BUY/SELL + fractal breakout agree chahiye (lean gate)"}
         </p>
       )}
 
       {shown && (
         <>
-          <p className="action-now-detail" style={{ marginBottom: "0.5rem" }}>
-            QS Pro: TP1 pe foran bank. Quality-stack nahi — fractal agree hi filter.
-          </p>
           <div className="action-now-levels">
             <div>
               <span>Entry</span>
@@ -177,7 +214,7 @@ export function PulseCard() {
               <strong className="sl">{shown.sl.toFixed(2)}</strong>
             </div>
             <div>
-              <span>TP1 (fast)</span>
+              <span>TP1</span>
               <strong className="tp">{shown.tp1.toFixed(2)}</strong>
             </div>
             <div>

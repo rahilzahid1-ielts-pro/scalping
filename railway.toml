@@ -14,9 +14,9 @@ restartPolicyMaxRetries = 10
 #   ENABLE_ALERT_WORKER=1
 # prodServer auto-starts the alert worker and pushes Telegram notifications.
 #
-# Optional: attach a Railway Volume mounted at /app/data (or set DATA_DIR)
-# so data/signals.db + alert-daemon-state.json + push-subscriptions.db survive redeploys.
-# Without a volume, phone Push subscriptions are wiped on every deploy.
+# IMPORTANT: Railway Volume MUST be mounted at /app/data
+# (created as scalping-volume) so signals.db + push-subscriptions survive redeploys.
+# Without it, every deploy wipes locks and the UI jumps back to WAITING.
 #
 # Closed-app phone alerts also need:
 #   WEB_PUSH_VAPID_PUBLIC_KEY=...

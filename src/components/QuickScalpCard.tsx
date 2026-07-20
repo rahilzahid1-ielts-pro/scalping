@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { syncCachedLock, type CachedLock } from "../services/lockCache";
 
 interface LatestPayload {
   ok: boolean;
@@ -45,9 +46,14 @@ function parseReasons(raw: string): string[] {
   }
 }
 
+const CACHE_KEY = "quick_scalp";
+
 export function QuickScalpCard() {
   const [data, setData] = useState<LatestPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cached, setCached] = useState<CachedLock | null>(() =>
+    syncCachedLock(CACHE_KEY, null),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -55,10 +61,23 @@ export function QuickScalpCard() {
       void fetch("/api/quickscalp/latest")
         .then((r) => r.json())
         .then((j: LatestPayload) => {
-          if (!cancelled) {
-            setData(j);
-            setError(null);
-          }
+          if (cancelled) return;
+          setData(j);
+          setError(null);
+          const fromServer: CachedLock | null = j.latest
+            ? {
+                direction: j.latest.direction,
+                entry: j.latest.entry,
+                sl: j.latest.sl,
+                tp1: j.latest.tp1,
+                tp2: j.latest.tp2,
+                outcome: j.latest.outcome,
+                time: j.latest.timestamp,
+                reason: j.latest.reason,
+                metaExtra: { dailyTrend: j.latest.dailyTrend },
+              }
+            : null;
+          setCached(syncCachedLock(CACHE_KEY, fromServer));
         })
         .catch((e) => {
           if (!cancelled) setError(e instanceof Error ? e.message : "fetch failed");
@@ -72,7 +91,22 @@ export function QuickScalpCard() {
     };
   }, []);
 
-  const locked = data?.latest ?? null;
+  const locked = data?.latest
+    ? data.latest
+    : cached
+      ? {
+          direction: cached.direction,
+          entry: cached.entry,
+          sl: cached.sl,
+          tp1: cached.tp1,
+          tp2: cached.tp2,
+          dailyTrend: String(cached.metaExtra?.dailyTrend ?? "—"),
+          reason: cached.reason ?? "[]",
+          outcome: cached.outcome,
+          timestamp: cached.time,
+        }
+      : null;
+  const usingPhoneCache = !data?.latest && !!cached;
   const live = !locked ? (data?.live ?? null) : null;
   const shown = locked
     ? {
@@ -82,8 +116,9 @@ export function QuickScalpCard() {
         tp1: locked.tp1,
         tp2: locked.tp2,
         dailyTrend: locked.dailyTrend,
-        source: "locked" as const,
-        meta: `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
+        meta: usingPhoneCache
+          ? `PHONE CACHE · Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`
+          : `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
         reasons: parseReasons(locked.reason),
       }
     : live
@@ -94,7 +129,6 @@ export function QuickScalpCard() {
           tp1: live.tp1,
           tp2: live.tp2,
           dailyTrend: live.dailyTrend,
-          source: "live" as const,
           meta: `LIVE preview · conf ${live.confidence}% · ${live.regime} (worker lock pending)`,
           reasons: [] as string[],
         }

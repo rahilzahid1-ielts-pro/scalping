@@ -413,12 +413,14 @@ export default function App() {
               title="CIPHER B · Gold"
               subtitle="WaveTrend Cipher-B + SMC dual-confirm · trend only · TP1 @ 0.9R"
               apiPath="/api/cipherbclone/latest"
+              cacheKey="cipher_b"
             />
           ) : deskView === "fractal" ? (
             <StrategyCompareCard
               title="TTRADES FRACTAL · Gold"
               subtitle="Fractal breakout must agree with SMC side · lean gate · TP1 @ 0.9R"
               apiPath="/api/fractal/latest"
+              cacheKey="fractal"
             />
           ) : (
             nowAction && (

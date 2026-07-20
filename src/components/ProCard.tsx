@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { syncCachedLock, type CachedLock } from "../services/lockCache";
 
 interface LatestPayload {
   ok: boolean;
@@ -47,20 +48,36 @@ function parseReasons(raw: string): string[] {
   }
 }
 
-export function ProCard() {
+function useModuleLatest(apiPath: string, cacheKey: string) {
   const [data, setData] = useState<LatestPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cached, setCached] = useState<CachedLock | null>(() =>
+    syncCachedLock(cacheKey, null),
+  );
 
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      void fetch("/api/pro/latest")
+      void fetch(apiPath)
         .then((r) => r.json())
         .then((j: LatestPayload) => {
-          if (!cancelled) {
-            setData(j);
-            setError(null);
-          }
+          if (cancelled) return;
+          setData(j);
+          setError(null);
+          const fromServer: CachedLock | null = j.latest
+            ? {
+                direction: j.latest.direction,
+                entry: j.latest.entry,
+                sl: j.latest.sl,
+                tp1: j.latest.tp1,
+                tp2: j.latest.tp2,
+                outcome: j.latest.outcome,
+                time: j.latest.timestamp,
+                reason: j.latest.reason,
+                metaExtra: { dailyBias: j.latest.dailyBias },
+              }
+            : null;
+          setCached(syncCachedLock(cacheKey, fromServer));
         })
         .catch((e) => {
           if (!cancelled) setError(e instanceof Error ? e.message : "fetch failed");
@@ -72,10 +89,35 @@ export function ProCard() {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [apiPath, cacheKey]);
 
-  const locked = data?.latest ?? null;
-  const live = !locked ? (data?.live ?? null) : null;
+  const locked = data?.latest
+    ? data.latest
+    : cached
+      ? {
+          direction: cached.direction,
+          entry: cached.entry,
+          sl: cached.sl,
+          tp1: cached.tp1,
+          tp2: cached.tp2,
+          confidence: 0,
+          regime: "",
+          dailyBias: String(cached.metaExtra?.dailyBias ?? "—"),
+          reason: cached.reason ?? "[]",
+          outcome: cached.outcome,
+          timestamp: cached.time,
+        }
+      : null;
+  const usingPhoneCache = !data?.latest && !!cached;
+
+  return { data, error, locked, usingPhoneCache, live: !locked ? (data?.live ?? null) : null };
+}
+
+export function ProCard() {
+  const { data, error, locked, usingPhoneCache, live } = useModuleLatest(
+    "/api/pro/latest",
+    "pro",
+  );
   const shown = locked
     ? {
         direction: locked.direction,
@@ -84,7 +126,9 @@ export function ProCard() {
         tp1: locked.tp1,
         tp2: locked.tp2,
         dailyBias: locked.dailyBias,
-        meta: `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
+        meta: usingPhoneCache
+          ? `PHONE CACHE · Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`
+          : `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
         reasons: parseReasons(locked.reason),
       }
     : live
