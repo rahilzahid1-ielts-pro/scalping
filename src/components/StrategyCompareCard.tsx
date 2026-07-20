@@ -4,6 +4,14 @@ interface LatestPayload {
   ok: boolean;
   validated: boolean;
   badge: string | null;
+  waitReason?: string | null;
+  live?: {
+    direction: "BUY" | "SELL";
+    entry: number;
+    sl: number;
+    tp1: number;
+    tp2: number;
+  } | null;
   latest: {
     direction: "BUY" | "SELL";
     entry: number;
@@ -66,19 +74,41 @@ export function StrategyCompareCard({ title, subtitle, apiPath }: Props) {
     };
   }, [apiPath]);
 
-  const latest = data?.latest ?? null;
-  const reasons = latest ? parseReasons(latest.reason) : [];
+  const locked = data?.latest ?? null;
+  const live = !locked ? (data?.live ?? null) : null;
+  const shown = locked
+    ? {
+        direction: locked.direction,
+        entry: locked.entry,
+        sl: locked.sl,
+        tp1: locked.tp1,
+        tp2: locked.tp2,
+        meta: `Outcome: ${locked.outcome} · ${new Date(locked.time).toLocaleString()}`,
+        reasons: parseReasons(locked.reason),
+      }
+    : live
+      ? {
+          direction: live.direction,
+          entry: live.entry,
+          sl: live.sl,
+          tp1: live.tp1,
+          tp2: live.tp2,
+          meta: "LIVE preview (worker lock pending)",
+          reasons: [] as string[],
+        }
+      : null;
+
   const tone =
-    latest?.direction === "BUY"
+    shown?.direction === "BUY"
       ? "enter-buy"
-      : latest?.direction === "SELL"
+      : shown?.direction === "SELL"
         ? "enter-sell"
         : "wait";
 
   return (
     <section className={`action-now tone-${tone}`}>
       <p className="action-now-label">{title}</p>
-      <h2 className="action-now-headline">{latest ? `${latest.direction}` : "WAITING"}</h2>
+      <h2 className="action-now-headline">{shown ? `${shown.direction}` : "WAITING"}</h2>
       <p className="action-now-sub">{subtitle}</p>
 
       {!data?.validated && (
@@ -119,38 +149,38 @@ export function StrategyCompareCard({ title, subtitle, apiPath }: Props) {
 
       {error && <p className="action-now-detail">{error}</p>}
 
-      {!latest && !error && (
+      {!shown && !error && (
         <p className="action-now-detail">
-          Abhi koi setup nahi — daily trend + indicator rules match ka wait.
+          {data?.waitReason
+            ? `Block: ${data.waitReason}`
+            : "Abhi koi setup nahi — daily trend + indicator rules match ka wait."}
         </p>
       )}
 
-      {latest && (
+      {shown && (
         <>
           <div className="action-now-levels">
             <div>
               <span>Entry</span>
-              <strong>{latest.entry.toFixed(2)}</strong>
+              <strong>{shown.entry.toFixed(2)}</strong>
             </div>
             <div>
               <span>SL</span>
-              <strong className="sl">{latest.sl.toFixed(2)}</strong>
+              <strong className="sl">{shown.sl.toFixed(2)}</strong>
             </div>
             <div>
               <span>TP1</span>
-              <strong className="tp">{latest.tp1.toFixed(2)}</strong>
+              <strong className="tp">{shown.tp1.toFixed(2)}</strong>
             </div>
             <div>
               <span>TP2</span>
-              <strong className="tp">{latest.tp2.toFixed(2)}</strong>
+              <strong className="tp">{shown.tp2.toFixed(2)}</strong>
             </div>
           </div>
-          <p className="action-now-detail">
-            Outcome: {latest.outcome} · {new Date(latest.time).toLocaleString()}
-          </p>
-          {reasons.length > 0 && (
+          <p className="action-now-detail">{shown.meta}</p>
+          {shown.reasons.length > 0 && (
             <ul className="rationale">
-              {reasons.map((r) => (
+              {shown.reasons.map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ul>

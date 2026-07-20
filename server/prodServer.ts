@@ -325,25 +325,25 @@ const server = createServer(async (req, res) => {
 
     if (path === "/api/quickscalp/latest" && req.method === "GET") {
       const { buildQuickScalpLatestPayload } = await import("../src/quickScalp/apiLatest");
-      sendJson(res, 200, buildQuickScalpLatestPayload());
+      sendJson(res, 200, await buildQuickScalpLatestPayload());
       return;
     }
 
     if (path === "/api/pro/latest" && req.method === "GET") {
       const { buildProLatestPayload } = await import("../src/pro/apiLatest");
-      sendJson(res, 200, buildProLatestPayload());
+      sendJson(res, 200, await buildProLatestPayload());
       return;
     }
 
     if (path === "/api/cipherbclone/latest" && req.method === "GET") {
       const { buildLatestPayload } = await import("../src/strategyCompare/apiLatest");
-      sendJson(res, 200, buildLatestPayload("cipher_b_clone"));
+      sendJson(res, 200, await buildLatestPayload("cipher_b_clone"));
       return;
     }
 
     if (path === "/api/fractal/latest" && req.method === "GET") {
       const { buildLatestPayload } = await import("../src/strategyCompare/apiLatest");
-      sendJson(res, 200, buildLatestPayload("fractal"));
+      sendJson(res, 200, await buildLatestPayload("fractal"));
       return;
     }
 

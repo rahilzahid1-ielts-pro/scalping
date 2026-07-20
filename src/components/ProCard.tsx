@@ -4,6 +4,17 @@ interface LatestPayload {
   ok: boolean;
   validated: boolean;
   badge: string | null;
+  waitReason?: string | null;
+  live?: {
+    direction: "BUY" | "SELL";
+    entry: number;
+    sl: number;
+    tp1: number;
+    tp2: number;
+    confidence: number;
+    regime: string;
+    dailyBias: string;
+  } | null;
   latest: {
     direction: "BUY" | "SELL";
     entry: number;
@@ -63,12 +74,36 @@ export function ProCard() {
     };
   }, []);
 
-  const latest = data?.latest ?? null;
-  const reasons = latest ? parseReasons(latest.reason) : [];
+  const locked = data?.latest ?? null;
+  const live = !locked ? (data?.live ?? null) : null;
+  const shown = locked
+    ? {
+        direction: locked.direction,
+        entry: locked.entry,
+        sl: locked.sl,
+        tp1: locked.tp1,
+        tp2: locked.tp2,
+        dailyBias: locked.dailyBias,
+        meta: `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
+        reasons: parseReasons(locked.reason),
+      }
+    : live
+      ? {
+          direction: live.direction,
+          entry: live.entry,
+          sl: live.sl,
+          tp1: live.tp1,
+          tp2: live.tp2,
+          dailyBias: live.dailyBias,
+          meta: `LIVE preview · conf ${live.confidence}% · ${live.regime}`,
+          reasons: [] as string[],
+        }
+      : null;
+
   const tone =
-    latest?.direction === "BUY"
+    shown?.direction === "BUY"
       ? "enter-buy"
-      : latest?.direction === "SELL"
+      : shown?.direction === "SELL"
         ? "enter-sell"
         : "wait";
 
@@ -76,7 +111,7 @@ export function ProCard() {
     <section className={`action-now tone-${tone}`}>
       <p className="action-now-label">PRO · Gold</p>
       <h2 className="action-now-headline">
-        {latest ? `${latest.direction}` : "WAITING"}
+        {shown ? `${shown.direction}` : "WAITING"}
       </h2>
       <p className="action-now-sub">
         Strict SMC — conf≥80 · HTF aligned · trend only · daily bias agrees
@@ -120,53 +155,40 @@ export function ProCard() {
 
       {error && <p className="action-now-detail">{error}</p>}
 
-      {!latest && !error && (
+      {!shown && !error && (
         <p className="action-now-detail">
-          Abhi koi Pro setup nahi — sirf high-quality trend + HTF + daily agreement
-          pe fire hota hai (kam signals, zyada filter).
+          {data?.waitReason
+            ? `Block: ${data.waitReason}`
+            : "Abhi koi Pro setup nahi — sirf high-quality trend + HTF + daily agreement pe fire."}
         </p>
       )}
 
-      {latest && (
+      {shown && (
         <>
-          <div className="action-now-scores">
-            <div>
-              <span>Confidence</span>
-              <strong>{latest.confidence}%</strong>
-            </div>
-            <div>
-              <span>Regime</span>
-              <strong>{latest.regime}</strong>
-            </div>
-            <div>
-              <span>Daily</span>
-              <strong>{latest.dailyBias}</strong>
-            </div>
-          </div>
           <div className="action-now-levels">
             <div>
               <span>Entry</span>
-              <strong>{latest.entry.toFixed(2)}</strong>
+              <strong>{shown.entry.toFixed(2)}</strong>
             </div>
             <div>
               <span>SL</span>
-              <strong className="sl">{latest.sl.toFixed(2)}</strong>
+              <strong className="sl">{shown.sl.toFixed(2)}</strong>
             </div>
             <div>
               <span>TP1</span>
-              <strong className="tp">{latest.tp1.toFixed(2)}</strong>
+              <strong className="tp">{shown.tp1.toFixed(2)}</strong>
             </div>
             <div>
               <span>TP2</span>
-              <strong className="tp">{latest.tp2.toFixed(2)}</strong>
+              <strong className="tp">{shown.tp2.toFixed(2)}</strong>
             </div>
           </div>
           <p className="action-now-detail">
-            Outcome: {latest.outcome} · {new Date(latest.timestamp).toLocaleString()}
+            Daily: {shown.dailyBias} · {shown.meta}
           </p>
-          {reasons.length > 0 && (
+          {shown.reasons.length > 0 && (
             <ul className="rationale">
-              {reasons.map((r) => (
+              {shown.reasons.map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ul>

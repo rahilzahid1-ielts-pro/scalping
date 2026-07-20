@@ -1,6 +1,9 @@
 /**
  * Shared JSON for GET /api/pro/latest (vite + prodServer).
  */
+import { fetchMultiTimeframe } from "../services/marketData";
+import { generateProSignal } from "../strategies/proEngine";
+import { diagnoseSmcGateBlock } from "../strategies/smcGateStatus";
 import {
   getLiveProDb,
   getLatestPro,
@@ -11,20 +14,7 @@ import {
 } from "./store";
 import { PRO_BACKTEST_SNAPSHOT } from "./backtestSnapshot";
 
-export function buildProLatestPayload(): {
-  ok: true;
-  validated: boolean;
-  badge: string | null;
-  latest: ReturnType<typeof getLatestPro>;
-  backtestSummary: {
-    resolved: number;
-    wins: number;
-    losses: number;
-    winRate: number | null;
-    avgR: number | null;
-    maxDrawdownR: number | null;
-  } | null;
-} {
+export async function buildProLatestPayload() {
   const liveDb = getLiveProDb();
   const latest = getLatestPro(liveDb);
   let backtestSummary: {
@@ -48,7 +38,6 @@ export function buildProLatestPayload(): {
     /* no local backtest DB — fall through to snapshot */
   }
 
-  // data/ is gitignored; prod has no backtest-results.db — use committed snapshot.
   if (!backtestSummary) {
     backtestSummary = {
       resolved: PRO_BACKTEST_SNAPSHOT.resolved,
@@ -61,10 +50,52 @@ export function buildProLatestPayload(): {
     validated = isProBacktestValidated(backtestSummary);
   }
 
+  let waitReason: string | null = null;
+  let live: {
+    direction: "BUY" | "SELL";
+    entry: number;
+    sl: number;
+    tp1: number;
+    tp2: number;
+    confidence: number;
+    regime: string;
+    dailyBias: string;
+  } | null = null;
+
+  try {
+    const frames = await fetchMultiTimeframe("XAUUSD", "intraday", undefined, {
+      rebaseToLive: false,
+    });
+    const diag = diagnoseSmcGateBlock(frames, { mode: "intraday", minConf: 80 });
+    if (!diag.pass) {
+      waitReason = diag.waitReason;
+    } else {
+      const sig = generateProSignal("XAUUSD", frames, "intraday");
+      if (sig) {
+        live = {
+          direction: sig.direction,
+          entry: sig.entry,
+          sl: sig.sl,
+          tp1: sig.tp1,
+          tp2: sig.tp2,
+          confidence: sig.confidence,
+          regime: sig.regime,
+          dailyBias: sig.dailyBias,
+        };
+      } else {
+        waitReason = "Gates pass-ish but Pro engine null";
+      }
+    }
+  } catch (e) {
+    waitReason = e instanceof Error ? e.message : "market fetch failed";
+  }
+
   return {
-    ok: true,
+    ok: true as const,
     validated,
     latest,
+    live,
+    waitReason: live || latest ? null : waitReason,
     backtestSummary,
     badge: validated
       ? null

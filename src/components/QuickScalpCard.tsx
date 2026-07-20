@@ -4,6 +4,17 @@ interface LatestPayload {
   ok: boolean;
   validated: boolean;
   badge: string | null;
+  waitReason?: string | null;
+  live?: {
+    direction: "BUY" | "SELL";
+    entry: number;
+    sl: number;
+    tp1: number;
+    tp2: number;
+    confidence: number;
+    regime: string;
+    dailyTrend: string;
+  } | null;
   latest: {
     direction: "BUY" | "SELL";
     entry: number;
@@ -61,15 +72,46 @@ export function QuickScalpCard() {
     };
   }, []);
 
-  const latest = data?.latest ?? null;
-  const reasons = latest ? parseReasons(latest.reason) : [];
-  const tone = latest?.direction === "BUY" ? "enter-buy" : latest?.direction === "SELL" ? "enter-sell" : "wait";
+  const locked = data?.latest ?? null;
+  const live = !locked ? (data?.live ?? null) : null;
+  const shown = locked
+    ? {
+        direction: locked.direction,
+        entry: locked.entry,
+        sl: locked.sl,
+        tp1: locked.tp1,
+        tp2: locked.tp2,
+        dailyTrend: locked.dailyTrend,
+        source: "locked" as const,
+        meta: `Outcome: ${locked.outcome} · ${new Date(locked.timestamp).toLocaleString()}`,
+        reasons: parseReasons(locked.reason),
+      }
+    : live
+      ? {
+          direction: live.direction,
+          entry: live.entry,
+          sl: live.sl,
+          tp1: live.tp1,
+          tp2: live.tp2,
+          dailyTrend: live.dailyTrend,
+          source: "live" as const,
+          meta: `LIVE preview · conf ${live.confidence}% · ${live.regime} (worker lock pending)`,
+          reasons: [] as string[],
+        }
+      : null;
+
+  const tone =
+    shown?.direction === "BUY"
+      ? "enter-buy"
+      : shown?.direction === "SELL"
+        ? "enter-sell"
+        : "wait";
 
   return (
     <section className={`action-now tone-${tone}`}>
       <p className="action-now-label">QUICK SCALP · BLITZ · Gold</p>
       <h2 className="action-now-headline">
-        {latest ? `${latest.direction}` : "WAITING"}
+        {shown ? `${shown.direction}` : "WAITING"}
       </h2>
       <p className="action-now-sub">
         Trend-only SMC · conf≥75 · HTF aligned · TP1 @ 0.85R (foran bank / exit)
@@ -113,14 +155,15 @@ export function QuickScalpCard() {
 
       {error && <p className="action-now-detail">{error}</p>}
 
-      {!latest && !error && (
+      {!shown && !error && (
         <p className="action-now-detail">
-          Range / weak / conflict mein signal nahi. Jab TREND_UP/DOWN + daily agree +
-          conf≥75 ho tab BLITZ fire — entry lo, TP1 pe foran nikal jao.
+          {data?.waitReason
+            ? `Block: ${data.waitReason}`
+            : "Range / weak / conflict mein signal nahi. Jab TREND + daily agree + conf≥75 ho tab BLITZ fire."}
         </p>
       )}
 
-      {latest && (
+      {shown && (
         <>
           <p className="action-now-detail" style={{ marginBottom: "0.5rem" }}>
             BLITZ: TP1 pe bank karke exit. Badi lot sirf chhote SL distance pe —
@@ -129,28 +172,27 @@ export function QuickScalpCard() {
           <div className="action-now-levels">
             <div>
               <span>Entry</span>
-              <strong>{latest.entry.toFixed(2)}</strong>
+              <strong>{shown.entry.toFixed(2)}</strong>
             </div>
             <div>
               <span>SL</span>
-              <strong className="sl">{latest.sl.toFixed(2)}</strong>
+              <strong className="sl">{shown.sl.toFixed(2)}</strong>
             </div>
             <div>
               <span>TP1 (fast)</span>
-              <strong className="tp">{latest.tp1.toFixed(2)}</strong>
+              <strong className="tp">{shown.tp1.toFixed(2)}</strong>
             </div>
             <div>
               <span>TP2</span>
-              <strong className="tp">{latest.tp2.toFixed(2)}</strong>
+              <strong className="tp">{shown.tp2.toFixed(2)}</strong>
             </div>
           </div>
           <p className="action-now-detail">
-            Daily: {latest.dailyTrend} · Outcome: {latest.outcome} ·{" "}
-            {new Date(latest.timestamp).toLocaleString()}
+            Daily: {shown.dailyTrend} · {shown.meta}
           </p>
-          {reasons.length > 0 && (
+          {shown.reasons.length > 0 && (
             <ul className="rationale">
-              {reasons.map((r) => (
+              {shown.reasons.map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ul>

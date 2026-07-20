@@ -11,9 +11,13 @@ import {
   FRACTAL_BACKTEST_SNAPSHOT,
   isCompareBacktestValidated,
 } from "./backtestSnapshot";
+import { fetchMultiTimeframe } from "../services/marketData";
+import { diagnoseSmcGateBlock } from "../strategies/smcGateStatus";
+import { generateFractalLiveSignal } from "../strategies/fractalLive";
+import { generateCipherBLiveSignal } from "../strategies/cipherBLive";
 
 /** Shared JSON shape for GET /api/{cipherbclone|fractal}/latest */
-export function buildLatestPayload(strategy: CompareStrategy) {
+export async function buildLatestPayload(strategy: CompareStrategy) {
   const liveDb = getLiveStrategyDb();
   const latest = getLatestStrategySignal(liveDb, strategy);
   let validated = false;
@@ -49,8 +53,52 @@ export function buildLatestPayload(strategy: CompareStrategy) {
     }
   }
 
+  let waitReason: string | null = null;
+  let live: {
+    direction: "BUY" | "SELL";
+    entry: number;
+    sl: number;
+    tp1: number;
+    tp2: number;
+  } | null = null;
+
+  try {
+    const frames = await fetchMultiTimeframe("XAUUSD", "scalping", undefined, {
+      rebaseToLive: false,
+    });
+    const minConf = strategy === "fractal" ? 72 : 75;
+    const diag = diagnoseSmcGateBlock(frames, { mode: "scalping", minConf });
+    if (!diag.pass) {
+      waitReason = diag.waitReason;
+    } else {
+      const packed = { ...frames, assetId: "XAUUSD" as const, mode: "scalping" as const };
+      const sig =
+        strategy === "fractal"
+          ? generateFractalLiveSignal(packed)
+          : strategy === "cipher_b_clone"
+            ? generateCipherBLiveSignal(packed)
+            : null;
+      if (sig) {
+        live = {
+          direction: sig.direction,
+          entry: sig.entry,
+          sl: sig.sl,
+          tp1: sig.tp1,
+          tp2: sig.tp2,
+        };
+      } else {
+        waitReason =
+          strategy === "fractal"
+            ? `SMC ${diag.side} ok, lekin fractal breakout agree nahi`
+            : `SMC ${diag.side} ok, lekin Cipher B trigger agree nahi`;
+      }
+    }
+  } catch (e) {
+    waitReason = e instanceof Error ? e.message : "market fetch failed";
+  }
+
   return {
-    ok: true,
+    ok: true as const,
     validated,
     badge: validated
       ? null
@@ -69,6 +117,8 @@ export function buildLatestPayload(strategy: CompareStrategy) {
           time: latest.time,
         }
       : null,
+    live,
+    waitReason: live || latest ? null : waitReason,
     backtestSummary,
   };
 }

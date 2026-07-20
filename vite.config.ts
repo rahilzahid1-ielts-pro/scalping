@@ -89,7 +89,7 @@ function calibrationApiPlugin(): Plugin {
             if (url === "/api/quickscalp/latest" && (req.method === "GET" || !req.method)) {
               const { buildQuickScalpLatestPayload } = await import("./src/quickScalp/apiLatest");
               res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify(buildQuickScalpLatestPayload()));
+              res.end(JSON.stringify(await buildQuickScalpLatestPayload()));
               return;
             }
             res.statusCode = 404;
@@ -114,7 +114,7 @@ function calibrationApiPlugin(): Plugin {
             if (url === "/api/pro/latest" && (req.method === "GET" || !req.method)) {
               const { buildProLatestPayload } = await import("./src/pro/apiLatest");
               res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify(buildProLatestPayload()));
+              res.end(JSON.stringify(await buildProLatestPayload()));
               return;
             }
             res.statusCode = 404;
@@ -144,7 +144,7 @@ function calibrationApiPlugin(): Plugin {
                 url === "/api/cipherbclone/latest" ? "cipher_b_clone" : "fractal";
               const { buildLatestPayload } = await import("./src/strategyCompare/apiLatest");
               res.setHeader("Content-Type", "application/json");
-              res.end(JSON.stringify(buildLatestPayload(strategy)));
+              res.end(JSON.stringify(await buildLatestPayload(strategy)));
               return;
             }
             res.statusCode = 404;
