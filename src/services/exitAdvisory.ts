@@ -4,7 +4,7 @@
  * Does not change engines — display / paint-cache only.
  */
 import { clearCachedLock } from "./lockCache";
-import { historyModuleToActiveId, type ActiveModuleId } from "../history/activeLock";
+import { historyModuleToActiveId, type ActiveModuleId } from "../history/moduleIds";
 
 const PREFIX = "go_exit_advisory_v1:";
 

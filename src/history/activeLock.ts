@@ -1,21 +1,20 @@
 /**
  * Single source of truth for what History shows as the active lock.
  * Used by module latest APIs and exit-advisory so screens never disagree with History.
+ * Server-only — do not import from browser UI (pulls better-sqlite3).
  */
 import { listOpenSignals } from "../calibration/resolveOutcomes";
 import { getLiveQuickScalpDb, listQuickScalpRows } from "../quickScalp/store";
 import { getLiveProDb, listProRows } from "../pro/store";
 import { getLivePulseDb, listPulseRows } from "../pulse/store";
 import { getLiveStrategyDb, listStrategyRows } from "../strategyCompare/store";
+import {
+  historyModuleToActiveId,
+  type ActiveModuleId,
+} from "./moduleIds";
 
-export type ActiveModuleId =
-  | "scalp"
-  | "intraday"
-  | "quick_scalp"
-  | "qs_pro"
-  | "pro"
-  | "cipher_b"
-  | "fractal";
+export type { ActiveModuleId };
+export { historyModuleToActiveId };
 
 export interface ActiveOpenLock {
   module: ActiveModuleId;
@@ -162,17 +161,5 @@ export function getActiveOpenLock(module: ActiveModuleId): ActiveOpenLock | null
     };
   }
 
-  return null;
-}
-
-export function historyModuleToActiveId(module: string): ActiveModuleId | null {
-  const m = module.toLowerCase();
-  if (m === "scalp" || m === "scalping") return "scalp";
-  if (m === "intraday") return "intraday";
-  if (m === "quick_scalp" || m === "quickscalp") return "quick_scalp";
-  if (m === "qs_pro" || m === "pulse") return "qs_pro";
-  if (m === "pro") return "pro";
-  if (m === "cipher_b" || m === "cipher_b_clone" || m === "cipherb") return "cipher_b";
-  if (m === "fractal") return "fractal";
   return null;
 }
