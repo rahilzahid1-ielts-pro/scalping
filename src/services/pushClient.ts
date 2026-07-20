@@ -118,3 +118,51 @@ export async function disablePush(): Promise<void> {
     /* ignore */
   }
 }
+
+/**
+ * Ensure subscribed, then ask server to send a real Web Push to all devices.
+ * Use this to verify closed-app / home-screen delivery.
+ */
+export async function sendTestPush(): Promise<{
+  ok: boolean;
+  delivered?: number;
+  subscriptions?: number;
+  error?: string;
+}> {
+  const enabled = await enablePush();
+  if (enabled.state !== "subscribed") {
+    return {
+      ok: false,
+      error: enabled.error ?? `Push not subscribed (${enabled.state})`,
+    };
+  }
+  try {
+    const res = await fetch("/api/push/test", { method: "POST" });
+    const data = (await res.json()) as {
+      ok?: boolean;
+      delivered?: number;
+      subscriptions?: number;
+      error?: string;
+      vapidConfigured?: boolean;
+    };
+    if (!res.ok || !data.ok) {
+      return {
+        ok: false,
+        delivered: data.delivered,
+        subscriptions: data.subscriptions,
+        error:
+          data.error ??
+          (!data.vapidConfigured
+            ? "Server pe VAPID keys missing hain"
+            : `test failed (${res.status})`),
+      };
+    }
+    return {
+      ok: true,
+      delivered: data.delivered ?? 0,
+      subscriptions: data.subscriptions ?? 0,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "test push failed" };
+  }
+}

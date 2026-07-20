@@ -399,6 +399,56 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/push/test" && req.method === "POST") {
+      try {
+        const { isWebPushConfigured, sendWebPushToAll, webPushStatus } = await import(
+          "../src/services/webPush"
+        );
+        const status = webPushStatus();
+        if (!isWebPushConfigured()) {
+          sendJson(res, 503, {
+            ok: false,
+            vapidConfigured: false,
+            subscriptions: status.webPushSubscriptions,
+            delivered: 0,
+            error: "VAPID keys missing — set WEB_PUSH_VAPID_PUBLIC_KEY + PRIVATE_KEY",
+          });
+          return;
+        }
+        if (status.webPushSubscriptions <= 0) {
+          sendJson(res, 400, {
+            ok: false,
+            vapidConfigured: true,
+            subscriptions: 0,
+            delivered: 0,
+            error: "No push subscriptions — pehle Enable Push dabao",
+          });
+          return;
+        }
+        const delivered = await sendWebPushToAll({
+          kind: "PLAN_LOCK",
+          assetId: "XAUUSD",
+          mode: "test",
+          side: "BUY",
+          title: "TEST PUSH — Trade Alert",
+          body: "Agar ye dikha to closed-app / home-screen push KAAM kar raha hai ✅",
+          tagPrefix: "[Test]",
+        });
+        sendJson(res, 200, {
+          ok: true,
+          vapidConfigured: true,
+          subscriptions: status.webPushSubscriptions,
+          delivered,
+        });
+      } catch (e) {
+        sendJson(res, 500, {
+          ok: false,
+          error: e instanceof Error ? e.message : "test push failed",
+        });
+      }
+      return;
+    }
+
     const proxy = PROXIES.find((p) => path.startsWith(p.prefix));
     if (proxy) {
       await proxyRequest(req, res, proxy, path, url.search);

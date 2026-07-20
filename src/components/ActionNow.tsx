@@ -12,6 +12,8 @@ interface Props {
   onTestSound: () => void;
   pushState: PushState;
   onEnablePush: () => void;
+  onTestPush?: () => void;
+  pushBusy?: boolean;
 }
 
 const PUSH_LABEL: Record<PushState, string> = {
@@ -30,6 +32,8 @@ export function ActionNow({
   onTestSound,
   pushState,
   onEnablePush,
+  onTestPush,
+  pushBusy,
 }: Props) {
   const asset = ASSETS[assetId];
   const d = asset.decimals;
@@ -167,6 +171,11 @@ export function ActionNow({
         >
           {PUSH_LABEL[pushState]}
         </button>
+        {onTestPush && (
+          <button type="button" onClick={onTestPush} disabled={!!pushBusy}>
+            {pushBusy ? "Sending…" : "Test Push"}
+          </button>
+        )}
         <button type="button" onClick={onTestSound}>
           Test sound
         </button>

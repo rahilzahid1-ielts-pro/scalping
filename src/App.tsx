@@ -16,7 +16,7 @@ import { StrategyBreakdown } from "./components/StrategyBreakdown";
 import { useLivePrice } from "./hooks/useLivePrice";
 import { requestAlertPermission, testAlertSound, useEntryAlert, usePlanLockAlert } from "./hooks/useEntryAlert";
 import { useServiceWorkerAlerts } from "./hooks/useServiceWorkerAlerts";
-import { enablePush, getPushState, type PushState } from "./services/pushClient";
+import { enablePush, getPushState, sendTestPush, type PushState } from "./services/pushClient";
 import { roundPrice } from "./strategies/indicators";
 import { computeNowAction } from "./utils/nowAction";
 import { signalInterval } from "./utils/sessionPlan";
@@ -43,6 +43,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [alertsOn, setAlertsOn] = useState(boot.alertsOn);
   const [pushState, setPushState] = useState<PushState>("default");
+  const [pushBusy, setPushBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [booted, setBooted] = useState(false);
   const [liquidityWarn, setLiquidityWarn] = useState(false);
@@ -212,6 +213,25 @@ export default function App() {
     if (error) console.warn("[push]", error);
   };
 
+  const testPushNotification = async () => {
+    setPushBusy(true);
+    try {
+      const result = await sendTestPush();
+      setPushState(await getPushState());
+      if (!result.ok) {
+        window.alert(
+          `Test Push FAIL\n${result.error ?? "unknown"}\nsubs=${result.subscriptions ?? 0}`,
+        );
+        return;
+      }
+      window.alert(
+        `Test Push SENT\ndelivered=${result.delivered} / subscriptions=${result.subscriptions}\n\nAb app band karke dekho — notification aani chahiye. Agar app khuli hai tab bhi banner dikhega.`,
+      );
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   const requestNewPlan = () => {
     const current = planForThisMode;
     if (current?.status === "IN_TRADE_HINT") {
@@ -270,6 +290,15 @@ export default function App() {
                 : pushState === "unsupported"
                   ? "Push N/A"
                   : "🔔 Enable Push"}
+          </button>
+          <button
+            type="button"
+            className="topbar-push"
+            onClick={() => void testPushNotification()}
+            disabled={pushBusy || pushState === "unsupported" || pushState === "denied"}
+            title="Server se asli Web Push bhejo — closed-app test"
+          >
+            {pushBusy ? "Sending…" : "Test Push"}
           </button>
           {planForThisMode && planForThisMode.status !== "INVALIDATED" && (
             <span className="updated">
@@ -401,6 +430,8 @@ export default function App() {
                 onTestSound={testAlertSound}
                 pushState={pushState}
                 onEnablePush={() => void enablePushNotifications()}
+                onTestPush={() => void testPushNotification()}
+                pushBusy={pushBusy}
               />
             )
           )}

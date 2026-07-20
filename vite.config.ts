@@ -231,6 +231,59 @@ function calibrationApiPlugin(): Plugin {
               res.end(JSON.stringify({ ok: true }));
               return;
             }
+            if (url === "/api/push/test" && req.method === "POST") {
+              const { isWebPushConfigured, sendWebPushToAll, webPushStatus } = await import(
+                "./src/services/webPush"
+              );
+              const status = webPushStatus();
+              if (!isWebPushConfigured()) {
+                res.statusCode = 503;
+                res.setHeader("Content-Type", "application/json");
+                res.end(
+                  JSON.stringify({
+                    ok: false,
+                    vapidConfigured: false,
+                    subscriptions: status.webPushSubscriptions,
+                    delivered: 0,
+                    error: "VAPID keys missing — set WEB_PUSH_VAPID_PUBLIC_KEY + PRIVATE_KEY",
+                  }),
+                );
+                return;
+              }
+              if (status.webPushSubscriptions <= 0) {
+                res.statusCode = 400;
+                res.setHeader("Content-Type", "application/json");
+                res.end(
+                  JSON.stringify({
+                    ok: false,
+                    vapidConfigured: true,
+                    subscriptions: 0,
+                    delivered: 0,
+                    error: "No push subscriptions — pehle Enable Push dabao",
+                  }),
+                );
+                return;
+              }
+              const delivered = await sendWebPushToAll({
+                kind: "PLAN_LOCK",
+                assetId: "XAUUSD",
+                mode: "test",
+                side: "BUY",
+                title: "TEST PUSH — Trade Alert",
+                body: "Agar ye dikha to closed-app / home-screen push KAAM kar raha hai ✅",
+                tagPrefix: "[Test]",
+              });
+              res.setHeader("Content-Type", "application/json");
+              res.end(
+                JSON.stringify({
+                  ok: true,
+                  vapidConfigured: true,
+                  subscriptions: status.webPushSubscriptions,
+                  delivered,
+                }),
+              );
+              return;
+            }
             res.statusCode = 404;
             res.setHeader("Content-Type", "application/json");
             res.end(JSON.stringify({ ok: false, error: "unknown push route" }));
