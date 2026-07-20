@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ASSET_LIST, ASSETS } from "./config/assets";
+import { ASSETS } from "./config/assets";
 import { fetchMultiTimeframe } from "./services/marketData";
 import { computeRegime, generateSignal } from "./strategies/signalEngine";
 import type { AssetId, LiveSignal, TradeMode } from "./types";
@@ -13,7 +13,6 @@ import { useLivePrice } from "./hooks/useLivePrice";
 import { requestAlertPermission, testAlertSound, useEntryAlert, usePlanLockAlert } from "./hooks/useEntryAlert";
 import { useServiceWorkerAlerts } from "./hooks/useServiceWorkerAlerts";
 import { enablePush, getPushState, type PushState } from "./services/pushClient";
-import { BackgroundAlertBanner } from "./components/BackgroundAlertBanner";
 import { roundPrice } from "./strategies/indicators";
 import { computeNowAction } from "./utils/nowAction";
 import {
@@ -50,7 +49,7 @@ import { displayedWinChance } from "./calibration/winChanceDisplay";
 const boot = loadSession();
 
 export default function App() {
-  const [assetId, setAssetId] = useState<AssetId>(boot.assetId);
+  const [assetId] = useState<AssetId>("XAUUSD");
   const [mode, setMode] = useState<TradeMode>(boot.mode);
   const [signal, setSignal] = useState<LiveSignal | null>(null);
   const [plan, setPlan] = useState<FrozenPlan | null>(boot.plan);
@@ -243,7 +242,7 @@ export default function App() {
     if (skipClearRef.current) {
       skipClearRef.current = false;
     } else {
-      // User switched Gold/Silver/BTC or Scalp/Intraday — new plan allowed
+      // User switched Scalp/Intraday — new plan allowed
       setPlan(null);
       setSignal(null);
       setLoading(true);
@@ -361,17 +360,6 @@ export default function App() {
     setForceNewPlan((n) => n + 1);
   };
 
-  const requestAssetChange = (nextAsset: AssetId) => {
-    const current = planRef.current;
-    if (current?.status === "IN_TRADE_HINT" && nextAsset !== assetId) {
-      window.alert(
-        `${current.side} ${current.assetId} trade ACTIVE hai. Active trade ke dauran asset switch blocked.`,
-      );
-      return;
-    }
-    setAssetId(nextAsset);
-  };
-
   const requestModeChange = (nextMode: TradeMode) => {
     const current = planRef.current;
     if (current?.status === "IN_TRADE_HINT" && nextMode !== mode) {
@@ -381,16 +369,6 @@ export default function App() {
       return;
     }
     setMode(nextMode);
-  };
-
-  const copyAlertCmd = async () => {
-    try {
-      await navigator.clipboard.writeText("npm run alerts");
-      await requestAlertPermission();
-      testAlertSound();
-    } catch {
-      /* ignore */
-    }
   };
 
   return (
@@ -420,16 +398,9 @@ export default function App() {
 
       <nav className="controls compact">
         <div className="asset-tabs">
-          {ASSET_LIST.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              className={assetId === a.id ? "active" : ""}
-              onClick={() => requestAssetChange(a.id)}
-            >
-              {a.name}
-            </button>
-          ))}
+          <button type="button" className="active" disabled>
+            Gold
+          </button>
         </div>
         <div className="mode-toggle">
           <button
@@ -483,8 +454,6 @@ export default function App() {
               onEnablePush={() => void enablePushNotifications()}
             />
           )}
-
-          <BackgroundAlertBanner onStartHint={() => void copyAlertCmd()} />
 
           {signal && (
             <DetailsAccordion title="Advanced — bias, path, SMC detail">

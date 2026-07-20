@@ -42,10 +42,6 @@ export function defaultState(): DaemonState {
     watches: [
       { assetId: "XAUUSD", mode: "intraday" },
       { assetId: "XAUUSD", mode: "scalping" },
-      { assetId: "XAGUSD", mode: "intraday" },
-      { assetId: "XAGUSD", mode: "scalping" },
-      { assetId: "BTCUSD", mode: "intraday" },
-      { assetId: "BTCUSD", mode: "scalping" },
     ],
     plans: {},
     lastAlertAt: {},
@@ -59,14 +55,11 @@ export function loadDaemonState(): DaemonState {
     if (!existsSync(STATE_PATH)) return defaultState();
     const raw = JSON.parse(readFileSync(STATE_PATH, "utf8")) as Partial<DaemonState>;
     const base = defaultState();
-    const watches =
-      raw.watches && raw.watches.length >= base.watches.length
-        ? raw.watches
-        : base.watches;
+    const watches = (raw.watches ?? base.watches).filter((w) => w.assetId === "XAUUSD");
     return {
       ...base,
       ...raw,
-      watches,
+      watches: watches.length > 0 ? watches : base.watches,
       plans: raw.plans ?? {},
       lastAlertAt: raw.lastAlertAt ?? {},
     };

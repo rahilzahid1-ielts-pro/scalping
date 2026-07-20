@@ -1,7 +1,7 @@
 {
-  "name": "GO Trade Alert — Gold · Silver · Bitcoin",
+  "name": "GO Trade Alert — Gold",
   "short_name": "GO Alert",
-  "description": "SMC scalping & intraday trade alerts with push notifications (works when the browser is closed).",
+  "description": "SMC scalping & intraday Gold trade alerts with push notifications (works when the browser is closed).",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

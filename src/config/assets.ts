@@ -42,4 +42,5 @@ export const ASSETS: Record<AssetId, AssetConfig> = {
   },
 };
 
-export const ASSET_LIST = Object.values(ASSETS);
+/** UI picker — Gold only (Silver/Bitcoin hidden from the desk). */
+export const ASSET_LIST = [ASSETS.XAUUSD];

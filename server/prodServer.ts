@@ -303,7 +303,7 @@ const server = createServer(async (req, res) => {
         telegramConfigured: isTelegramConfigured(),
         workerWillAutoStart: shouldAutoStartAlertWorker(),
         hint: isTelegramConfigured()
-          ? "Telegram ON — phone pe Gold/Silver/Bitcoin alerts aayenge (web band bhi)."
+          ? "Telegram ON — phone pe Gold alerts aayenge (web band bhi)."
           : "Railway Variables mein TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID set karo.",
       });
       return;

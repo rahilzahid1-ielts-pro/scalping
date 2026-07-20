@@ -114,12 +114,11 @@ export function loadSession(): DeskSession {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SESSION };
     const parsed = JSON.parse(raw) as Partial<DeskSession>;
-    const assetId =
-      parsed.assetId === "XAUUSD" || parsed.assetId === "XAGUSD" || parsed.assetId === "BTCUSD"
-        ? parsed.assetId
-        : DEFAULT_SESSION.assetId;
+    const assetId = parsed.assetId === "XAUUSD" ? "XAUUSD" : DEFAULT_SESSION.assetId;
     const mode = parsed.mode === "scalping" || parsed.mode === "intraday" ? parsed.mode : "scalping";
     let plan = isValidPlan(parsed.plan) ? parsed.plan : null;
+    // Drop plans for retired UI assets (Silver/Bitcoin).
+    if (plan && plan.assetId !== "XAUUSD") plan = null;
     if (plan && isPlanLevelsUnsafe(plan)) plan = null;
     return {
       assetId,
