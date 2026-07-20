@@ -133,19 +133,44 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
-        if (
-          req.url?.startsWith("/api/cipherbclone/") ||
-          req.url?.startsWith("/api/ict/") ||
-          req.url?.startsWith("/api/fractal/")
-        ) {
+        if (req.url?.startsWith("/api/cipherbclone/") || req.url?.startsWith("/api/fractal/")) {
+          try {
+            const url = req.url.split("?")[0];
+            if (
+              (url === "/api/cipherbclone/latest" || url === "/api/fractal/latest") &&
+              (req.method === "GET" || !req.method)
+            ) {
+              const strategy =
+                url === "/api/cipherbclone/latest" ? "cipher_b_clone" : "fractal";
+              const { buildLatestPayload } = await import("./src/strategyCompare/apiLatest");
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(buildLatestPayload(strategy)));
+              return;
+            }
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: "unknown compare route" }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "compare api error",
+              }),
+            );
+          }
+          return;
+        }
+
+        if (req.url?.startsWith("/api/ict/")) {
           res.statusCode = 410;
           res.setHeader("Content-Type", "application/json");
           res.end(
             JSON.stringify({
               ok: false,
               retired: true,
-              error:
-                "Strategy retired after underperforming 1yr XAUUSD backtest — see src/strategies/archived/README.md",
+              error: "ICT strategy remains retired (n too small / 0% on backtest)",
             }),
           );
           return;

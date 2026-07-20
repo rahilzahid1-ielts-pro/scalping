@@ -1,8 +1,8 @@
 import { createCompareBot } from "../src/strategyCompare/botFactory";
 
-const bot = createCompareBot({
+  const bot = createCompareBot({
   strategy: "fractal",
-  tagPrefix: "[Fractal]",
+  tagPrefix: "[TTrades Fractal]",
   modeLabel: "fractal",
   tickMs: Number(process.env.FRACTAL_TICK_MS) || 15_000,
   envFlag: "ENABLE_FRACTAL_WORKER",
@@ -12,8 +12,7 @@ export function startFractalWorker(): void {
   bot.start();
 }
 export function shouldAutoStartFractalWorker(): boolean {
-  // Retired from production — never auto-start (see src/strategies/archived/README.md).
-  return false;
+  return bot.shouldAutoStart();
 }
 
 const isDirect =

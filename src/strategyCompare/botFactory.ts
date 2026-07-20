@@ -1,13 +1,13 @@
 /**
- * Shared poller factory for compare strategies (cipher_b_clone / ict / fractal).
- * Modeled on daemon/quickScalpBot.ts — does not import or modify that file.
+ * Shared poller factory for compare strategies (cipher_b_clone / fractal / ict).
+ * Cipher B + Fractal: indicator trigger + SMC dual-confirm (accuracy pack).
  */
 import { ASSETS } from "../config/assets";
 import { fetchMultiTimeframe } from "../services/marketData";
 import { dispatchTradeAlert } from "../services/notify";
-import { generateCipherBSignal } from "../strategies/archived/cipherBSignal";
+import { generateCipherBLiveSignal } from "../strategies/cipherBLive";
+import { generateFractalLiveSignal } from "../strategies/fractalLive";
 import { generateIctSignal } from "../strategies/archived/ictSignal";
-import { generateFractalSignal } from "../strategies/archived/fractalSignal";
 import { candlesAsUnixSeconds, resolveBarOutcome } from "./resolve";
 import {
   getLiveStrategyDb,
@@ -30,12 +30,24 @@ export interface CompareBotConfig {
   envFlag: string;
 }
 
-function emit(strategy: CompareStrategy, m5: Candle[]) {
-  if (strategy === "cipher_b_clone") return generateCipherBSignal({ candles: m5 });
-  if (strategy === "fractal") return generateFractalSignal({ candles: m5 });
-  const sig = generateIctSignal({ candles: candlesAsUnixSeconds(m5) });
+function emit(
+  strategy: CompareStrategy,
+  frames: {
+    primary: Candle[];
+    confirmation: Candle[];
+    bias: Candle[];
+    daily: Candle[];
+  },
+) {
+  if (strategy === "cipher_b_clone") {
+    return generateCipherBLiveSignal({ ...frames, assetId: ASSET, mode: "scalping" });
+  }
+  if (strategy === "fractal") {
+    return generateFractalLiveSignal({ ...frames, assetId: ASSET, mode: "scalping" });
+  }
+  const sig = generateIctSignal({ candles: candlesAsUnixSeconds(frames.primary) });
   if (!sig) return null;
-  return { ...sig, time: m5[m5.length - 1].time };
+  return { ...sig, time: frames.primary[frames.primary.length - 1].time };
 }
 
 export function createCompareBot(cfg: CompareBotConfig) {
@@ -51,20 +63,28 @@ export function createCompareBot(cfg: CompareBotConfig) {
     const frames = await fetchMultiTimeframe(ASSET, "scalping", undefined, {
       rebaseToLive: false,
     });
-    const m5 = frames.primary;
-    if (!m5?.length) {
+    if (!frames.primary?.length || !frames.daily?.length) {
       log("no candles");
       return;
     }
 
     const db = getLiveStrategyDb();
-    const last = m5[m5.length - 1];
+    const last = frames.primary[frames.primary.length - 1];
     const d = ASSETS[ASSET].decimals;
 
     if (openTrade) {
       const hit = resolveBarOutcome(openTrade.direction, openTrade.sl, openTrade.tp1, last);
       if (hit) {
-        updateStrategyOutcome(db, openTrade.id, hit, hit === "TP1_HIT" ? 1 : -1, Date.now());
+        const risk = Math.abs(openTrade.entry - openTrade.sl);
+        const tp1R =
+          risk > 0 ? Math.abs(openTrade.tp1 - openTrade.entry) / risk : 1;
+        updateStrategyOutcome(
+          db,
+          openTrade.id,
+          hit,
+          hit === "TP1_HIT" ? tp1R : -1,
+          Date.now(),
+        );
         log("resolved", openTrade.direction, hit);
         openTrade = null;
       }
@@ -75,7 +95,7 @@ export function createCompareBot(cfg: CompareBotConfig) {
 
     let sig;
     try {
-      sig = emit(cfg.strategy, m5);
+      sig = emit(cfg.strategy, frames);
     } catch (e) {
       log("engine:", e instanceof Error ? e.message : e);
       return;
@@ -101,7 +121,7 @@ export function createCompareBot(cfg: CompareBotConfig) {
     const body = [
       `${sig.direction} @ ${sig.entry.toFixed(d)}`,
       `SL ${sig.sl.toFixed(d)} · TP1 ${sig.tp1.toFixed(d)} · TP2 ${sig.tp2.toFixed(d)}`,
-      ...sig.reason,
+      ...sig.reason.slice(0, 5),
     ].join("\n");
 
     log("SIGNAL >>>", sig.direction, sig.entry);
@@ -122,7 +142,7 @@ export function createCompareBot(cfg: CompareBotConfig) {
       return;
     }
     workerRunning = true;
-    log(`started — Gold M5, tag ${cfg.tagPrefix}`);
+    log(`started — Gold dual-confirm, tag ${cfg.tagPrefix}`);
     void (async () => {
       for (;;) {
         try {

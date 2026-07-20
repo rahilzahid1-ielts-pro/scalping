@@ -1,13 +1,13 @@
 /**
- * Generic walk-forward for single-TF compare strategies (cipher_b_clone / ict / fractal).
- * Does NOT call generateSignal / session-lock / main backtest engine.
- * Does NOT touch quick_scalp_signals.
+ * Walk-forward for compare strategies.
+ * Cipher B + Fractal: indicator + SMC dual-confirm via full multi-TF frames.
  */
 import type { Candle } from "../types";
 import { windowStartIndex } from "../backtest/loadData";
-import { generateCipherBSignal } from "../strategies/archived/cipherBSignal";
+import { framesAtIndex, precomputeHtfs } from "../backtest/frames";
+import { generateCipherBLiveSignal } from "../strategies/cipherBLive";
+import { generateFractalLiveSignal } from "../strategies/fractalLive";
 import { generateIctSignal } from "../strategies/archived/ictSignal";
-import { generateFractalSignal } from "../strategies/archived/fractalSignal";
 import { candlesAsUnixSeconds, resolveOnBars } from "./resolve";
 import {
   getBacktestStrategyDb,
@@ -20,7 +20,7 @@ import {
   type StrategySignalRow,
 } from "./store";
 
-const MIN_BARS = 80;
+const MIN_BARS = 250;
 
 export interface CompareBacktestOptions {
   candles: Candle[];
@@ -57,22 +57,34 @@ type Emitted = {
   time: number;
 };
 
-function emitSignal(strategy: CompareStrategy, window: Candle[]): Emitted | null {
+function emitSignal(
+  strategy: CompareStrategy,
+  frames: {
+    primary: Candle[];
+    confirmation: Candle[];
+    bias: Candle[];
+    daily: Candle[];
+  },
+  symbol: "XAUUSD",
+): Emitted | null {
   try {
     if (strategy === "cipher_b_clone") {
-      const sig = generateCipherBSignal({ candles: window });
-      return sig;
+      return generateCipherBLiveSignal({
+        ...frames,
+        assetId: symbol,
+        mode: "scalping",
+      });
     }
     if (strategy === "fractal") {
-      const sig = generateFractalSignal({ candles: window });
-      return sig;
+      return generateFractalLiveSignal({
+        ...frames,
+        assetId: symbol,
+        mode: "scalping",
+      });
     }
-    // ICT expects unix seconds for killzone hour
-    const sig = generateIctSignal({ candles: candlesAsUnixSeconds(window) });
+    const sig = generateIctSignal({ candles: candlesAsUnixSeconds(frames.primary) });
     if (!sig) return null;
-    // Restore ms timestamp for storage consistency with the rest of the project
-    const last = window[window.length - 1];
-    return { ...sig, time: last.time };
+    return { ...sig, time: frames.primary[frames.primary.length - 1].time };
   } catch {
     return null;
   }
@@ -83,14 +95,14 @@ export function runCompareStrategyBacktest(
 ): CompareBacktestStats {
   const days = opts.days ?? 365;
   const spread = opts.spread ?? 0.25;
-  const symbol = opts.symbol ?? "XAUUSD";
-  const cooldown = opts.cooldownBars ?? 12;
+  const symbol = (opts.symbol ?? "XAUUSD") as "XAUUSD";
+  const cooldown = opts.cooldownBars ?? 24;
   const m5 = opts.candles;
   const start = windowStartIndex(m5, days);
   const strategy = opts.strategy;
+  const htfs = precomputeHtfs(m5);
 
   const db = getBacktestStrategyDb(false);
-  // Clear only this strategy's prior backtest rows (leave other strategies intact).
   db.prepare(
     `DELETE FROM strategy_signals WHERE strategy = ? AND source = 'backtest'`,
   ).run(strategy);
@@ -101,6 +113,9 @@ export function runCompareStrategyBacktest(
 
   for (let i = Math.max(start, MIN_BARS); i < m5.length; i++) {
     if (open) {
+      const risk = Math.abs(open.row.entry - open.row.sl);
+      const tp1R =
+        risk > 0 ? Math.abs(open.row.tp1 - open.row.entry) / risk : 1;
       const res = resolveOnBars(
         open.row.direction,
         open.row.sl,
@@ -109,7 +124,8 @@ export function runCompareStrategyBacktest(
         open.fromIndex,
       );
       if (res) {
-        updateStrategyOutcome(db, open.row.id, res.outcome, res.realizedR, res.at);
+        const realizedR = res.outcome === "TP1_HIT" ? tp1R : -1;
+        updateStrategyOutcome(db, open.row.id, res.outcome, realizedR, res.at);
         open = null;
       }
     }
@@ -117,25 +133,36 @@ export function runCompareStrategyBacktest(
     if (open) continue;
     if (i - lastSignalIndex < cooldown) continue;
 
-    const window = m5.slice(Math.max(0, i + 1 - 400), i + 1);
-    if (window.length < MIN_BARS) continue;
+    const packed = framesAtIndex(m5, i, "scalping", htfs);
+    if (!packed) continue;
 
-    const sig = emitSignal(strategy, window);
+    const sig = emitSignal(
+      strategy,
+      {
+        primary: packed.primary,
+        confirmation: packed.confirmation,
+        bias: packed.bias,
+        daily: packed.daily,
+      },
+      symbol,
+    );
     if (!sig) continue;
 
     const entry = applySpread(sig.direction, sig.entry, spread);
     const risk = Math.abs(sig.entry - sig.sl);
+    const tp1Mult = risk > 0 ? Math.abs(sig.tp1 - sig.entry) / risk : 0.9;
+    const tp2Mult = risk > 0 ? Math.abs(sig.tp2 - sig.entry) / risk : 1.6;
     let sl = sig.sl;
     let tp1 = sig.tp1;
     let tp2 = sig.tp2;
     if (sig.direction === "BUY") {
       sl = entry - risk;
-      tp1 = entry + risk;
-      tp2 = entry + risk * 2;
+      tp1 = entry + risk * tp1Mult;
+      tp2 = entry + risk * tp2Mult;
     } else {
       sl = entry + risk;
-      tp1 = entry - risk;
-      tp2 = entry - risk * 2;
+      tp1 = entry - risk * tp1Mult;
+      tp2 = entry - risk * tp2Mult;
     }
 
     const row = makeStrategyRow({
@@ -146,7 +173,7 @@ export function runCompareStrategyBacktest(
       tp1,
       tp2,
       reason: sig.reason,
-      time: sig.time,
+      time: m5[i].time,
       symbol,
       source: "backtest",
     });

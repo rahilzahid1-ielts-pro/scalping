@@ -2,7 +2,7 @@ import { createCompareBot } from "../src/strategyCompare/botFactory";
 
 const bot = createCompareBot({
   strategy: "cipher_b_clone",
-  tagPrefix: "[Cipher B Clone]",
+  tagPrefix: "[Cipher B]",
   modeLabel: "cipher_b_clone",
   tickMs: Number(process.env.CIPHER_B_TICK_MS) || 15_000,
   envFlag: "ENABLE_CIPHER_B_WORKER",
@@ -12,8 +12,7 @@ export function startCipherBWorker(): void {
   bot.start();
 }
 export function shouldAutoStartCipherBWorker(): boolean {
-  // Retired from production — never auto-start (see src/strategies/archived/README.md).
-  return false;
+  return bot.shouldAutoStart();
 }
 
 const isDirect =

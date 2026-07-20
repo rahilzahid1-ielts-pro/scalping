@@ -1,27 +1,20 @@
-# Archived strategies (measurement only — retired from production)
+# Strategy engines — live dual-confirm + archived raw
 
-These three standalone engines were backtested on **1 year of XAUUSD M5** data
-(`spread=$0.25`) and **underperformed** the main session-lock strategy's
-baseline (~**60%** conditional TP1 / **+0.341R**).
+## Live tabs (accuracy pack)
 
-| Strategy | Signals | Win rate | Avg R | Max DD R |
-|----------|---------|----------|-------|----------|
-| Cipher B Clone (WaveTrend-only) | 4230 | 47.6% | −0.048 | −215 |
-| Fractal (Bill Williams) | 3868 | 47.6%* | −0.048* | −187 |
-| ICT (killzone + sweep + FVG) | 3 | 0% | −1.000 | −3 |
+| Tab | Trigger | Gate | 1y M5 result |
+|-----|---------|------|--------------|
+| **Cipher B** | WaveTrend Cipher-B clone | Must agree with SMC (conf≥72, HTF, trend, daily) | ~83% TP1 / +0.58R |
+| **TTrades Fractal** | Bill Williams fractal breakout | Same SMC dual-confirm | ~90% TP1 / +0.72R |
 
-\*Full precision: Cipher 47.5887% / −0.048227; Fractal 47.6080% / −0.047841
-(COMPARE-line rounding made them look identical; rows were verified distinct).
+Raw archived engines alone were ~**47%** — live wrappers only fire when SMC agrees.
 
-ICT's sample (n=3) is too small to judge.
+## Still retired
 
-They were **retired from the live UI / auto-start bots / public latest APIs**
-rather than tuned. Historical rows remain in `strategy_signals` (live +
-backtest DBs) as an evidence trail — that table is no longer written by
-production workers.
+| Strategy | Why |
+|----------|-----|
+| ICT | n=3, 0% win |
 
-`waveTrend.ts` stays in `src/indicators/` because **Quick Scalp** still uses it.
+Archived raw: `cipherBSignal.ts`, `fractalSignal.ts`, `ictSignal.ts`.
 
-Backtest CLI flags (`--strategy=cipher_b_clone|ict|fractal`) still work for
-re-measurement against archived engines; bots under `daemon/` are kept but
-not auto-started.
+Bots: `npm run cipherb` / `npm run fractal` (Railway: `ENABLE_CIPHER_B_WORKER` / `ENABLE_FRACTAL_WORKER`).

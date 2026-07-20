@@ -7,6 +7,7 @@ import { TradingViewChart } from "./components/TradingViewChart";
 import { ActionNow } from "./components/ActionNow";
 import { QuickScalpCard } from "./components/QuickScalpCard";
 import { ProCard } from "./components/ProCard";
+import { StrategyCompareCard } from "./components/StrategyCompareCard";
 import { DetailsAccordion } from "./components/DetailsAccordion";
 import { BiasCard } from "./components/BiasCard";
 import { PredictionPanel } from "./components/PredictionPanel";
@@ -30,7 +31,9 @@ export default function App() {
   const [assetId] = useState<AssetId>("XAUUSD");
   const [mode, setMode] = useState<TradeMode>(boot.mode);
   /** Isolated Quick Scalp desk view — does not change main Scalp/Intraday mode. */
-  const [deskView, setDeskView] = useState<"main" | "quick_scalp" | "pro">("main");
+  const [deskView, setDeskView] = useState<
+    "main" | "quick_scalp" | "pro" | "cipher_b" | "fractal"
+  >("main");
   const [signal, setSignal] = useState<LiveSignal | null>(null);
   /** Display cache of server plan; lock decisions live in alertBot only. */
   const [plan, setPlan] = useState<FrozenPlan | null>(boot.plan);
@@ -299,6 +302,20 @@ export default function App() {
           >
             Pro
           </button>
+          <button
+            type="button"
+            className={deskView === "cipher_b" ? "active" : ""}
+            onClick={() => setDeskView("cipher_b")}
+          >
+            Cipher B
+          </button>
+          <button
+            type="button"
+            className={deskView === "fractal" ? "active" : ""}
+            onClick={() => setDeskView("fractal")}
+          >
+            TTrades Fractal
+          </button>
         </div>
         <button
           type="button"
@@ -331,6 +348,18 @@ export default function App() {
             <QuickScalpCard />
           ) : deskView === "pro" ? (
             <ProCard />
+          ) : deskView === "cipher_b" ? (
+            <StrategyCompareCard
+              title="CIPHER B · Gold"
+              subtitle="WaveTrend Cipher-B + SMC dual-confirm · trend only · TP1 @ 0.9R"
+              apiPath="/api/cipherbclone/latest"
+            />
+          ) : deskView === "fractal" ? (
+            <StrategyCompareCard
+              title="TTRADES FRACTAL · Gold"
+              subtitle="Fractal breakout + SMC dual-confirm · trend only · TP1 @ 0.9R"
+              apiPath="/api/fractal/latest"
+            />
           ) : (
             nowAction && (
               <ActionNow

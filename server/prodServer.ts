@@ -335,12 +335,23 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    if (path === "/api/cipherbclone/latest" || path === "/api/ict/latest" || path === "/api/fractal/latest") {
+    if (path === "/api/cipherbclone/latest" && req.method === "GET") {
+      const { buildLatestPayload } = await import("../src/strategyCompare/apiLatest");
+      sendJson(res, 200, buildLatestPayload("cipher_b_clone"));
+      return;
+    }
+
+    if (path === "/api/fractal/latest" && req.method === "GET") {
+      const { buildLatestPayload } = await import("../src/strategyCompare/apiLatest");
+      sendJson(res, 200, buildLatestPayload("fractal"));
+      return;
+    }
+
+    if (path === "/api/ict/latest") {
       sendJson(res, 410, {
         ok: false,
         retired: true,
-        error:
-          "Strategy retired after underperforming 1yr XAUUSD backtest — see src/strategies/archived/README.md",
+        error: "ICT strategy remains retired (n too small / 0% on backtest)",
       });
       return;
     }
@@ -456,5 +467,33 @@ server.listen(PORT, "0.0.0.0", () => {
     },
   ).catch((e) => {
     console.error("[prodServer] Failed to start Pro worker:", e);
+  });
+
+  void import("../daemon/cipherBBot").then(
+    ({ startCipherBWorker, shouldAutoStartCipherBWorker }) => {
+      if (shouldAutoStartCipherBWorker()) {
+        startCipherBWorker();
+      } else {
+        console.log(
+          "[prodServer] Cipher B worker OFF — set ENABLE_CIPHER_B_WORKER=1 to enable",
+        );
+      }
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Failed to start Cipher B worker:", e);
+  });
+
+  void import("../daemon/fractalBot").then(
+    ({ startFractalWorker, shouldAutoStartFractalWorker }) => {
+      if (shouldAutoStartFractalWorker()) {
+        startFractalWorker();
+      } else {
+        console.log(
+          "[prodServer] Fractal worker OFF — set ENABLE_FRACTAL_WORKER=1 to enable",
+        );
+      }
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Failed to start Fractal worker:", e);
   });
 });
