@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import type { AssetId, Candle, RegimeTag, Side, TradeMode } from "../types";
 import { ASSETS } from "../config/assets";
 import { computeRegime, generateSignal } from "../strategies/signalEngine";
+import { generateFractalSignal } from "../strategies/archived/fractalSignal";
 import { makePlanKey } from "../calibration/db";
 import { advanceSignalOnBar, resolveGapAmongLevels } from "../calibration/resolveOutcomes";
 import type { LoggedSignal } from "../calibration/types";
@@ -40,6 +41,12 @@ export interface BacktestOptions {
   windowStartIdx: number;
   /** SCALPING-ONLY trend-confirmation M (consecutive confirm bars). Default 4. */
   trendConfirmBars?: number;
+  /**
+   * When true, only auto-lock if Bill Williams fractal breakout direction
+   * agrees with generateSignal side (lean TTrades gate — no quality stack).
+   * Default false = main desk baseline path unchanged.
+   */
+  requireFractalAgree?: boolean;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -642,6 +649,18 @@ export function runWalkForward(
       ) {
         byMode.set(mode, state);
         continue;
+      }
+
+      if (opts.requireFractalAgree) {
+        const fr = generateFractalSignal({ candles: frames.primary });
+        if (
+          !fr ||
+          (signal.side !== "BUY" && signal.side !== "SELL") ||
+          fr.direction !== signal.side
+        ) {
+          byMode.set(mode, state);
+          continue;
+        }
       }
 
       const extras = buildSessionExtras(

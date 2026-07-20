@@ -190,14 +190,127 @@ export function loadForexSbJson(path: string): LoadedSeries {
 }
 
 /**
- * Load historical OHLC. Supports ForexSB JSON (confirmed). CSV MT5 exports
- * can be added once a sample with headers is provided — do not guess columns.
+ * MT5 / broker CSV: `Date;Open;High;Low;Close;Volume`
+ * Date like `2004.06.11 07:15` (broker local wall-clock, treated as UTC for series math).
+ */
+export function loadMt5Csv(path: string, periodMinutesHint?: number): LoadedSeries {
+  if (!existsSync(path)) throw new Error(`[backtest] File not found: ${path}`);
+  const text = readFileSync(path, "utf8");
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length < 2) throw new Error(`[backtest] CSV empty: ${path}`);
+
+  const header = lines[0].toLowerCase();
+  if (!header.includes("date") || !header.includes("open") || !header.includes("close")) {
+    throw new Error(
+      `[backtest] Unexpected CSV header (want Date;Open;High;Low;Close;Volume): ${lines[0]}`,
+    );
+  }
+
+  const timesMin: number[] = [];
+  const open: number[] = [];
+  const high: number[] = [];
+  const low: number[] = [];
+  const close: number[] = [];
+  const volume: number[] = [];
+
+  for (let li = 1; li < lines.length; li++) {
+    const parts = lines[li].split(";");
+    if (parts.length < 5) continue;
+    const rawDate = parts[0].trim();
+    // 2004.06.11 07:15  or  2004.06.11
+    const m = /^(\d{4})\.(\d{2})\.(\d{2})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(rawDate);
+    if (!m) continue;
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const hh = Number(m[4] ?? 0);
+    const mm = Number(m[5] ?? 0);
+    const ss = Number(m[6] ?? 0);
+    const ms = Date.UTC(y, mo, d, hh, mm, ss);
+    if (!Number.isFinite(ms)) continue;
+
+    const o = Number(parts[1]);
+    const h = Number(parts[2]);
+    const l = Number(parts[3]);
+    const c = Number(parts[4]);
+    const v = parts.length > 5 ? Number(parts[5]) : 0;
+    if (![o, h, l, c].every((x) => Number.isFinite(x))) continue;
+
+    timesMin.push(Math.round((ms - FOREXSB_EPOCH_MS) / 60_000));
+    open.push(o);
+    high.push(h);
+    low.push(l);
+    close.push(c);
+    volume.push(Number.isFinite(v) ? v : 0);
+  }
+
+  if (timesMin.length < 500) {
+    throw new Error(`[backtest] Too few CSV bars (${timesMin.length}) in ${path}`);
+  }
+
+  // Infer period from median step between bars (robust to weekends).
+  let periodMinutes = periodMinutesHint ?? 5;
+  if (periodMinutesHint == null && timesMin.length >= 3) {
+    const steps: number[] = [];
+    for (let i = 1; i < Math.min(timesMin.length, 5000); i++) {
+      const dt = timesMin[i] - timesMin[i - 1];
+      if (dt > 0 && dt <= 60 * 24 * 7) steps.push(dt);
+    }
+    steps.sort((a, b) => a - b);
+    if (steps.length) periodMinutes = steps[Math.floor(steps.length / 2)] || 5;
+  }
+
+  const base = path.replace(/\\/g, "/").split("/").pop() ?? "XAUUSD";
+  const loaded = validateAndBuild(
+    "XAUUSD",
+    periodMinutes,
+    timesMin,
+    open,
+    high,
+    low,
+    close,
+    volume,
+    null,
+    null,
+  );
+  loaded.timezoneNote =
+    `MT5 CSV (${base}): Date;OHLCV — bar OPEN timestamps treated as UTC wall-clock. ` +
+    `HTF for engines is still resampled from this base series (no look-ahead).`;
+  return loaded;
+}
+
+/**
+ * Load historical OHLC. Supports ForexSB JSON and MT5 semicolon CSV.
  */
 export function loadHistoricalFile(path: string): LoadedSeries {
-  if (path.toLowerCase().endsWith(".json")) return loadForexSbJson(path);
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".json")) return loadForexSbJson(path);
+  if (lower.endsWith(".csv")) {
+    // Prefer M5 for walk-forward; other TFs loadable but engines expect M5 base.
+    const hint = /_1m_/i.test(path)
+      ? 1
+      : /_5m_/i.test(path)
+        ? 5
+        : /_15m_/i.test(path)
+          ? 15
+          : /_30m_/i.test(path)
+            ? 30
+            : /_1h_/i.test(path)
+              ? 60
+              : /_4h_/i.test(path)
+                ? 240
+                : /_1d_/i.test(path)
+                  ? 1440
+                  : /_1w_/i.test(path)
+                    ? 10080
+                    : /_1month_/i.test(path)
+                      ? 43200
+                      : undefined;
+    return loadMt5Csv(path, hint);
+  }
   throw new Error(
     `[backtest] Unsupported file type: ${path}\n` +
-      `  Provide ForexSB/Dukas JSON (e.g. XAUUSD_M5.json) or supply an MT5 CSV sample so headers can be confirmed.`,
+      `  Provide ForexSB JSON (e.g. XAUUSD_M5.json) or MT5 CSV (Date;Open;High;Low;Close;Volume).`,
   );
 }
 

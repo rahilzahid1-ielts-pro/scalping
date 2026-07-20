@@ -66,18 +66,11 @@ export async function buildLatestPayload(strategy: CompareStrategy) {
     const frames = await fetchMultiTimeframe("XAUUSD", "scalping", undefined, {
       rebaseToLive: false,
     });
-    const minConf = strategy === "fractal" ? 72 : 75;
-    const diag = diagnoseSmcGateBlock(frames, { mode: "scalping", minConf });
-    if (!diag.pass) {
-      waitReason = diag.waitReason;
-    } else {
-      const packed = { ...frames, assetId: "XAUUSD" as const, mode: "scalping" as const };
-      const sig =
-        strategy === "fractal"
-          ? generateFractalLiveSignal(packed)
-          : strategy === "cipher_b_clone"
-            ? generateCipherBLiveSignal(packed)
-            : null;
+    const packed = { ...frames, assetId: "XAUUSD" as const, mode: "scalping" as const };
+
+    if (strategy === "fractal") {
+      // Lean fractal: direction agree only — do not block on SMC quality stack.
+      const sig = generateFractalLiveSignal(packed);
       if (sig) {
         live = {
           direction: sig.direction,
@@ -87,10 +80,26 @@ export async function buildLatestPayload(strategy: CompareStrategy) {
           tp2: sig.tp2,
         };
       } else {
-        waitReason =
-          strategy === "fractal"
-            ? `SMC ${diag.side} ok, lekin fractal breakout agree nahi`
-            : `SMC ${diag.side} ok, lekin Cipher B trigger agree nahi`;
+        waitReason = "Fractal breakout SMC side se agree nahi (lean gate)";
+      }
+    } else {
+      const diag = diagnoseSmcGateBlock(frames, { mode: "scalping", minConf: 75 });
+      if (!diag.pass) {
+        waitReason = diag.waitReason;
+      } else {
+        const sig =
+          strategy === "cipher_b_clone" ? generateCipherBLiveSignal(packed) : null;
+        if (sig) {
+          live = {
+            direction: sig.direction,
+            entry: sig.entry,
+            sl: sig.sl,
+            tp1: sig.tp1,
+            tp2: sig.tp2,
+          };
+        } else {
+          waitReason = `SMC ${diag.side} ok, lekin Cipher B trigger agree nahi`;
+        }
       }
     }
   } catch (e) {

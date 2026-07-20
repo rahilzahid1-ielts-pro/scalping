@@ -1,18 +1,18 @@
 /**
- * TTrades Fractal live — fractal breakout MUST agree with SMC generateSignal.
- * Only fires when both align (trend + conf + HTF). Accuracy over frequency.
+ * TTrades Fractal live — fractal breakout MUST agree with SMC generateSignal side.
+ * Lean variant: direction agreement only (no conf/HTF/trend/daily quality stack).
+ * Levels from SMC; TP1 remapped to 0.9R for the tab's bank-quick style.
  */
 import type { AssetId, Candle, TradeMode } from "../types";
 import { generateFractalSignal } from "./archived/fractalSignal";
 import { generateSignal } from "./signalEngine";
 
-const MIN_CONF = 72;
 const RR_TP1 = 0.9;
 const RR_TP2 = 1.6;
 
 export interface FractalLiveSignal {
   strategy: "fractal";
-  style: "ttrades_fractal_smc";
+  style: "ttrades_fractal_agree";
   direction: "BUY" | "SELL";
   entry: number;
   sl: number;
@@ -44,17 +44,9 @@ export function generateFractalLiveSignal(input: {
     bias: input.bias,
     daily: input.daily,
   });
+  // Sole gate: fractal breakout direction must match main SMC side.
   if (smc.side !== fractal.direction) return null;
   if (!smc.levels) return null;
-  if (smc.confidence < MIN_CONF) return null;
-  if (!smc.diagnostics.htfAligned) return null;
-  if (smc.diagnostics.conflictingSignals || smc.diagnostics.conflictCapped) return null;
-  const regime = smc.diagnostics.regime ?? "";
-  if (regime !== "TREND_UP" && regime !== "TREND_DOWN") return null;
-  if (fractal.direction === "BUY" && regime !== "TREND_UP") return null;
-  if (fractal.direction === "SELL" && regime !== "TREND_DOWN") return null;
-  if (fractal.direction === "BUY" && smc.dailyBias.bias !== "BULLISH") return null;
-  if (fractal.direction === "SELL" && smc.dailyBias.bias !== "BEARISH") return null;
 
   const entry = smc.levels.entry;
   const sl = smc.levels.stopLoss;
@@ -67,7 +59,7 @@ export function generateFractalLiveSignal(input: {
 
   return {
     strategy: "fractal",
-    style: "ttrades_fractal_smc",
+    style: "ttrades_fractal_agree",
     direction: fractal.direction,
     entry,
     sl,
@@ -78,8 +70,8 @@ export function generateFractalLiveSignal(input: {
     time: input.primary[input.primary.length - 1].time,
     reason: [
       ...fractal.reason,
-      `TTrades Fractal + SMC dual confirm · conf ${smc.confidence}% · ${regime}`,
-      `Daily ${smc.dailyBias.bias} · HTF aligned`,
+      `Fractal agrees with SMC ${smc.side} · conf ${smc.confidence}%`,
+      `Lean gate: direction agreement only (no quality stack)`,
       `TP1 @ ${RR_TP1}R — bank at TP1`,
     ],
   };
