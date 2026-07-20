@@ -335,6 +335,12 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/pulse/latest" && req.method === "GET") {
+      const { buildPulseLatestPayload } = await import("../src/pulse/apiLatest");
+      sendJson(res, 200, await buildPulseLatestPayload());
+      return;
+    }
+
     if (path === "/api/cipherbclone/latest" && req.method === "GET") {
       const { buildLatestPayload } = await import("../src/strategyCompare/apiLatest");
       sendJson(res, 200, await buildLatestPayload("cipher_b_clone"));
@@ -467,6 +473,20 @@ server.listen(PORT, "0.0.0.0", () => {
     },
   ).catch((e) => {
     console.error("[prodServer] Failed to start Pro worker:", e);
+  });
+
+  void import("../daemon/pulseBot").then(
+    ({ startPulseWorker, shouldAutoStartPulseWorker }) => {
+      if (shouldAutoStartPulseWorker()) {
+        startPulseWorker();
+      } else {
+        console.log(
+          "[prodServer] Pulse worker OFF — set ENABLE_PULSE_WORKER=1 to enable",
+        );
+      }
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Failed to start Pulse worker:", e);
   });
 
   void import("../daemon/cipherBBot").then(

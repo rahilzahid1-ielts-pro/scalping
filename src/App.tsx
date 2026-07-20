@@ -7,6 +7,7 @@ import { TradingViewChart } from "./components/TradingViewChart";
 import { ActionNow } from "./components/ActionNow";
 import { QuickScalpCard } from "./components/QuickScalpCard";
 import { ProCard } from "./components/ProCard";
+import { PulseCard } from "./components/PulseCard";
 import { StrategyCompareCard } from "./components/StrategyCompareCard";
 import { DetailsAccordion } from "./components/DetailsAccordion";
 import { BiasCard } from "./components/BiasCard";
@@ -32,7 +33,7 @@ export default function App() {
   const [mode, setMode] = useState<TradeMode>(boot.mode);
   /** Isolated Quick Scalp desk view — does not change main Scalp/Intraday mode. */
   const [deskView, setDeskView] = useState<
-    "main" | "quick_scalp" | "pro" | "cipher_b" | "fractal"
+    "main" | "quick_scalp" | "pro" | "pulse" | "cipher_b" | "fractal"
   >("main");
   const [signal, setSignal] = useState<LiveSignal | null>(null);
   /** Display cache of server plan; lock decisions live in alertBot only. */
@@ -304,6 +305,13 @@ export default function App() {
           </button>
           <button
             type="button"
+            className={deskView === "pulse" ? "active" : ""}
+            onClick={() => setDeskView("pulse")}
+          >
+            QS Pro
+          </button>
+          <button
+            type="button"
             className={deskView === "cipher_b" ? "active" : ""}
             onClick={() => setDeskView("cipher_b")}
           >
@@ -348,6 +356,8 @@ export default function App() {
             <QuickScalpCard />
           ) : deskView === "pro" ? (
             <ProCard />
+          ) : deskView === "pulse" ? (
+            <PulseCard />
           ) : deskView === "cipher_b" ? (
             <StrategyCompareCard
               title="CIPHER B · Gold"

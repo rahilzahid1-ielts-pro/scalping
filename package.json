@@ -13,6 +13,7 @@
     "backtest": "tsx daemon/backtest.ts",
     "quickscalp": "tsx daemon/quickScalpBot.ts",
     "pro": "tsx daemon/proBot.ts",
+    "pulse": "tsx daemon/pulseBot.ts",
     "cipherb": "tsx daemon/cipherBBot.ts",
     "fractal": "tsx daemon/fractalBot.ts",
     "backtest:pro": "tsx daemon/backtest.ts --strategy=pro --file=data/XAUUSD_M5.json --days=365 --spread=0.25",

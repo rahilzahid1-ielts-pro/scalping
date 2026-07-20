@@ -133,6 +133,31 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
+        if (req.url?.startsWith("/api/pulse/")) {
+          try {
+            const url = req.url.split("?")[0];
+            if (url === "/api/pulse/latest" && (req.method === "GET" || !req.method)) {
+              const { buildPulseLatestPayload } = await import("./src/pulse/apiLatest");
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(await buildPulseLatestPayload()));
+              return;
+            }
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: "unknown pulse route" }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "pulse api error",
+              }),
+            );
+          }
+          return;
+        }
+
         if (req.url?.startsWith("/api/cipherbclone/") || req.url?.startsWith("/api/fractal/")) {
           try {
             const url = req.url.split("?")[0];
