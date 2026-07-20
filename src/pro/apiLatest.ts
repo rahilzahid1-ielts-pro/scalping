@@ -9,18 +9,34 @@ import {
   countResolvedPro,
   isProBacktestValidated,
 } from "./store";
+import { PRO_BACKTEST_SNAPSHOT } from "./backtestSnapshot";
 
 export function buildProLatestPayload(): {
   ok: true;
   validated: boolean;
   badge: string | null;
   latest: ReturnType<typeof getLatestPro>;
-  backtestSummary: ReturnType<typeof summarizePro> | null;
+  backtestSummary: {
+    resolved: number;
+    wins: number;
+    losses: number;
+    winRate: number | null;
+    avgR: number | null;
+    maxDrawdownR: number | null;
+  } | null;
 } {
   const liveDb = getLiveProDb();
   const latest = getLatestPro(liveDb);
-  let backtestSummary = null;
+  let backtestSummary: {
+    resolved: number;
+    wins: number;
+    losses: number;
+    winRate: number | null;
+    avgR: number | null;
+    maxDrawdownR: number | null;
+  } | null = null;
   let validated = false;
+
   try {
     const bt = getBacktestProDb(false);
     const n = countResolvedPro(bt);
@@ -29,7 +45,20 @@ export function buildProLatestPayload(): {
       validated = isProBacktestValidated(backtestSummary);
     }
   } catch {
-    /* no backtest history */
+    /* no local backtest DB — fall through to snapshot */
+  }
+
+  // data/ is gitignored; prod has no backtest-results.db — use committed snapshot.
+  if (!backtestSummary) {
+    backtestSummary = {
+      resolved: PRO_BACKTEST_SNAPSHOT.resolved,
+      wins: PRO_BACKTEST_SNAPSHOT.wins,
+      losses: PRO_BACKTEST_SNAPSHOT.losses,
+      winRate: PRO_BACKTEST_SNAPSHOT.winRate,
+      avgR: PRO_BACKTEST_SNAPSHOT.avgR,
+      maxDrawdownR: PRO_BACKTEST_SNAPSHOT.maxDrawdownR,
+    };
+    validated = isProBacktestValidated(backtestSummary);
   }
 
   return {
@@ -39,8 +68,6 @@ export function buildProLatestPayload(): {
     backtestSummary,
     badge: validated
       ? null
-      : backtestSummary
-        ? `UNVALIDATED — need ≥58% TP1win, n≥50, avgR>0 (now n=${backtestSummary.resolved}, wr=${backtestSummary.winRate?.toFixed(1) ?? "—"}%, avgR=${backtestSummary.avgR?.toFixed(2) ?? "—"})`
-        : "UNVALIDATED — no Pro backtest history yet",
+      : `UNVALIDATED — need ≥58% TP1win, n≥50, avgR>0 (now n=${backtestSummary.resolved}, wr=${backtestSummary.winRate?.toFixed(1) ?? "—"}%, avgR=${backtestSummary.avgR?.toFixed(2) ?? "—"})`,
   };
 }
