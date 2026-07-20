@@ -35,6 +35,7 @@ export async function buildProLatestPayload() {
     strategy: "pro" as const,
     realizedR: null,
     resolvedAt: null,
+    executedAt: o.executedAt ?? null,
     source: "live" as const,
   }));
   let backtestSummary: {

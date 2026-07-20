@@ -32,6 +32,7 @@ import {
   invalidateLoggedPlanRegimeFlip,
   markLiquiditySweep,
   markTrendConfirmed,
+  markZoneTouched,
   setTrendDuration,
   listOpenSignals,
 } from "../src/calibration/resolveOutcomes";
@@ -303,12 +304,28 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
   // Promote waiting → active when entry zone is hit (UI ACTIVE TRADE).
   // Keep `now` as ENTER_NOW for this tick so entry alerts still fire once.
   if (plan?.status === "WAITING_ENTRY" && now.action === "ENTER_NOW") {
+    const at = Date.now();
     plan = {
       ...plan,
       status: "IN_TRADE_HINT",
       note: `Entry hit @ ${plan.levels.entry}. Trade active; manage original SL/TP.`,
     };
     state.plans[planKey(assetId, mode)] = plan;
+    try {
+      markZoneTouched(
+        makePlanKey(
+          assetId,
+          mode,
+          plan.side,
+          plan.levels.entry,
+          plan.levels.stopLoss,
+          plan.levels.takeProfit1,
+        ),
+        at,
+      );
+    } catch {
+      /* db may be unavailable */
+    }
   }
 
   if (now.action === "TOO_LATE" || now.action === "PLAN_DEAD") {

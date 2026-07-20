@@ -167,13 +167,20 @@ export function advanceSignalOnBar(
 ): LoggedSignal | null {
   const { open, high, low } = barBounds(tick);
 
-  // Phase 1: waiting for TP1 vs original SL
+  // Phase 1: waiting for TP1 vs original SL — only after entry is touched (executed).
   if (sig.outcome === "OPEN" && sig.outcomeTp1 == null) {
+    let stampedEntry = false;
+    if (sig.zoneTouchedAt == null && low <= sig.entry && high >= sig.entry) {
+      sig.zoneTouchedAt = now;
+      stampedEntry = true;
+    }
+    if (sig.zoneTouchedAt == null) return null;
+
     const winner = resolveGapAmongLevels(sig.side, open, high, low, [
       { kind: "SL", level: sig.sl },
       { kind: "TP1", level: sig.tp1 },
     ]);
-    if (!winner) return null;
+    if (!winner) return stampedEntry ? sig : null;
     const note =
       winner.kind === "SL"
         ? "SL before TP1 (gap/tick)"
@@ -296,6 +303,19 @@ export function markTrendConfirmed(planKey: string, at: number): void {
   if (!sig) return;
   if (sig.trendConfirmedAt != null) return;
   sig.trendConfirmedAt = at;
+  updateSignal(sig);
+}
+
+/**
+ * Stamp when price first hits the locked entry zone (actual trade start).
+ * Idempotent — first stamp wins. Used by History "EXECUTED" vs "NOT EXECUTED".
+ */
+export function markZoneTouched(planKey: string, at: number): void {
+  const sig = findByPlanKey(planKey);
+  if (!sig) return;
+  if (sig.outcome !== "OPEN") return;
+  if (sig.zoneTouchedAt != null) return;
+  sig.zoneTouchedAt = at;
   updateSignal(sig);
 }
 

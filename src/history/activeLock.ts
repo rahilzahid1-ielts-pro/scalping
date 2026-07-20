@@ -26,6 +26,8 @@ export interface ActiveOpenLock {
   tp2: number;
   outcome: "OPEN";
   time: number;
+  /** When price first hit entry (null = not executed yet). */
+  executedAt?: number | null;
   reason: string;
   confidence?: number;
   dailyBias?: string;
@@ -64,6 +66,7 @@ export function getActiveOpenLock(module: ActiveModuleId): ActiveOpenLock | null
       tp2: s.tp2,
       outcome: "OPEN",
       time: s.timestamp,
+      executedAt: s.zoneTouchedAt ?? null,
       reason: JSON.stringify([`History OPEN · ${module}`]),
       confidence: s.confidence,
       dailyBias: s.dailyBias,
@@ -86,6 +89,7 @@ export function getActiveOpenLock(module: ActiveModuleId): ActiveOpenLock | null
       tp2: r.tp2,
       outcome: "OPEN",
       time: r.timestamp,
+      executedAt: r.executedAt ?? null,
       reason: r.reason,
       dailyBias: r.dailyTrend,
     };
@@ -106,6 +110,7 @@ export function getActiveOpenLock(module: ActiveModuleId): ActiveOpenLock | null
       tp2: r.tp2,
       outcome: "OPEN",
       time: r.timestamp,
+      executedAt: r.executedAt ?? null,
       reason: r.reason,
       confidence: r.confidence,
       dailyBias: r.dailyBias,
@@ -128,6 +133,7 @@ export function getActiveOpenLock(module: ActiveModuleId): ActiveOpenLock | null
       tp2: r.tp2,
       outcome: "OPEN",
       time: r.timestamp,
+      executedAt: r.executedAt ?? null,
       reason: r.reason,
       confidence: r.confidence,
       dailyBias: r.dailyBias,
@@ -151,6 +157,7 @@ export function getActiveOpenLock(module: ActiveModuleId): ActiveOpenLock | null
       tp2: r.tp2,
       outcome: "OPEN",
       time: r.time,
+      executedAt: r.executedAt ?? null,
       reason: r.reason,
     };
   }

@@ -31,8 +31,15 @@ export interface HistoryTrade {
   outcome: string;
   outcomeLabel: string;
   realizedR: number | null;
+  /** Display / sort time — executed start when known, else lock time. */
   at: number;
   atKarachi: string;
+  lockedAt: number;
+  lockedAtKarachi: string;
+  executed: boolean;
+  executedAt: number | null;
+  executedAtKarachi: string | null;
+  executionLabel: "EXECUTED" | "NOT EXECUTED";
   resolvedAt: number | null;
   resolvedKarachi: string | null;
   description: string;
@@ -113,9 +120,30 @@ function describe(t: {
   sl: number;
   tp1: number;
   outcomeLabel: string;
+  executionLabel: string;
   atKarachi: string;
+  lockedAtKarachi: string;
 }): string {
-  return `${t.moduleLabel} ne ${t.atKarachi} pe ${t.side} diya @ ${t.entry.toFixed(2)} · SL ${t.sl.toFixed(2)} · TP1 ${t.tp1.toFixed(2)} → ${t.outcomeLabel}`;
+  if (t.executionLabel === "NOT EXECUTED") {
+    return `${t.moduleLabel} lock ${t.lockedAtKarachi} · ${t.side} @ ${t.entry.toFixed(2)} · SL ${t.sl.toFixed(2)} · TP1 ${t.tp1.toFixed(2)} → NOT EXECUTED (entry wait)`;
+  }
+  return `${t.moduleLabel} EXECUTED ${t.atKarachi} · ${t.side} @ ${t.entry.toFixed(2)} · SL ${t.sl.toFixed(2)} · TP1 ${t.tp1.toFixed(2)} → ${t.outcomeLabel}`;
+}
+
+/** Resolve execution state for History display. */
+function executionOf(
+  lockedAt: number,
+  rawExecutedAt: number | null | undefined,
+  outcome: string,
+): { executed: boolean; executedAt: number | null; displayAt: number } {
+  if (rawExecutedAt != null) {
+    return { executed: true, executedAt: rawExecutedAt, displayAt: rawExecutedAt };
+  }
+  if (outcome === "OPEN") {
+    return { executed: false, executedAt: null, displayAt: lockedAt };
+  }
+  // Legacy closed rows (pre-stamp): treat lock time as start.
+  return { executed: true, executedAt: lockedAt, displayAt: lockedAt };
 }
 
 function isWin(outcome: string): boolean {
@@ -160,13 +188,31 @@ function safeCollect<T>(fn: () => T[]): T[] {
 
 function pushTrade(
   all: HistoryTrade[],
-  partial: Omit<HistoryTrade, "atKarachi" | "resolvedKarachi" | "outcomeLabel" | "description" | "moduleLabel"> & {
+  partial: {
+    id: string;
     module: HistoryModuleId;
+    side: "BUY" | "SELL";
+    entry: number;
+    sl: number;
+    tp1: number;
+    tp2: number | null;
+    outcome: string;
     outcomeTp1?: string | null;
+    realizedR: number | null;
+    lockedAt: number;
+    executedAt?: number | null;
+    resolvedAt: number | null;
   },
 ) {
   const outcomeLabelText = outcomeLabel(partial.outcome, partial.outcomeTp1);
-  const atKarachi = formatKarachi(partial.at);
+  const ex = executionOf(partial.lockedAt, partial.executedAt, partial.outcome);
+  const executionLabel: "EXECUTED" | "NOT EXECUTED" = ex.executed
+    ? "EXECUTED"
+    : "NOT EXECUTED";
+  const atKarachi = formatKarachi(ex.displayAt);
+  const lockedAtKarachi = formatKarachi(partial.lockedAt);
+  const executedAtKarachi =
+    ex.executedAt != null ? formatKarachi(ex.executedAt) : null;
   const resolvedKarachi =
     partial.resolvedAt != null ? formatKarachi(partial.resolvedAt) : null;
   const moduleLabel = LABELS[partial.module];
@@ -182,8 +228,14 @@ function pushTrade(
     outcome: partial.outcome,
     outcomeLabel: outcomeLabelText,
     realizedR: partial.realizedR,
-    at: partial.at,
+    at: ex.displayAt,
     atKarachi,
+    lockedAt: partial.lockedAt,
+    lockedAtKarachi,
+    executed: ex.executed,
+    executedAt: ex.executedAt,
+    executedAtKarachi,
+    executionLabel,
     resolvedAt: partial.resolvedAt,
     resolvedKarachi,
     description: describe({
@@ -193,7 +245,9 @@ function pushTrade(
       sl: partial.sl,
       tp1: partial.tp1,
       outcomeLabel: outcomeLabelText,
+      executionLabel,
       atKarachi,
+      lockedAtKarachi,
     }),
   };
   all.push(row);
@@ -217,10 +271,18 @@ export async function buildHistoryPayload(opts: {
   const moduleFilter = (opts.module || "all").toLowerCase();
   const all: HistoryTrade[] = [];
 
-  /** Selected day, plus still-OPEN locks when viewing today (match module screens). */
+  /** Day by lock or execute time; still-OPEN always when viewing today. */
   const viewingToday = date === karachiYmd();
-  const includeAt = (t: number, outcome: string) =>
-    inRange(t, start, end) || (viewingToday && outcome === "OPEN");
+  const includeTrade = (
+    lockedAt: number,
+    executedAt: number | null | undefined,
+    outcome: string,
+  ) => {
+    if (viewingToday && outcome === "OPEN") return true;
+    if (inRange(lockedAt, start, end)) return true;
+    if (executedAt != null && inRange(executedAt, start, end)) return true;
+    return false;
+  };
 
   const seen = new Set<string>();
 
@@ -228,7 +290,8 @@ export async function buildHistoryPayload(opts: {
     let outcome = s.outcome;
     if (s.outcomeTp1 === "WIN") outcome = "TP1_HIT";
     else if (s.outcomeTp1 === "LOSS") outcome = "SL_HIT";
-    if (!includeAt(s.timestamp, outcome)) continue;
+    const executedAt = s.zoneTouchedAt ?? null;
+    if (!includeTrade(s.timestamp, executedAt, outcome)) continue;
     const module: HistoryModuleId = s.mode === "intraday" ? "intraday" : "scalp";
     const id = s.id;
     if (seen.has(id)) continue;
@@ -244,13 +307,14 @@ export async function buildHistoryPayload(opts: {
       outcome,
       outcomeTp1: s.outcomeTp1,
       realizedR: s.realizedR,
-      at: s.timestamp,
+      lockedAt: s.timestamp,
+      executedAt,
       resolvedAt: s.resolvedAt,
     });
   }
 
   for (const r of safeCollect(() => listQuickScalpRows(getLiveQuickScalpDb()))) {
-    if (!includeAt(r.timestamp, r.outcome)) continue;
+    if (!includeTrade(r.timestamp, r.executedAt, r.outcome)) continue;
     if (seen.has(r.id)) continue;
     seen.add(r.id);
     pushTrade(all, {
@@ -263,13 +327,14 @@ export async function buildHistoryPayload(opts: {
       tp2: r.tp2,
       outcome: r.outcome,
       realizedR: r.realizedR,
-      at: r.timestamp,
+      lockedAt: r.timestamp,
+      executedAt: r.executedAt,
       resolvedAt: r.resolvedAt,
     });
   }
 
   for (const r of safeCollect(() => listPulseRows(getLivePulseDb()))) {
-    if (!includeAt(r.timestamp, r.outcome)) continue;
+    if (!includeTrade(r.timestamp, r.executedAt, r.outcome)) continue;
     if (seen.has(r.id)) continue;
     seen.add(r.id);
     pushTrade(all, {
@@ -282,13 +347,14 @@ export async function buildHistoryPayload(opts: {
       tp2: r.tp2,
       outcome: r.outcome,
       realizedR: r.realizedR,
-      at: r.timestamp,
+      lockedAt: r.timestamp,
+      executedAt: r.executedAt,
       resolvedAt: r.resolvedAt,
     });
   }
 
   for (const r of safeCollect(() => listProRows(getLiveProDb()))) {
-    if (!includeAt(r.timestamp, r.outcome)) continue;
+    if (!includeTrade(r.timestamp, r.executedAt, r.outcome)) continue;
     if (seen.has(r.id)) continue;
     seen.add(r.id);
     pushTrade(all, {
@@ -301,14 +367,15 @@ export async function buildHistoryPayload(opts: {
       tp2: r.tp2,
       outcome: r.outcome,
       realizedR: r.realizedR,
-      at: r.timestamp,
+      lockedAt: r.timestamp,
+      executedAt: r.executedAt,
       resolvedAt: r.resolvedAt,
     });
   }
 
   for (const r of safeCollect(() => listStrategyRows(getLiveStrategyDb()))) {
     if (r.strategy !== "cipher_b_clone" && r.strategy !== "fractal") continue;
-    if (!includeAt(r.time, r.outcome)) continue;
+    if (!includeTrade(r.time, r.executedAt, r.outcome)) continue;
     if (seen.has(r.id)) continue;
     seen.add(r.id);
     const module: HistoryModuleId = r.strategy === "fractal" ? "fractal" : "cipher_b";
@@ -322,7 +389,8 @@ export async function buildHistoryPayload(opts: {
       tp2: r.tp2,
       outcome: r.outcome,
       realizedR: r.realizedR,
-      at: r.time,
+      lockedAt: r.time,
+      executedAt: r.executedAt,
       resolvedAt: r.resolvedAt,
     });
   }

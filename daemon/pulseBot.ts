@@ -13,11 +13,13 @@ import {
   getLivePulseDb,
   getOpenOrLatestPulse,
   insertPulseRow,
+  markPulseExecuted,
   signalToRow,
   updatePulseOutcome,
   type PulseRow,
 } from "../src/pulse/store";
 import type { Candle } from "../src/types";
+import { barTouchedEntryLevel } from "../src/history/entryTouch";
 
 const TICK_MS = Number(process.env.PULSE_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
@@ -63,14 +65,22 @@ async function tick(): Promise<void> {
   }
 
   if (openTrade) {
-    const hit = resolveBar(openTrade, last);
-    if (hit) {
-      const risk = Math.abs(openTrade.entry - openTrade.sl);
-      const tp1R = risk > 0 ? Math.abs(openTrade.tp1 - openTrade.entry) / risk : 0.85;
-      const r = hit === "TP1_HIT" ? tp1R : -1;
-      updatePulseOutcome(db, openTrade.id, hit, r, Date.now());
-      log("resolved", openTrade.direction, hit);
-      openTrade = null;
+    if (!openTrade.executedAt && barTouchedEntryLevel(openTrade.entry, last)) {
+      const at = Date.now();
+      markPulseExecuted(db, openTrade.id, at);
+      openTrade = { ...openTrade, executedAt: at };
+      log("EXECUTED", openTrade.direction, "@", openTrade.entry);
+    }
+    if (openTrade.executedAt) {
+      const hit = resolveBar(openTrade, last);
+      if (hit) {
+        const risk = Math.abs(openTrade.entry - openTrade.sl);
+        const tp1R = risk > 0 ? Math.abs(openTrade.tp1 - openTrade.entry) / risk : 0.85;
+        const r = hit === "TP1_HIT" ? tp1R : -1;
+        updatePulseOutcome(db, openTrade.id, hit, r, Date.now());
+        log("resolved", openTrade.direction, hit);
+        openTrade = null;
+      }
     }
   }
 

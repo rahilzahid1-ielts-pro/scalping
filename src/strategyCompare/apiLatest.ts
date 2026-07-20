@@ -38,6 +38,7 @@ export async function buildLatestPayload(strategy: CompareStrategy) {
     realizedR: null,
     symbol: "XAUUSD",
     source: "live" as const,
+    executedAt: o.executedAt ?? null,
   }));
   let validated = false;
   let backtestSummary: ReturnType<typeof summarizeStrategy> | null = null;

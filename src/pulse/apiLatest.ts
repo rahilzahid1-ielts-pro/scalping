@@ -33,6 +33,7 @@ export async function buildPulseLatestPayload() {
     strategy: "pulse" as const,
     realizedR: null,
     resolvedAt: null,
+    executedAt: o.executedAt ?? null,
     source: "live" as const,
   }));
   let backtestSummary: ReturnType<typeof summarizePulse> | null = null;

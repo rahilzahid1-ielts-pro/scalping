@@ -24,6 +24,12 @@ interface HistoryTrade {
   realizedR: number | null;
   at: number;
   atKarachi: string;
+  lockedAt: number;
+  lockedAtKarachi: string;
+  executed: boolean;
+  executedAt: number | null;
+  executedAtKarachi: string | null;
+  executionLabel: "EXECUTED" | "NOT EXECUTED";
   resolvedAt: number | null;
   resolvedKarachi: string | null;
   description: string;
@@ -70,6 +76,10 @@ function outcomeClass(outcome: string): string {
   if (outcome === "SL_HIT") return "hist-out loss";
   if (outcome === "OPEN") return "hist-out open";
   return "hist-out other";
+}
+
+function execClass(label: string): string {
+  return label === "EXECUTED" ? "hist-exec yes" : "hist-exec no";
 }
 
 const MODULES: { id: ModuleId; label: string }[] = [
@@ -191,15 +201,16 @@ export function HistoryCard() {
 
           {data.trades.length === 0 ? (
             <p className="muted">
-              Is din koi recorded trade nahi — jab module lock karega yahan dikhega (TP1/SL
-              ke sath).
+              Is din koi trade nahi — lock dikhega as NOT EXECUTED; jab price entry pe
+              aaye to EXECUTED time ke sath.
             </p>
           ) : (
             <div className="history-table-wrap">
               <table className="history-table">
                 <thead>
                   <tr>
-                    <th>Time (PKT)</th>
+                    <th>Start (PKT)</th>
+                    <th>Status</th>
                     <th>Module</th>
                     <th>Side</th>
                     <th>Entry</th>
@@ -213,7 +224,17 @@ export function HistoryCard() {
                 <tbody>
                   {data.trades.map((t) => (
                     <tr key={t.id}>
-                      <td>{t.atKarachi}</td>
+                      <td>
+                        <div>{t.atKarachi}</div>
+                        {!t.executed && (
+                          <div className="history-lock-hint">lock {t.lockedAtKarachi}</div>
+                        )}
+                      </td>
+                      <td>
+                        <span className={execClass(t.executionLabel)}>
+                          {t.executionLabel}
+                        </span>
+                      </td>
                       <td>{t.moduleLabel}</td>
                       <td className={t.side === "BUY" ? "side-buy" : "side-sell"}>
                         {t.side}

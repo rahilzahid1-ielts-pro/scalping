@@ -36,6 +36,7 @@ export async function buildQuickScalpLatestPayload() {
     strategy: "quick_scalp" as const,
     realizedR: null,
     resolvedAt: null,
+    executedAt: o.executedAt ?? null,
     source: "live" as const,
   }));
   let backtestSummary: ReturnType<typeof summarizeQuickScalp> | null = null;

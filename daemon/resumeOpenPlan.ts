@@ -16,6 +16,7 @@ export function planFromOpenSignal(
 
   const risk = Math.abs(open.entry - open.sl);
   const reward = Math.abs(open.tp1 - open.entry);
+  const entered = open.executedAt != null;
 
   return {
     assetId,
@@ -31,8 +32,10 @@ export function planFromOpenSignal(
       invalidation: open.sl,
     },
     lockedAt: open.time,
-    status: "IN_TRADE_HINT",
-    note: "Resumed from OPEN History lock (daemon plan was missing after restart)",
+    status: entered ? "IN_TRADE_HINT" : "WAITING_ENTRY",
+    note: entered
+      ? "Resumed from History OPEN (entry already hit)"
+      : "Resumed from History OPEN — waiting for entry",
     lockedConfidence: open.confidence,
     lockedWinProbability: open.confidence,
   };

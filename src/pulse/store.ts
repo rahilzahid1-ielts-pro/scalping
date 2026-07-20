@@ -31,6 +31,8 @@ export interface PulseRow {
   strategy: "pulse";
   realizedR: number | null;
   resolvedAt: number | null;
+  /** When price first hit entry — null until trade actually starts. */
+  executedAt: number | null;
   source: "live" | "backtest";
 }
 
@@ -52,11 +54,19 @@ CREATE TABLE IF NOT EXISTS pulse_signals (
   strategy      TEXT NOT NULL DEFAULT 'pulse',
   realized_r    REAL,
   resolved_at   INTEGER,
+  executed_at   INTEGER,
   source        TEXT NOT NULL DEFAULT 'live'
 );
 CREATE INDEX IF NOT EXISTS idx_pulse_ts ON pulse_signals(timestamp);
 CREATE INDEX IF NOT EXISTS idx_pulse_outcome ON pulse_signals(outcome);
 `;
+
+function ensureExecutedAtColumn(db: Database.Database): void {
+  const cols = db.prepare(`PRAGMA table_info(pulse_signals)`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === "executed_at")) {
+    db.exec(`ALTER TABLE pulse_signals ADD COLUMN executed_at INTEGER`);
+  }
+}
 
 let liveDb: Database.Database | null = null;
 let backtestDb: Database.Database | null = null;
@@ -68,6 +78,7 @@ function openDb(path: string, tag: number): Database.Database {
   db.pragma("busy_timeout = 5000");
   db.pragma(`application_id = ${tag}`);
   db.exec(SCHEMA);
+  ensureExecutedAtColumn(db);
   return db;
 }
 
@@ -114,6 +125,7 @@ function rowFromDb(r: Record<string, unknown>): PulseRow {
     strategy: "pulse",
     realizedR: r.realized_r == null ? null : Number(r.realized_r),
     resolvedAt: r.resolved_at == null ? null : Number(r.resolved_at),
+    executedAt: r.executed_at == null ? null : Number(r.executed_at),
     source: (r.source as "live" | "backtest") ?? "live",
   };
 }
@@ -140,6 +152,7 @@ export function signalToRow(
     strategy: "pulse",
     realizedR: null,
     resolvedAt: null,
+    executedAt: null,
     source,
   };
 }
@@ -148,11 +161,23 @@ export function insertPulseRow(db: Database.Database, row: PulseRow): void {
   db.prepare(
     `INSERT OR IGNORE INTO pulse_signals
       (id, timestamp, symbol, direction, entry, sl, tp1, tp2, confidence, regime,
-       outcome, reason, daily_bias, strategy, realized_r, resolved_at, source)
+       outcome, reason, daily_bias, strategy, realized_r, resolved_at, executed_at, source)
      VALUES
       (@id, @timestamp, @symbol, @direction, @entry, @sl, @tp1, @tp2, @confidence, @regime,
-       @outcome, @reason, @dailyBias, @strategy, @realizedR, @resolvedAt, @source)`,
+       @outcome, @reason, @dailyBias, @strategy, @realizedR, @resolvedAt, @executedAt, @source)`,
   ).run(row);
+}
+
+export function markPulseExecuted(
+  db: Database.Database,
+  id: string,
+  executedAt: number,
+): void {
+  db.prepare(
+    `UPDATE pulse_signals
+        SET executed_at = ?
+      WHERE id = ? AND executed_at IS NULL`,
+  ).run(executedAt, id);
 }
 
 export function updatePulseOutcome(

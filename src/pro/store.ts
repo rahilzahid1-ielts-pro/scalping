@@ -33,6 +33,8 @@ export interface ProRow {
   strategy: "pro";
   realizedR: number | null;
   resolvedAt: number | null;
+  /** When price first hit entry — null until trade actually starts. */
+  executedAt: number | null;
   source: "live" | "backtest";
 }
 
@@ -54,11 +56,19 @@ CREATE TABLE IF NOT EXISTS pro_signals (
   strategy      TEXT NOT NULL DEFAULT 'pro',
   realized_r    REAL,
   resolved_at   INTEGER,
+  executed_at   INTEGER,
   source        TEXT NOT NULL DEFAULT 'live'
 );
 CREATE INDEX IF NOT EXISTS idx_pro_ts ON pro_signals(timestamp);
 CREATE INDEX IF NOT EXISTS idx_pro_outcome ON pro_signals(outcome);
 `;
+
+function ensureExecutedAtColumn(db: Database.Database): void {
+  const cols = db.prepare(`PRAGMA table_info(pro_signals)`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === "executed_at")) {
+    db.exec(`ALTER TABLE pro_signals ADD COLUMN executed_at INTEGER`);
+  }
+}
 
 let liveDb: Database.Database | null = null;
 let backtestDb: Database.Database | null = null;
@@ -70,6 +80,7 @@ function openDb(path: string, tag: number): Database.Database {
   db.pragma("busy_timeout = 5000");
   db.pragma(`application_id = ${tag}`);
   db.exec(SCHEMA);
+  ensureExecutedAtColumn(db);
   return db;
 }
 
@@ -116,6 +127,7 @@ function rowFromDb(r: Record<string, unknown>): ProRow {
     strategy: "pro",
     realizedR: r.realized_r == null ? null : Number(r.realized_r),
     resolvedAt: r.resolved_at == null ? null : Number(r.resolved_at),
+    executedAt: r.executed_at == null ? null : Number(r.executed_at),
     source: (r.source as "live" | "backtest") ?? "live",
   };
 }
@@ -142,6 +154,7 @@ export function signalToRow(
     strategy: "pro",
     realizedR: null,
     resolvedAt: null,
+    executedAt: null,
     source,
   };
 }
@@ -150,11 +163,23 @@ export function insertProRow(db: Database.Database, row: ProRow): void {
   db.prepare(
     `INSERT OR IGNORE INTO pro_signals
       (id, timestamp, symbol, direction, entry, sl, tp1, tp2, confidence, regime,
-       outcome, reason, daily_bias, strategy, realized_r, resolved_at, source)
+       outcome, reason, daily_bias, strategy, realized_r, resolved_at, executed_at, source)
      VALUES
       (@id, @timestamp, @symbol, @direction, @entry, @sl, @tp1, @tp2, @confidence, @regime,
-       @outcome, @reason, @dailyBias, @strategy, @realizedR, @resolvedAt, @source)`,
+       @outcome, @reason, @dailyBias, @strategy, @realizedR, @resolvedAt, @executedAt, @source)`,
   ).run(row);
+}
+
+export function markProExecuted(
+  db: Database.Database,
+  id: string,
+  executedAt: number,
+): void {
+  db.prepare(
+    `UPDATE pro_signals
+        SET executed_at = ?
+      WHERE id = ? AND executed_at IS NULL`,
+  ).run(executedAt, id);
 }
 
 export function updateProOutcome(

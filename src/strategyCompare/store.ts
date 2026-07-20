@@ -34,6 +34,8 @@ export interface StrategySignalRow {
   realizedR: number | null;
   symbol: string;
   source: "live" | "backtest";
+  /** When price first hit entry — null until trade actually starts. */
+  executedAt: number | null;
 }
 
 const SCHEMA = `
@@ -52,11 +54,19 @@ CREATE TABLE IF NOT EXISTS strategy_signals (
   created_at    INTEGER NOT NULL,
   realized_r    REAL,
   symbol        TEXT NOT NULL DEFAULT 'XAUUSD',
-  source        TEXT NOT NULL DEFAULT 'live'
+  source        TEXT NOT NULL DEFAULT 'live',
+  executed_at   INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_ss_strategy_time ON strategy_signals(strategy, time);
 CREATE INDEX IF NOT EXISTS idx_ss_outcome ON strategy_signals(outcome);
 `;
+
+function ensureExecutedAtColumn(db: Database.Database): void {
+  const cols = db.prepare(`PRAGMA table_info(strategy_signals)`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === "executed_at")) {
+    db.exec(`ALTER TABLE strategy_signals ADD COLUMN executed_at INTEGER`);
+  }
+}
 
 function ensureCompatView(db: Database.Database): void {
   const hasQs = db
@@ -97,6 +107,7 @@ function openDb(path: string, tag: number): Database.Database {
   db.pragma("busy_timeout = 5000");
   db.pragma(`application_id = ${tag}`);
   db.exec(SCHEMA);
+  ensureExecutedAtColumn(db);
   ensureCompatView(db);
   return db;
 }
@@ -145,6 +156,7 @@ function rowFromDb(r: Record<string, unknown>): StrategySignalRow {
     realizedR: r.realized_r == null ? null : Number(r.realized_r),
     symbol: String(r.symbol ?? "XAUUSD"),
     source: (r.source as "live" | "backtest") ?? "live",
+    executedAt: r.executed_at == null ? null : Number(r.executed_at),
   };
 }
 
@@ -177,6 +189,7 @@ export function makeStrategyRow(input: {
     realizedR: null,
     symbol: input.symbol,
     source: input.source,
+    executedAt: null,
   };
 }
 
@@ -184,11 +197,23 @@ export function insertStrategyRow(db: Database.Database, row: StrategySignalRow)
   db.prepare(
     `INSERT OR IGNORE INTO strategy_signals
       (id, strategy, direction, entry, sl, tp1, tp2, reason, time, outcome,
-       resolved_at, created_at, realized_r, symbol, source)
+       resolved_at, created_at, realized_r, symbol, source, executed_at)
      VALUES
       (@id, @strategy, @direction, @entry, @sl, @tp1, @tp2, @reason, @time, @outcome,
-       @resolvedAt, @createdAt, @realizedR, @symbol, @source)`,
+       @resolvedAt, @createdAt, @realizedR, @symbol, @source, @executedAt)`,
   ).run(row);
+}
+
+export function markStrategyExecuted(
+  db: Database.Database,
+  id: string,
+  executedAt: number,
+): void {
+  db.prepare(
+    `UPDATE strategy_signals
+        SET executed_at = ?
+      WHERE id = ? AND executed_at IS NULL`,
+  ).run(executedAt, id);
 }
 
 export function updateStrategyOutcome(

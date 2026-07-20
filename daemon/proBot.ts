@@ -13,11 +13,13 @@ import {
   getLiveProDb,
   getOpenOrLatestPro,
   insertProRow,
+  markProExecuted,
   signalToRow,
   updateProOutcome,
   type ProRow,
 } from "../src/pro/store";
 import type { Candle } from "../src/types";
+import { barTouchedEntryLevel } from "../src/history/entryTouch";
 
 const TICK_MS = Number(process.env.PRO_TICK_MS) || 60_000;
 const ASSET = "XAUUSD" as const;
@@ -64,12 +66,20 @@ async function tick(): Promise<void> {
   }
 
   if (openTrade) {
-    const hit = resolveBar(openTrade, last);
-    if (hit) {
-      const r = hit === "TP1_HIT" ? 1 : -1;
-      updateProOutcome(db, openTrade.id, hit, r, Date.now());
-      log("resolved", openTrade.direction, hit);
-      openTrade = null;
+    if (!openTrade.executedAt && barTouchedEntryLevel(openTrade.entry, last)) {
+      const at = Date.now();
+      markProExecuted(db, openTrade.id, at);
+      openTrade = { ...openTrade, executedAt: at };
+      log("EXECUTED", openTrade.direction, "@", openTrade.entry);
+    }
+    if (openTrade.executedAt) {
+      const hit = resolveBar(openTrade, last);
+      if (hit) {
+        const r = hit === "TP1_HIT" ? 1 : -1;
+        updateProOutcome(db, openTrade.id, hit, r, Date.now());
+        log("resolved", openTrade.direction, hit);
+        openTrade = null;
+      }
     }
   }
 

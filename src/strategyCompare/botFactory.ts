@@ -14,11 +14,13 @@ import {
   getOpenOrLatestStrategySignal,
   insertStrategyRow,
   makeStrategyRow,
+  markStrategyExecuted,
   updateStrategyOutcome,
   type CompareStrategy,
   type StrategySignalRow,
 } from "./store";
 import type { Candle } from "../types";
+import { barTouchedEntryLevel } from "../history/entryTouch";
 
 const ASSET = "XAUUSD" as const;
 const COOLDOWN_MS = 60 * 60 * 1000;
@@ -82,20 +84,28 @@ export function createCompareBot(cfg: CompareBotConfig) {
     }
 
     if (openTrade) {
-      const hit = resolveBarOutcome(openTrade.direction, openTrade.sl, openTrade.tp1, last);
-      if (hit) {
-        const risk = Math.abs(openTrade.entry - openTrade.sl);
-        const tp1R =
-          risk > 0 ? Math.abs(openTrade.tp1 - openTrade.entry) / risk : 1;
-        updateStrategyOutcome(
-          db,
-          openTrade.id,
-          hit,
-          hit === "TP1_HIT" ? tp1R : -1,
-          Date.now(),
-        );
-        log("resolved", openTrade.direction, hit);
-        openTrade = null;
+      if (!openTrade.executedAt && barTouchedEntryLevel(openTrade.entry, last)) {
+        const at = Date.now();
+        markStrategyExecuted(db, openTrade.id, at);
+        openTrade = { ...openTrade, executedAt: at };
+        log("EXECUTED", openTrade.direction, "@", openTrade.entry);
+      }
+      if (openTrade.executedAt) {
+        const hit = resolveBarOutcome(openTrade.direction, openTrade.sl, openTrade.tp1, last);
+        if (hit) {
+          const risk = Math.abs(openTrade.entry - openTrade.sl);
+          const tp1R =
+            risk > 0 ? Math.abs(openTrade.tp1 - openTrade.entry) / risk : 1;
+          updateStrategyOutcome(
+            db,
+            openTrade.id,
+            hit,
+            hit === "TP1_HIT" ? tp1R : -1,
+            Date.now(),
+          );
+          log("resolved", openTrade.direction, hit);
+          openTrade = null;
+        }
       }
     }
 

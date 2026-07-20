@@ -33,6 +33,8 @@ export interface QuickScalpRow {
   strategy: "quick_scalp";
   realizedR: number | null;
   resolvedAt: number | null;
+  /** When price first hit entry — null until trade actually starts. */
+  executedAt: number | null;
   source: "live" | "backtest";
 }
 
@@ -52,11 +54,19 @@ CREATE TABLE IF NOT EXISTS quick_scalp_signals (
   strategy      TEXT NOT NULL DEFAULT 'quick_scalp',
   realized_r    REAL,
   resolved_at   INTEGER,
+  executed_at   INTEGER,
   source        TEXT NOT NULL DEFAULT 'live'
 );
 CREATE INDEX IF NOT EXISTS idx_qs_ts ON quick_scalp_signals(timestamp);
 CREATE INDEX IF NOT EXISTS idx_qs_outcome ON quick_scalp_signals(outcome);
 `;
+
+function ensureExecutedAtColumn(db: Database.Database): void {
+  const cols = db.prepare(`PRAGMA table_info(quick_scalp_signals)`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === "executed_at")) {
+    db.exec(`ALTER TABLE quick_scalp_signals ADD COLUMN executed_at INTEGER`);
+  }
+}
 
 let liveDb: Database.Database | null = null;
 let backtestDb: Database.Database | null = null;
@@ -68,6 +78,7 @@ function openDb(path: string, tag: number): Database.Database {
   db.pragma("busy_timeout = 5000");
   db.pragma(`application_id = ${tag}`);
   db.exec(SCHEMA);
+  ensureExecutedAtColumn(db);
   return db;
 }
 
@@ -114,6 +125,7 @@ function rowFromDb(r: Record<string, unknown>): QuickScalpRow {
     strategy: "quick_scalp",
     realizedR: r.realized_r == null ? null : Number(r.realized_r),
     resolvedAt: r.resolved_at == null ? null : Number(r.resolved_at),
+    executedAt: r.executed_at == null ? null : Number(r.executed_at),
     source: (r.source as "live" | "backtest") ?? "live",
   };
 }
@@ -138,6 +150,7 @@ export function signalToRow(
     strategy: "quick_scalp",
     realizedR: null,
     resolvedAt: null,
+    executedAt: null,
     source,
   };
 }
@@ -146,11 +159,23 @@ export function insertQuickScalpRow(db: Database.Database, row: QuickScalpRow): 
   db.prepare(
     `INSERT OR IGNORE INTO quick_scalp_signals
       (id, timestamp, symbol, direction, entry, sl, tp1, tp2, outcome, reason,
-       daily_trend, strategy, realized_r, resolved_at, source)
+       daily_trend, strategy, realized_r, resolved_at, executed_at, source)
      VALUES
       (@id, @timestamp, @symbol, @direction, @entry, @sl, @tp1, @tp2, @outcome, @reason,
-       @dailyTrend, @strategy, @realizedR, @resolvedAt, @source)`,
+       @dailyTrend, @strategy, @realizedR, @resolvedAt, @executedAt, @source)`,
   ).run(row);
+}
+
+export function markQuickScalpExecuted(
+  db: Database.Database,
+  id: string,
+  executedAt: number,
+): void {
+  db.prepare(
+    `UPDATE quick_scalp_signals
+        SET executed_at = ?
+      WHERE id = ? AND executed_at IS NULL`,
+  ).run(executedAt, id);
 }
 
 export function updateQuickScalpOutcome(
