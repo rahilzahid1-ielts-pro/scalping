@@ -298,17 +298,17 @@ export default function App() {
           </button>
           <button
             type="button"
-            className={deskView === "pro" ? "active" : ""}
-            onClick={() => setDeskView("pro")}
-          >
-            Pro
-          </button>
-          <button
-            type="button"
             className={deskView === "pulse" ? "active" : ""}
             onClick={() => setDeskView("pulse")}
           >
             QS Pro
+          </button>
+          <button
+            type="button"
+            className={deskView === "pro" ? "active" : ""}
+            onClick={() => setDeskView("pro")}
+          >
+            Pro
           </button>
           <button
             type="button"
