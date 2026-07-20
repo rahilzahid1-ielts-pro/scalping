@@ -45,6 +45,7 @@ import {
   type TrendTracker,
 } from "./utils/trendConfirm";
 import { CONFLICT_CAP_PCT } from "./calibration/types";
+import { displayedWinChance } from "./calibration/winChanceDisplay";
 
 const boot = loadSession();
 
@@ -166,10 +167,19 @@ export default function App() {
           next.side = kept.side;
           // Keep the scores the user saw when this plan locked — do not let a
           // later WAIT refresh (confidence capped at 58) rewrite the card.
+          // Win chance tracks confidence (identity until calibration gate opens).
           if (kept.lockedConfidence != null) {
             next.confidence = kept.lockedConfidence;
-          }
-          if (kept.lockedWinProbability != null) {
+            next.rangePrediction = {
+              ...next.rangePrediction,
+              confidence: kept.lockedConfidence,
+              winProbability: displayedWinChance(kept.lockedConfidence, {
+                conflictCapped:
+                  next.diagnostics.conflictCapped || next.diagnostics.conflictingSignals,
+              }),
+            };
+          } else if (kept.lockedWinProbability != null) {
+            // Legacy locks that only stored win%: treat as confidence-derived.
             next.rangePrediction = {
               ...next.rangePrediction,
               winProbability: kept.lockedWinProbability,
@@ -182,10 +192,7 @@ export default function App() {
             next.rangePrediction = {
               ...next.rangePrediction,
               confidence: Math.min(next.rangePrediction.confidence, CONFLICT_CAP_PCT),
-              winProbability: Math.min(
-                next.rangePrediction.winProbability,
-                CONFLICT_CAP_PCT,
-              ),
+              winProbability: displayedWinChance(next.confidence, { conflictCapped: true }),
             };
           }
           void logSignalViaApi(next);

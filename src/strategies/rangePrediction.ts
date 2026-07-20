@@ -164,12 +164,11 @@ export function buildRangePrediction(
   }
   confidence = Math.max(38, Math.min(94, confidence));
 
-  // Winning probability — stricter than raw confidence
-  let winProb = confidence - 6;
-  if (smc.structure === direction && ma.trend === direction) winProb += 8;
-  if (pa.bias === direction) winProb += 5;
-  if (direction === "NEUTRAL") winProb = Math.min(winProb, 52);
-  winProb = Math.max(35, Math.min(92, Math.round(winProb)));
+  // Win chance is NOT an independent formula. generateSignal overwrites both
+  // confidence + winProbability from the trade confidence (identity until the
+  // calibration gate opens). Keep a provisional equal value so any pre-override
+  // reader never sees a diverging pair.
+  const winProb = confidence;
 
   const horizon =
     mode === "scalping"

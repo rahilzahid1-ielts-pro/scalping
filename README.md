@@ -153,9 +153,10 @@ Also split by BUY/SELL, scalp/intraday, conflict-capped trades, and **per-regime
 (`TREND_UP` / `TREND_DOWN` / `RANGE`). Warns when >70% of a bucket comes from one regime
 or one calendar day.
 
-**UI win% stays on the raw formula** until a bucket has ≥14 days of resolved history,
-≥50 samples, ≥2 distinct regimes, and ≥5 distinct calendar days — then
-`getCalibratedWinChance` can replace it. Until then this is measurement only.
+**UI win% tracks confidence** (identity via `displayedWinChance`) until a bucket has
+≥14 days of resolved history, ≥50 samples, ≥2 distinct regimes, and ≥5 distinct
+calendar days — then `getCalibratedWinChance` can supply a calibrated override.
+Until then the two card numbers stay identical (never an independent formula).
 
 If MA or SMC opposes the call, **both confidence and win chance** are capped at **65%**
 (`conflictCapped` is logged) and the UI shows a conflict flag.

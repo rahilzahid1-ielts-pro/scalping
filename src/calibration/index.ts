@@ -35,4 +35,5 @@ export function logSignalFromLive(signal: LiveSignal): ReturnType<typeof logEmit
 
 export { deriveRegimeTag } from "./regime";
 export { getCalibratedWinChance } from "./recalibrate";
+export { displayedWinChance } from "./winChanceDisplay";
 export { CONFLICT_CAP_PCT } from "./types";

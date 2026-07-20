@@ -46,7 +46,7 @@ export function useServiceWorkerAlerts(
       void regRef.current.showNotification(title, {
         body,
         tag: key,
-        requireInteraction: true,
+        requireInteraction: false,
       });
     }
   }, [plan, enabled, planKey]);
@@ -67,7 +67,7 @@ export function useServiceWorkerAlerts(
       void regRef.current.showNotification(title, {
         body,
         tag: key,
-        requireInteraction: true,
+        requireInteraction: false,
       });
     }
   }, [now, enabled, planKey]);

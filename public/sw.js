@@ -14,7 +14,8 @@ self.addEventListener("message", (event) => {
     self.registration.showNotification(data.title || "TRADE ALERT", {
       body: data.body || "",
       tag: data.tag || "trade-alert",
-      requireInteraction: true,
+      // Don't sticky-lock the screen — user can switch tabs freely after a signal
+      requireInteraction: false,
       silent: false,
       vibrate: data.type === "PLAN_LOCK_ALERT" ? [150, 80, 150, 80, 150] : [200, 100, 200, 100, 400],
     }),
@@ -40,7 +41,7 @@ self.addEventListener("push", (event) => {
       body,
       tag: data.tag || "trade-alert",
       renotify: true,
-      requireInteraction: true,
+      requireInteraction: false,
       silent: false,
       vibrate: isLock ? [150, 80, 150, 80, 150] : [200, 100, 200, 100, 400],
       data: { url: "/" },

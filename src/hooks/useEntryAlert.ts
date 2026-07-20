@@ -44,7 +44,8 @@ function notifyEntry(now: NowActionResult) {
     new Notification(now.headlineUr, {
       body: `${now.side} ENTRY ${now.entryZoneLow ?? now.entry}–${now.entryZoneHigh ?? now.entry} · SL ${now.stopLoss} · TP ${now.takeProfit}`,
       tag: "entry-alert",
-      requireInteraction: true,
+      // false = don't sticky-lock the screen; user can switch tabs freely
+      requireInteraction: false,
     });
   } catch {
     /* ignore */
@@ -76,7 +77,7 @@ function notifyPlanLocked(plan: FrozenPlan) {
           ? `🔥 New trend starting — ${plan.side} scalping, SL ${plan.levels.stopLoss.toFixed(d)} TP1 ${plan.levels.takeProfit1.toFixed(d)} — chart confirm karke lo.`
           : `${plan.side} zone ${zone} · SL ${plan.levels.stopLoss.toFixed(d)} · TP1 ${plan.levels.takeProfit1.toFixed(d)} · TP2 ${plan.levels.takeProfit2.toFixed(d)}${safe}`,
         tag: "plan-lock-alert",
-        requireInteraction: true,
+        requireInteraction: false,
       },
     );
   } catch {

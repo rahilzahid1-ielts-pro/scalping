@@ -13,6 +13,7 @@ import { ASSETS } from "../config/assets";
 import { atr, roundPrice, swingHighsLows } from "./indicators";
 import { deriveRegimeTag } from "../calibration/regime";
 import { CONFLICT_CAP_PCT } from "../calibration/types";
+import { displayedWinChance } from "../calibration/winChanceDisplay";
 import { analyzeMovingAverages } from "./movingAverages";
 import { analyzeSmartMoney } from "./smartMoney";
 import { analyzePriceAction } from "./priceAction";
@@ -416,7 +417,7 @@ export function generateSignal(
     confluence.push("⛔ Blocked: fighting strong bullish daily bias");
   }
 
-  // Recompute conflict after possible WAIT downgrade — cap BOTH confidence and win chance
+  // Recompute conflict after possible WAIT downgrade — cap confidence first
   const conflictingFinal =
     side !== "WAIT" &&
     ((side === "BUY" && (ma.trend === "BEARISH" || smc.structure === "BEARISH")) ||
@@ -424,12 +425,16 @@ export function generateSignal(
   const conflictCapped = conflictingFinal;
   if (conflictCapped) {
     confidence = Math.min(confidence, CONFLICT_CAP_PCT);
-    rangePrediction = {
-      ...rangePrediction,
-      confidence: Math.min(rangePrediction.confidence, CONFLICT_CAP_PCT),
-      winProbability: Math.min(rangePrediction.winProbability, CONFLICT_CAP_PCT),
-    };
   }
+
+  // Win chance is derived from trade confidence (identity until calibration gate
+  // opens). Path-prediction panel uses the same pair so the two cards never diverge.
+  const winChance = displayedWinChance(confidence, { conflictCapped });
+  rangePrediction = {
+    ...rangePrediction,
+    confidence,
+    winProbability: winChance,
+  };
 
   const atrSeriesPrimary = atr(primary, 14);
   const atr14 = atrSeriesPrimary[atrSeriesPrimary.length - 1] || price * 0.002;

@@ -2,6 +2,7 @@ import type { AssetConfig, LiveQuote, LiveSignal, Side } from "../types";
 import type { FrozenPlan } from "../services/tradePlan";
 import { roundPrice } from "../strategies/indicators";
 import { CONFLICT_CAP_PCT } from "../calibration/types";
+import { displayedWinChance } from "../calibration/winChanceDisplay";
 import {
   entryTolerance,
   hasSafeStopRoom,
@@ -61,16 +62,15 @@ export function computeNowAction(
   // refresh may lean WAIT/opposite, but that is not a new instruction for an
   // already-entered trade.
   // Conflict guardrail (Fix 4): BOTH confidence and win% ≤ CONFLICT_CAP_PCT.
+  // Win chance is derived from confidence (never an independent formula).
   const conflict =
     Boolean(signal.diagnostics?.conflictingSignals) ||
     Boolean(signal.diagnostics?.conflictCapped);
   let conf = plan?.lockedConfidence ?? signal.confidence;
-  let winProb =
-    plan?.lockedWinProbability ?? signal.rangePrediction.winProbability;
   if (conflict) {
     conf = Math.min(conf, CONFLICT_CAP_PCT);
-    winProb = Math.min(winProb, CONFLICT_CAP_PCT);
   }
+  const winProb = displayedWinChance(conf, { conflictCapped: conflict });
   // Tier-1 sweep is surfaced as an informational card flag only. The confidence/
   // win% penalty was REMOVED: backtest showed swept plans win MORE (72.5% vs 46.5%
   // TP1), so shaving their displayed scores was backwards. Detection + logging stay.

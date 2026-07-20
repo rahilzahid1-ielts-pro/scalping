@@ -77,7 +77,8 @@ export function sampleIndependenceOk(sample: LoggedSignal[]): {
  * Empirical win chance for a confidence bucket (TP1 definition).
  * Unlock requires ALL of:
  *   ≥14 days resolved history, ≥50 samples, ≥2 regimes, ≥5 calendar days.
- * Until then UI must keep showing the raw formula win%.
+ * Until then UI shows win chance = confidence (see displayedWinChance).
+ * When ready, pass `calibrated` into displayedWinChance() for the card.
  */
 export function getCalibratedWinChance(
   confidence: number,
