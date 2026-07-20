@@ -539,20 +539,30 @@ export function getAuthoritativePlan(
   const state = liveState ?? loadDaemonState();
   const key = planKey(assetId, mode);
   const existing = state.plans[key] ?? null;
-  if (existing && existing.status !== "INVALIDATED") return existing;
 
+  // History OPEN is source of truth — Scalp UI must match History, not stale daemon plan.
   try {
     const resumed = planFromOpenSignal(assetId, mode);
     if (resumed) {
+      const same =
+        existing &&
+        existing.status !== "INVALIDATED" &&
+        existing.side === resumed.side &&
+        existing.levels.entry === resumed.levels.entry &&
+        existing.levels.stopLoss === resumed.levels.stopLoss &&
+        existing.levels.takeProfit1 === resumed.levels.takeProfit1;
+      if (same) return existing;
       state.plans[key] = resumed;
       saveDaemonState(state);
       liveState = state;
-      log(`Resumed OPEN plan ${assetId}/${mode} @ ${resumed.levels.entry}`);
+      log(`Synced plan from History OPEN ${assetId}/${mode} @ ${resumed.levels.entry}`);
       return resumed;
     }
   } catch (e) {
     log("resume OPEN failed:", e instanceof Error ? e.message : e);
   }
+
+  if (existing && existing.status !== "INVALIDATED") return existing;
   return existing;
 }
 

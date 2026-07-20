@@ -15,11 +15,30 @@ import { fetchMultiTimeframe } from "../services/marketData";
 import { diagnoseSmcGateBlock } from "../strategies/smcGateStatus";
 import { generateFractalLiveSignal } from "../strategies/fractalLive";
 import { generateCipherBLiveSignal } from "../strategies/cipherBLive";
+import { withHistoryOpenLatest } from "../history/withHistoryOpen";
 
 /** Shared JSON shape for GET /api/{cipherbclone|fractal}/latest */
 export async function buildLatestPayload(strategy: CompareStrategy) {
   const liveDb = getLiveStrategyDb();
-  const latest = getOpenOrLatestStrategySignal(liveDb, strategy);
+  const rawLatest = getOpenOrLatestStrategySignal(liveDb, strategy);
+  const histMod = strategy === "fractal" ? "fractal" : "cipher_b";
+  const latest = withHistoryOpenLatest(histMod, rawLatest, (o) => ({
+    id: `history-open-${histMod}`,
+    strategy,
+    direction: o.direction,
+    entry: o.entry,
+    sl: o.sl,
+    tp1: o.tp1,
+    tp2: o.tp2,
+    reason: o.reason,
+    time: o.time,
+    outcome: "OPEN" as const,
+    resolvedAt: null,
+    createdAt: o.time,
+    realizedR: null,
+    symbol: "XAUUSD",
+    source: "live" as const,
+  }));
   let validated = false;
   let backtestSummary: ReturnType<typeof summarizeStrategy> | null = null;
   try {
@@ -128,6 +147,7 @@ export async function buildLatestPayload(strategy: CompareStrategy) {
       : null,
     live,
     waitReason: live || latest ? null : waitReason,
+    historyOpen: latest?.outcome === "OPEN",
     backtestSummary,
   };
 }

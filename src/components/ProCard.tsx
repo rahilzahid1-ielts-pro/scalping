@@ -99,6 +99,8 @@ function useLockedModule(
                 }
               : null,
             j.waitReason,
+            Boolean((j as { historyOpen?: boolean }).historyOpen) ||
+              j.latest?.outcome === "OPEN",
           );
           setAdvisory(adv);
           if (adv) setCached(syncCachedLock(cacheKey, fromServer));

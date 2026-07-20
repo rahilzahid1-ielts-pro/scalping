@@ -4,43 +4,36 @@
  */
 import type { AssetId, TradeMode } from "../src/types";
 import type { FrozenPlan } from "../src/services/tradePlan";
-import { listOpenSignals } from "../src/calibration/resolveOutcomes";
+import { getActiveOpenLock } from "../src/history/activeLock";
 
 export function planFromOpenSignal(
   assetId: AssetId,
   mode: TradeMode,
 ): FrozenPlan | null {
-  const opens = listOpenSignals().filter(
-    (s) =>
-      s.symbol === assetId &&
-      s.mode === mode &&
-      s.outcome === "OPEN" &&
-      (s.side === "BUY" || s.side === "SELL"),
-  );
-  if (opens.length === 0) return null;
+  if (assetId !== "XAUUSD") return null;
+  const open = getActiveOpenLock(mode === "intraday" ? "intraday" : "scalp");
+  if (!open) return null;
 
-  const s = opens.reduce((a, b) => (a.timestamp >= b.timestamp ? a : b));
-  const risk = Math.abs(s.entry - s.sl);
-  const reward = Math.abs(s.tp1 - s.entry);
+  const risk = Math.abs(open.entry - open.sl);
+  const reward = Math.abs(open.tp1 - open.entry);
 
   return {
     assetId,
     mode,
-    side: s.side,
+    side: open.direction,
     levels: {
-      entry: s.entry,
-      stopLoss: s.sl,
-      takeProfit1: s.tp1,
-      takeProfit2: s.tp2,
-      takeProfit3: s.tp3,
+      entry: open.entry,
+      stopLoss: open.sl,
+      takeProfit1: open.tp1,
+      takeProfit2: open.tp2,
+      takeProfit3: open.tp2,
       riskReward: risk > 0 ? reward / risk : 0,
-      invalidation: s.sl,
+      invalidation: open.sl,
     },
-    lockedAt: s.timestamp,
-    // History OPEN = user-facing active lock (not a fresh zone wait)
+    lockedAt: open.time,
     status: "IN_TRADE_HINT",
     note: "Resumed from OPEN History lock (daemon plan was missing after restart)",
-    lockedConfidence: s.confidence,
-    lockedWinProbability: s.winChanceDisplayed ?? s.confidence,
+    lockedConfidence: open.confidence,
+    lockedWinProbability: open.confidence,
   };
 }

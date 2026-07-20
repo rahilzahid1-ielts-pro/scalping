@@ -217,14 +217,24 @@ export async function buildHistoryPayload(opts: {
   const moduleFilter = (opts.module || "all").toLowerCase();
   const all: HistoryTrade[] = [];
 
+  /** Selected day, plus still-OPEN locks when viewing today (match module screens). */
+  const viewingToday = date === karachiYmd();
+  const includeAt = (t: number, outcome: string) =>
+    inRange(t, start, end) || (viewingToday && outcome === "OPEN");
+
+  const seen = new Set<string>();
+
   for (const s of safeCollect(() => listAllSignals())) {
-    if (!inRange(s.timestamp, start, end)) continue;
-    const module: HistoryModuleId = s.mode === "intraday" ? "intraday" : "scalp";
     let outcome = s.outcome;
     if (s.outcomeTp1 === "WIN") outcome = "TP1_HIT";
     else if (s.outcomeTp1 === "LOSS") outcome = "SL_HIT";
+    if (!includeAt(s.timestamp, outcome)) continue;
+    const module: HistoryModuleId = s.mode === "intraday" ? "intraday" : "scalp";
+    const id = s.id;
+    if (seen.has(id)) continue;
+    seen.add(id);
     pushTrade(all, {
-      id: s.id,
+      id,
       module,
       side: s.side,
       entry: s.entry,
@@ -240,7 +250,9 @@ export async function buildHistoryPayload(opts: {
   }
 
   for (const r of safeCollect(() => listQuickScalpRows(getLiveQuickScalpDb()))) {
-    if (!inRange(r.timestamp, start, end)) continue;
+    if (!includeAt(r.timestamp, r.outcome)) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
     pushTrade(all, {
       id: r.id,
       module: "quick_scalp",
@@ -257,7 +269,9 @@ export async function buildHistoryPayload(opts: {
   }
 
   for (const r of safeCollect(() => listPulseRows(getLivePulseDb()))) {
-    if (!inRange(r.timestamp, start, end)) continue;
+    if (!includeAt(r.timestamp, r.outcome)) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
     pushTrade(all, {
       id: r.id,
       module: "qs_pro",
@@ -274,7 +288,9 @@ export async function buildHistoryPayload(opts: {
   }
 
   for (const r of safeCollect(() => listProRows(getLiveProDb()))) {
-    if (!inRange(r.timestamp, start, end)) continue;
+    if (!includeAt(r.timestamp, r.outcome)) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
     pushTrade(all, {
       id: r.id,
       module: "pro",
@@ -292,7 +308,9 @@ export async function buildHistoryPayload(opts: {
 
   for (const r of safeCollect(() => listStrategyRows(getLiveStrategyDb()))) {
     if (r.strategy !== "cipher_b_clone" && r.strategy !== "fractal") continue;
-    if (!inRange(r.time, start, end)) continue;
+    if (!includeAt(r.time, r.outcome)) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
     const module: HistoryModuleId = r.strategy === "fractal" ? "fractal" : "cipher_b";
     pushTrade(all, {
       id: r.id,

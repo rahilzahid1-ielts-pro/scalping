@@ -16,10 +16,28 @@ import {
   QUICK_SCALP_BACKTEST_SNAPSHOT,
   isQuickScalpBacktestValidated,
 } from "./backtestSnapshot";
+import { withHistoryOpenLatest } from "../history/withHistoryOpen";
 
 export async function buildQuickScalpLatestPayload() {
   const liveDb = getLiveQuickScalpDb();
-  const latest = getOpenOrLatestQuickScalp(liveDb);
+  const rawLatest = getOpenOrLatestQuickScalp(liveDb);
+  const latest = withHistoryOpenLatest("quick_scalp", rawLatest, (o) => ({
+    id: `history-open-qs`,
+    timestamp: o.time,
+    symbol: "XAUUSD",
+    direction: o.direction,
+    entry: o.entry,
+    sl: o.sl,
+    tp1: o.tp1,
+    tp2: o.tp2,
+    outcome: "OPEN" as const,
+    reason: o.reason,
+    dailyTrend: o.dailyBias ?? "",
+    strategy: "quick_scalp" as const,
+    realizedR: null,
+    resolvedAt: null,
+    source: "live" as const,
+  }));
   let backtestSummary: ReturnType<typeof summarizeQuickScalp> | null = null;
   let validated = false;
 
@@ -92,6 +110,7 @@ export async function buildQuickScalpLatestPayload() {
     latest,
     live,
     waitReason: live || latest ? null : waitReason,
+    historyOpen: latest?.outcome === "OPEN",
     backtestSummary,
     badge: validated
       ? null

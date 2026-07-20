@@ -4,6 +4,7 @@
  * Does not change engines — display / paint-cache only.
  */
 import { clearCachedLock } from "./lockCache";
+import { historyModuleToActiveId, type ActiveModuleId } from "../history/activeLock";
 
 const PREFIX = "go_exit_advisory_v1:";
 
@@ -74,24 +75,28 @@ export function dismissExitAdvisory(moduleKey: string): void {
 
 /**
  * Pass **server** latest only (not phone cache).
- * OPEN → remember. TP1/SL → done. null after OPEN → EXIT advisory + clear paint cache.
+ * If History still has OPEN for this module, never emit EXIT / clear cache.
  */
 export function syncExitAdvisory(
   moduleKey: string,
   moduleLabel: string,
   serverLock: ConfirmedLockSnap | null,
   waitReason?: string | null,
+  /** When true, History DB still has OPEN — do not revoke UI */
+  historyStillOpen?: boolean,
 ): ExitAdvisory | null {
   const snapKey = `snap:${moduleKey}`;
 
-  if (serverLock && (serverLock.outcome === "TP1_HIT" || serverLock.outcome === "SL_HIT")) {
-    clearRaw(snapKey);
+  if (historyStillOpen || (serverLock && serverLock.outcome === "OPEN")) {
+    if (serverLock && serverLock.outcome === "OPEN") {
+      saveRaw(snapKey, JSON.stringify(serverLock));
+    }
     clearRaw(`adv:${moduleKey}`);
     return null;
   }
 
-  if (serverLock && serverLock.outcome === "OPEN") {
-    saveRaw(snapKey, JSON.stringify(serverLock));
+  if (serverLock && (serverLock.outcome === "TP1_HIT" || serverLock.outcome === "SL_HIT")) {
+    clearRaw(snapKey);
     clearRaw(`adv:${moduleKey}`);
     return null;
   }
@@ -150,4 +155,8 @@ export function formatExitAdvisoryUr(a: ExitAdvisory): string {
     return `${a.moduleLabel} pe ${a.side} preview tha @ ${a.entry.toFixed(2)}, lekin worker ne lock nahi kiya. Naya entry mat lo.`;
   }
   return `${a.moduleLabel} ne ${a.side} trade di thi @ ${a.entry.toFixed(2)} (SL ${a.sl.toFixed(2)} · TP1 ${a.tp1.toFixed(2)}). Ab woh situation nahi — agar aapne trade le li hai to EXIT consider karo / SL respect karo.`;
+}
+
+export function cacheKeyToActiveModule(cacheKey: string): ActiveModuleId | null {
+  return historyModuleToActiveId(cacheKey);
 }

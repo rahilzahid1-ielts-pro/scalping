@@ -104,7 +104,14 @@ export function StrategyCompareCard({
                 time: j.latest.time,
               }
             : null;
-          const adv = syncExitAdvisory(cacheKey, moduleLabel, serverSnap, j.waitReason);
+          const adv = syncExitAdvisory(
+            cacheKey,
+            moduleLabel,
+            serverSnap,
+            j.waitReason,
+            Boolean((j as { historyOpen?: boolean }).historyOpen) ||
+              serverSnap?.outcome === "OPEN",
+          );
           setAdvisory(adv);
           if (adv) {
             // Cache cleared inside syncExitAdvisory — refresh display state

@@ -96,6 +96,8 @@ export function QuickScalpCard() {
                 }
               : null,
             j.waitReason,
+            Boolean((j as { historyOpen?: boolean }).historyOpen) ||
+              j.latest?.outcome === "OPEN",
           );
           setAdvisory(adv);
           if (adv) setCached(syncCachedLock(CACHE_KEY, fromServer));

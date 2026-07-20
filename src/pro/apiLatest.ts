@@ -13,10 +13,30 @@ import {
   isProBacktestValidated,
 } from "./store";
 import { PRO_BACKTEST_SNAPSHOT } from "./backtestSnapshot";
+import { withHistoryOpenLatest } from "../history/withHistoryOpen";
 
 export async function buildProLatestPayload() {
   const liveDb = getLiveProDb();
-  const latest = getOpenOrLatestPro(liveDb);
+  const rawLatest = getOpenOrLatestPro(liveDb);
+  const latest = withHistoryOpenLatest("pro", rawLatest, (o) => ({
+    id: "history-open-pro",
+    timestamp: o.time,
+    symbol: "XAUUSD",
+    direction: o.direction,
+    entry: o.entry,
+    sl: o.sl,
+    tp1: o.tp1,
+    tp2: o.tp2,
+    confidence: o.confidence ?? 0,
+    regime: o.regime ?? "",
+    outcome: "OPEN" as const,
+    reason: o.reason,
+    dailyBias: o.dailyBias ?? "",
+    strategy: "pro" as const,
+    realizedR: null,
+    resolvedAt: null,
+    source: "live" as const,
+  }));
   let backtestSummary: {
     resolved: number;
     wins: number;
@@ -96,6 +116,7 @@ export async function buildProLatestPayload() {
     latest,
     live,
     waitReason: live || latest ? null : waitReason,
+    historyOpen: latest?.outcome === "OPEN",
     backtestSummary,
     badge: validated
       ? null

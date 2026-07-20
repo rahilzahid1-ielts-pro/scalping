@@ -11,10 +11,30 @@ import {
   PULSE_BACKTEST_SNAPSHOT,
   isPulseBacktestValidated,
 } from "./backtestSnapshot";
+import { withHistoryOpenLatest } from "../history/withHistoryOpen";
 
 export async function buildPulseLatestPayload() {
   const liveDb = getLivePulseDb();
-  const latest = getOpenOrLatestPulse(liveDb);
+  const rawLatest = getOpenOrLatestPulse(liveDb);
+  const latest = withHistoryOpenLatest("qs_pro", rawLatest, (o) => ({
+    id: "history-open-pulse",
+    timestamp: o.time,
+    symbol: "XAUUSD",
+    direction: o.direction,
+    entry: o.entry,
+    sl: o.sl,
+    tp1: o.tp1,
+    tp2: o.tp2,
+    confidence: o.confidence ?? 0,
+    regime: o.regime ?? "",
+    outcome: "OPEN" as const,
+    reason: o.reason,
+    dailyBias: o.dailyBias ?? "",
+    strategy: "pulse" as const,
+    realizedR: null,
+    resolvedAt: null,
+    source: "live" as const,
+  }));
   let backtestSummary: ReturnType<typeof summarizePulse> | null = null;
   let validated = false;
 
@@ -83,9 +103,10 @@ export async function buildPulseLatestPayload() {
     latest,
     live,
     waitReason: live || latest ? null : waitReason,
+    historyOpen: latest?.outcome === "OPEN",
     backtestSummary,
     badge: validated
       ? null
-      : `UNVALIDATED — need ≥55% TP1win, n≥50, avgR>0 (n=${backtestSummary.resolved}, wr=${backtestSummary.winRate?.toFixed(1) ?? "—"}%)`,
+      : `UNVALIDATED — need ≥55% TP1win, n≥50, avgR>0 (n=${backtestSummary!.resolved}, wr=${backtestSummary!.winRate?.toFixed(1) ?? "—"}%)`,
   };
 }
