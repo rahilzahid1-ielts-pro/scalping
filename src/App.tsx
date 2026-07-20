@@ -200,6 +200,13 @@ export default function App() {
           void logSignalViaApi(next);
         }
       } else if (
+        // Don't replace a parked active/waiting trade from another mode while browsing tabs.
+        !(
+          current &&
+          current.status !== "INVALIDATED" &&
+          (current.status === "IN_TRADE_HINT" || current.status === "WAITING_ENTRY") &&
+          current.mode !== mode
+        ) &&
         (!current || current.status === "INVALIDATED" || current.assetId !== assetId || current.mode !== mode) &&
         canAutoLockPlan(mode, next, current, assetId)
       ) {
@@ -245,11 +252,19 @@ export default function App() {
     if (skipClearRef.current) {
       skipClearRef.current = false;
     } else {
-      // User switched Scalp/Intraday — new plan allowed
-      setPlan(null);
+      // Switching Scalp/Intraday: keep an active/waiting locked plan so the user
+      // can browse other tabs without wiping the live trade. Only clear when idle.
+      const current = planRef.current;
+      const preserveActive =
+        !!current &&
+        current.status !== "INVALIDATED" &&
+        (current.status === "IN_TRADE_HINT" || current.status === "WAITING_ENTRY");
+      if (!preserveActive) {
+        setPlan(null);
+        trendTrackerRef.current = newTrendTracker();
+      }
       setSignal(null);
       setLoading(true);
-      trendTrackerRef.current = newTrendTracker();
     }
     void refresh();
   }, [assetId, mode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -364,13 +379,8 @@ export default function App() {
   };
 
   const requestModeChange = (nextMode: TradeMode) => {
-    const current = planRef.current;
-    if (current?.status === "IN_TRADE_HINT" && nextMode !== mode) {
-      window.alert(
-        `${current.side} ${current.mode} trade ACTIVE hai. Active trade ke dauran mode switch blocked.`,
-      );
-      return;
-    }
+    // Allow free tab navigation even while a trade is active/locked.
+    // The locked plan is preserved across mode switches (see effect below).
     setMode(nextMode);
   };
 
