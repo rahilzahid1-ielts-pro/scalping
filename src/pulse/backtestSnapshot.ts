@@ -3,19 +3,19 @@
  * data/ is gitignored — prod falls back to this for the badge.
  */
 export const PULSE_BACKTEST_SNAPSHOT = {
-  resolved: 1052,
-  wins: 919,
-  losses: 133,
-  winRate: 87.3574144486692,
-  avgR: 0.6161121673003822,
-  maxDrawdownR: -5,
+  resolved: 870,
+  wins: 764,
+  losses: 106,
+  winRate: 87.816091954023,
+  avgR: 0.6245977011494249,
+  maxDrawdownR: -4.35,
   meta: {
     file: "data/XAU_5m_data.csv",
     days: 365,
     spread: 0.25,
-    runAt: "2026-07-22",
+    runAt: "2026-07-20",
     style: "qs_pro",
-    gates: "SMC scalping + fractal direction agree within 2 bars + TP1 0.85R",
+    gates: "SMC scalping + fractal direction agree + TP1 0.85R",
     vsQuickScalp: "n=922 wr=81.8% avgR=0.51",
     vsPro: "n=583 wr=77.0% avgR=0.54",
   },

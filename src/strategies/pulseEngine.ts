@@ -44,12 +44,7 @@ export function generatePulseSignal(
   assetId: AssetId = "XAUUSD",
   mode: TradeMode = "scalping",
 ): PulseSignal | null {
-  // SMC commonly confirms one or two M5 bars after the actual fractal cross.
-  // Keep only that short continuation window; older breakouts remain invalid.
-  const fractal = generateFractalSignal({
-    candles: frames.primary,
-    maxBreakoutAgeBars: 2,
-  });
+  const fractal = generateFractalSignal({ candles: frames.primary });
   if (!fractal) return null;
 
   const smc = generateSignal(assetId, mode, frames);

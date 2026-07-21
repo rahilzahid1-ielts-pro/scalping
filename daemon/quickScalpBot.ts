@@ -28,7 +28,6 @@ const COOLDOWN_MS = 45 * 60 * 1000; // 45m between blitz alerts
 
 let workerRunning = false;
 let lastAlertAt = 0;
-let lastAlertDirection: "BUY" | "SELL" | null = null;
 let openTrade: QuickScalpRow | null = null;
 
 function log(...args: unknown[]) {
@@ -62,10 +61,6 @@ async function tick(): Promise<void> {
   // After redeploy, resume OPEN from SQLite so lock does not vanish / double-fire.
   if (!openTrade) {
     const resumed = getOpenOrLatestQuickScalp(db);
-    if (resumed && lastAlertDirection == null) {
-      lastAlertDirection = resumed.direction;
-      lastAlertAt = resumed.timestamp;
-    }
     if (resumed?.outcome === "OPEN") {
       openTrade = resumed;
       log("resumed OPEN", openTrade.direction, openTrade.entry);
@@ -117,12 +112,7 @@ async function tick(): Promise<void> {
     return;
   }
   if (!sig) return;
-  if (
-    sig.direction === lastAlertDirection &&
-    Date.now() - lastAlertAt < COOLDOWN_MS
-  ) {
-    return;
-  }
+  if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
   if (
     !isFreshPendingEntryViable(
       sig.direction,
@@ -140,7 +130,6 @@ async function tick(): Promise<void> {
   insertQuickScalpRow(db, row);
   openTrade = row;
   lastAlertAt = Date.now();
-  lastAlertDirection = sig.direction;
 
   const body = [
     `${sig.direction} BLITZ @ ${sig.entry.toFixed(d)}`,

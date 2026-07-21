@@ -31,7 +31,6 @@ const COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3h between live Pro alerts
 
 let workerRunning = false;
 let lastAlertAt = 0;
-let lastAlertDirection: "BUY" | "SELL" | null = null;
 let openTrade: ProRow | null = null;
 
 function log(...args: unknown[]) {
@@ -64,10 +63,6 @@ async function tick(): Promise<void> {
 
   if (!openTrade) {
     const resumed = getOpenOrLatestPro(db);
-    if (resumed && lastAlertDirection == null) {
-      lastAlertDirection = resumed.direction;
-      lastAlertAt = resumed.timestamp;
-    }
     if (resumed?.outcome === "OPEN") {
       openTrade = resumed;
       log("resumed OPEN", openTrade.direction, openTrade.entry);
@@ -117,12 +112,7 @@ async function tick(): Promise<void> {
     return;
   }
   if (!sig) return;
-  if (
-    sig.direction === lastAlertDirection &&
-    Date.now() - lastAlertAt < COOLDOWN_MS
-  ) {
-    return;
-  }
+  if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
   if (
     !isFreshPendingEntryViable(
       sig.direction,
@@ -140,7 +130,6 @@ async function tick(): Promise<void> {
   insertProRow(db, row);
   openTrade = row;
   lastAlertAt = Date.now();
-  lastAlertDirection = sig.direction;
 
   const body = [
     `${sig.direction} @ ${sig.entry.toFixed(d)}`,

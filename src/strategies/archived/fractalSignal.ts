@@ -23,12 +23,6 @@ export interface FractalSignal {
 
 export interface FractalInput {
   candles: Candle[];
-  /**
-   * Keep a freshly crossed fractal valid for a few completed bars. This lets
-   * confirmation engines agree just after the breakout instead of requiring
-   * both engines to flip on the exact same poll.
-   */
-  maxBreakoutAgeBars?: number;
 }
 
 interface FractalPoint {
@@ -77,45 +71,22 @@ export function generateFractalSignal(input: FractalInput): FractalSignal | null
 
   const { high, low } = findRecentFractals(input.candles);
   const last = input.candles[input.candles.length - 1];
-  const maxAge = Math.max(0, Math.floor(input.maxBreakoutAgeBars ?? 0));
+  const prev = input.candles[input.candles.length - 2];
 
   if (!high && !low) return null;
 
   let direction: FractalDirection | null = null;
   const reason: string[] = [];
 
-  // Find a fresh or very recent close-cross. Requiring the fractal and SMC
-  // engines to agree on the exact same polling tick misses valid continuation
-  // moves when SMC confirms one or two bars after the breakout.
-  for (let age = 0; age <= maxAge && !direction; age++) {
-    const i = input.candles.length - 1 - age;
-    if (i <= 0) break;
-    const crossed = input.candles[i];
-    const before = input.candles[i - 1];
-
-    if (
-      high &&
-      high.index < i &&
-      before.close <= high.price &&
-      crossed.close > high.price &&
-      last.close > high.price
-    ) {
-      direction = 'BUY';
-      reason.push(
-        `${age === 0 ? 'Breakout' : `Breakout held ${age} bar${age === 1 ? '' : 's'}`} above fractal high ${high.price.toFixed(2)} (bar -${input.candles.length - 1 - high.index})`,
-      );
-    } else if (
-      low &&
-      low.index < i &&
-      before.close >= low.price &&
-      crossed.close < low.price &&
-      last.close < low.price
-    ) {
-      direction = 'SELL';
-      reason.push(
-        `${age === 0 ? 'Breakout' : `Breakout held ${age} bar${age === 1 ? '' : 's'}`} below fractal low ${low.price.toFixed(2)} (bar -${input.candles.length - 1 - low.index})`,
-      );
-    }
+  // Breakout above the most recent confirmed fractal high (fresh cross this bar)
+  if (high && prev.close <= high.price && last.close > high.price) {
+    direction = 'BUY';
+    reason.push(`Breakout above fractal high ${high.price.toFixed(2)} (bar -${input.candles.length - 1 - high.index})`);
+  }
+  // Breakout below the most recent confirmed fractal low (fresh cross this bar)
+  else if (low && prev.close >= low.price && last.close < low.price) {
+    direction = 'SELL';
+    reason.push(`Breakout below fractal low ${low.price.toFixed(2)} (bar -${input.candles.length - 1 - low.index})`);
   }
 
   if (!direction) return null;
