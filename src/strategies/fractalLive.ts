@@ -35,7 +35,12 @@ export function generateFractalLiveSignal(input: {
   const assetId = input.assetId ?? "XAUUSD";
   const mode = input.mode ?? "scalping";
 
-  const fractal = generateFractalSignal({ candles: input.primary });
+  // Allow SMC up to two M5 bars to confirm a breakout that is still holding.
+  // Exact-bar agreement was needlessly dropping fast continuation moves.
+  const fractal = generateFractalSignal({
+    candles: input.primary,
+    maxBreakoutAgeBars: 2,
+  });
   if (!fractal) return null;
 
   const smc = generateSignal(assetId, mode, {

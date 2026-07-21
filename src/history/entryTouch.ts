@@ -1,3 +1,5 @@
+import { isTooLateToEnter } from "../utils/tradeSafety";
+
 export type PendingEntryState = "WAITING" | "EXECUTED" | "MISSED";
 
 /**
@@ -25,10 +27,22 @@ export function pendingEntryState(
 
   if (currentNearEntry || postLockBarTouched) return "EXECUTED";
 
-  // Price reached the target or invalidation side without a post-lock entry
-  // touch. The move was missed; never keep this stale lock as an active trade.
-  if (direction === "BUY" && (bar.close >= tp1 || bar.close <= sl)) return "MISSED";
-  if (direction === "SELL" && (bar.close <= tp1 || bar.close >= sl)) return "MISSED";
+  // Release a pullback lock once price has already run half an R toward target.
+  // Waiting until full TP1 kept stale locks active through most of jump days.
+  if (isTooLateToEnter(direction, bar.close, entry, sl)) return "MISSED";
 
   return "WAITING";
+}
+
+/** Reject a newly generated lock whose move is already over at insertion time. */
+export function isFreshPendingEntryViable(
+  direction: "BUY" | "SELL",
+  entry: number,
+  sl: number,
+  tp1: number,
+  bar: { time: number; high: number; low: number; close: number },
+  tolerance: number,
+  now: number = Date.now(),
+): boolean {
+  return pendingEntryState(direction, entry, sl, tp1, now, bar, tolerance) !== "MISSED";
 }

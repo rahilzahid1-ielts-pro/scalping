@@ -32,6 +32,36 @@ export interface ProFrames {
 /** Minimum confidence for a Pro setup (stricter than scalp/intraday auto-lock). */
 export const PRO_MIN_CONFIDENCE = 80;
 
+function isStrongHtfContinuation(
+  frames: ProFrames,
+  side: ProDirection,
+): boolean {
+  const primary = frames.primary;
+  const confirmation = frames.confirmation;
+  if (primary.length < 10 || confirmation.length < 3) return false;
+
+  const last = primary[primary.length - 1];
+  const priorPrimary = primary.slice(-10, -1);
+  const lastConfirmation = confirmation[confirmation.length - 1];
+  const previousConfirmation = confirmation[confirmation.length - 2];
+
+  if (side === "BUY") {
+    const priorHigh = Math.max(...priorPrimary.map((c) => c.high));
+    return (
+      last.close > priorHigh &&
+      lastConfirmation.close > lastConfirmation.open &&
+      lastConfirmation.close > previousConfirmation.close
+    );
+  }
+
+  const priorLow = Math.min(...priorPrimary.map((c) => c.low));
+  return (
+    last.close < priorLow &&
+    lastConfirmation.close < lastConfirmation.open &&
+    lastConfirmation.close < previousConfirmation.close
+  );
+}
+
 /**
  * Generate a Pro signal or null (WAIT / rejected by gates).
  * Default mode = intraday (cleaner HTF path per plan).
@@ -54,18 +84,28 @@ export function generateProSignal(
   const regime = d.regime ?? "";
   if (regime !== "TREND_UP" && regime !== "TREND_DOWN") return null;
 
-  // Daily bias must agree with side (not merely "not fighting").
-  if (sig.side === "BUY" && sig.dailyBias.bias !== "BULLISH") return null;
-  if (sig.side === "SELL" && sig.dailyBias.bias !== "BEARISH") return null;
-
   // Regime direction should match side.
   if (sig.side === "BUY" && regime !== "TREND_UP") return null;
   if (sig.side === "SELL" && regime !== "TREND_DOWN") return null;
 
+  // Normally Daily must agree. A confirmed M15 breakout plus an H1 impulse may
+  // override a lagging Daily label; this catches exceptional intraday jumps
+  // without weakening confidence, conflict, HTF, or regime gates.
+  const dailyAgrees =
+    (sig.side === "BUY" && sig.dailyBias.bias === "BULLISH") ||
+    (sig.side === "SELL" && sig.dailyBias.bias === "BEARISH");
+  const continuationOverride =
+    !dailyAgrees &&
+    sig.confidence >= PRO_MIN_CONFIDENCE + 5 &&
+    isStrongHtfContinuation(frames, sig.side);
+  if (!dailyAgrees && !continuationOverride) return null;
+
   const reasons = [
     `Pro gates: conf ${sig.confidence}% ≥ ${PRO_MIN_CONFIDENCE}`,
     `HTF aligned · regime ${regime}`,
-    `Daily ${sig.dailyBias.bias}`,
+    continuationOverride
+      ? `Strong M15+H1 continuation overrides lagging Daily ${sig.dailyBias.bias}`
+      : `Daily ${sig.dailyBias.bias}`,
     ...sig.confluence.slice(0, 6),
   ];
 

@@ -6,17 +6,17 @@
  * Re-run backtest:pro and update these numbers when the strategy changes.
  */
 export const PRO_BACKTEST_SNAPSHOT = {
-  resolved: 616,
-  wins: 487,
-  losses: 129,
-  winRate: 79.05844155844156,
-  avgR: 0.5811688311688312,
-  maxDrawdownR: -8,
+  resolved: 785,
+  wins: 634,
+  losses: 151,
+  winRate: 80.76433121019109,
+  avgR: 0.6152866242038216,
+  maxDrawdownR: -6,
   meta: {
     file: "data/XAUUSD_M5.json",
     days: 365,
     spread: 0.25,
-    runAt: "2026-07-20",
-    gates: "conf≥80, HTF aligned, no conflict, TREND only, daily bias agrees",
+    runAt: "2026-07-22",
+    gates: "conf≥80, HTF aligned, no conflict, TREND only, daily agree or conf≥85 M15+H1 breakout",
   },
 } as const;

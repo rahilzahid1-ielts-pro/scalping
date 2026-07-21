@@ -19,7 +19,10 @@ import {
   type ProRow,
 } from "../src/pro/store";
 import type { Candle } from "../src/types";
-import { pendingEntryState } from "../src/history/entryTouch";
+import {
+  isFreshPendingEntryViable,
+  pendingEntryState,
+} from "../src/history/entryTouch";
 import { entryTolerance } from "../src/utils/tradeSafety";
 
 const TICK_MS = Number(process.env.PRO_TICK_MS) || 60_000;
@@ -28,6 +31,7 @@ const COOLDOWN_MS = 3 * 60 * 60 * 1000; // 3h between live Pro alerts
 
 let workerRunning = false;
 let lastAlertAt = 0;
+let lastAlertDirection: "BUY" | "SELL" | null = null;
 let openTrade: ProRow | null = null;
 
 function log(...args: unknown[]) {
@@ -60,6 +64,10 @@ async function tick(): Promise<void> {
 
   if (!openTrade) {
     const resumed = getOpenOrLatestPro(db);
+    if (resumed && lastAlertDirection == null) {
+      lastAlertDirection = resumed.direction;
+      lastAlertAt = resumed.timestamp;
+    }
     if (resumed?.outcome === "OPEN") {
       openTrade = resumed;
       log("resumed OPEN", openTrade.direction, openTrade.entry);
@@ -100,7 +108,6 @@ async function tick(): Promise<void> {
   }
 
   if (openTrade) return;
-  if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
 
   let sig;
   try {
@@ -110,11 +117,30 @@ async function tick(): Promise<void> {
     return;
   }
   if (!sig) return;
+  if (
+    sig.direction === lastAlertDirection &&
+    Date.now() - lastAlertAt < COOLDOWN_MS
+  ) {
+    return;
+  }
+  if (
+    !isFreshPendingEntryViable(
+      sig.direction,
+      sig.entry,
+      sig.sl,
+      sig.tp1,
+      last,
+      entryTolerance(ASSETS[ASSET], "intraday", last.close),
+    )
+  ) {
+    return;
+  }
 
   const row = signalToRow(sig, ASSET, "live");
   insertProRow(db, row);
   openTrade = row;
   lastAlertAt = Date.now();
+  lastAlertDirection = sig.direction;
 
   const body = [
     `${sig.direction} @ ${sig.entry.toFixed(d)}`,

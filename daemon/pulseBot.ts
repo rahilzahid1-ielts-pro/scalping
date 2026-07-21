@@ -19,7 +19,10 @@ import {
   type PulseRow,
 } from "../src/pulse/store";
 import type { Candle } from "../src/types";
-import { pendingEntryState } from "../src/history/entryTouch";
+import {
+  isFreshPendingEntryViable,
+  pendingEntryState,
+} from "../src/history/entryTouch";
 import { entryTolerance } from "../src/utils/tradeSafety";
 
 const TICK_MS = Number(process.env.PULSE_TICK_MS) || 15_000;
@@ -28,6 +31,7 @@ const COOLDOWN_MS = 45 * 60 * 1000;
 
 let workerRunning = false;
 let lastAlertAt = 0;
+let lastAlertDirection: "BUY" | "SELL" | null = null;
 let openTrade: PulseRow | null = null;
 
 function log(...args: unknown[]) {
@@ -59,6 +63,10 @@ async function tick(): Promise<void> {
 
   if (!openTrade) {
     const resumed = getOpenOrLatestPulse(db);
+    if (resumed && lastAlertDirection == null) {
+      lastAlertDirection = resumed.direction;
+      lastAlertAt = resumed.timestamp;
+    }
     if (resumed?.outcome === "OPEN") {
       openTrade = resumed;
       log("resumed OPEN", openTrade.direction, openTrade.entry);
@@ -101,7 +109,6 @@ async function tick(): Promise<void> {
   }
 
   if (openTrade) return;
-  if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
 
   let sig;
   try {
@@ -111,11 +118,32 @@ async function tick(): Promise<void> {
     return;
   }
   if (!sig) return;
+  // Suppress duplicate same-side setups, but never let an invalidated SELL
+  // cooldown hide a fresh BUY reversal (or vice versa).
+  if (
+    sig.direction === lastAlertDirection &&
+    Date.now() - lastAlertAt < COOLDOWN_MS
+  ) {
+    return;
+  }
+  if (
+    !isFreshPendingEntryViable(
+      sig.direction,
+      sig.entry,
+      sig.sl,
+      sig.tp1,
+      last,
+      entryTolerance(ASSETS[ASSET], "scalping", last.close),
+    )
+  ) {
+    return;
+  }
 
   const row = signalToRow(sig, ASSET, "live");
   insertPulseRow(db, row);
   openTrade = row;
   lastAlertAt = Date.now();
+  lastAlertDirection = sig.direction;
 
   const body = [
     `${sig.direction} QS PRO @ ${sig.entry.toFixed(d)}`,

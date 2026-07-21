@@ -24,6 +24,7 @@ import {
   type FrozenPlan,
 } from "../src/services/tradePlan";
 import { buildSessionExtras, canAutoLockPlan } from "../src/utils/sessionPlan";
+import { isTooLateToEnter } from "../src/utils/tradeSafety";
 import { logSignalFromLive } from "../src/calibration";
 import {
   resolveOpenSignalsForSymbol,
@@ -147,7 +148,16 @@ function lockPlan(
   }
 
   const currentForLock = state.plans[key] ?? null;
-  if (canAutoLockPlan(mode, signal, currentForLock, assetId)) {
+  if (
+    canAutoLockPlan(mode, signal, currentForLock, assetId) &&
+    signal.levels &&
+    !isTooLateToEnter(
+      signal.side,
+      live,
+      signal.levels.entry,
+      signal.levels.stopLoss,
+    )
+  ) {
     const extras = buildSessionExtras(
       assetId,
       mode,
@@ -412,16 +422,19 @@ async function tick(state: DaemonState) {
       const entry = plan?.levels.entry;
       const d = ASSETS[w.assetId].decimals;
 
-      if (signal.side !== "WAIT" && signal.levels) {
-        const toLog =
-          plan && plan.status !== "INVALIDATED"
-            ? {
-                ...signal,
-                side: plan.side,
-                levels: plan.levels,
-              }
-            : signal;
-        logSignalFromLive(toLog);
+      // History represents actual frozen locks, not every transient engine lean.
+      // Logging raw `signal` here created a new fake trade whenever live-derived
+      // levels moved by a few cents, producing hundreds of NOT EXECUTED rows.
+      if (
+        plan &&
+        plan.status !== "INVALIDATED" &&
+        plan.side !== "WAIT"
+      ) {
+        logSignalFromLive({
+          ...signal,
+          side: plan.side,
+          levels: plan.levels,
+        });
       }
       // SCALPING-ONLY: stamp trendConfirmedAt once the row exists in signals.db.
       if (

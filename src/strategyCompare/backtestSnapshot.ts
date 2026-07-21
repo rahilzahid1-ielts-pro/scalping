@@ -12,12 +12,12 @@ export const CIPHER_B_BACKTEST_SNAPSHOT = {
 };
 
 export const FRACTAL_BACKTEST_SNAPSHOT = {
-  resolved: 626,
-  wins: 566,
-  losses: 60,
-  winRate: 90.41533546325878,
-  avgR: 0.7182108626198084,
-  maxDrawdownR: -5.1,
+  resolved: 1052,
+  wins: 905,
+  losses: 147,
+  winRate: 86.02661596958175,
+  avgR: 0.6345057034220533,
+  maxDrawdownR: -5,
 };
 
 export function isCompareBacktestValidated(summary: {

@@ -200,17 +200,11 @@ export function shouldKeepFrozenPlan(
       base.status === "WAITING_ENTRY" &&
       isTooLateToEnter(base.side, livePrice, base.levels.entry, base.levels.stopLoss)
     ) {
-      // Only invalidate when clearly past entry deep into risk — keep waiting if still below entry for SELL
-      if (
-        (base.side === "SELL" && livePrice > base.levels.entry) ||
-        (base.side === "BUY" && livePrice < base.levels.entry)
-      ) {
-        return {
-          ...base,
-          status: "INVALIDATED",
-          note: "Price SL zone mein — entry miss. Chase mat karo. New plan lo.",
-        };
-      }
+      return {
+        ...base,
+        status: "INVALIDATED",
+        note: "Price entry se 0.5R target side nikal gayi — move miss, chase mat karo.",
+      };
     }
   }
 

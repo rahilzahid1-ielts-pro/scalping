@@ -88,25 +88,21 @@ export async function buildProLatestPayload() {
     const frames = await fetchMultiTimeframe("XAUUSD", "intraday", undefined, {
       rebaseToLive: true,
     });
-    const diag = diagnoseSmcGateBlock(frames, { mode: "intraday", minConf: 80 });
-    if (!diag.pass) {
-      waitReason = diag.waitReason;
+    const sig = generateProSignal("XAUUSD", frames, "intraday");
+    if (sig) {
+      live = {
+        direction: sig.direction,
+        entry: sig.entry,
+        sl: sig.sl,
+        tp1: sig.tp1,
+        tp2: sig.tp2,
+        confidence: sig.confidence,
+        regime: sig.regime,
+        dailyBias: sig.dailyBias,
+      };
     } else {
-      const sig = generateProSignal("XAUUSD", frames, "intraday");
-      if (sig) {
-        live = {
-          direction: sig.direction,
-          entry: sig.entry,
-          sl: sig.sl,
-          tp1: sig.tp1,
-          tp2: sig.tp2,
-          confidence: sig.confidence,
-          regime: sig.regime,
-          dailyBias: sig.dailyBias,
-        };
-      } else {
-        waitReason = "Gates pass-ish but Pro engine null";
-      }
+      const diag = diagnoseSmcGateBlock(frames, { mode: "intraday", minConf: 80 });
+      waitReason = diag.pass ? "Gates pass-ish but Pro engine null" : diag.waitReason;
     }
   } catch (e) {
     waitReason = e instanceof Error ? e.message : "market fetch failed";

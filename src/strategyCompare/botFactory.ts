@@ -20,7 +20,10 @@ import {
   type StrategySignalRow,
 } from "./store";
 import type { Candle } from "../types";
-import { pendingEntryState } from "../history/entryTouch";
+import {
+  isFreshPendingEntryViable,
+  pendingEntryState,
+} from "../history/entryTouch";
 import { entryTolerance } from "../utils/tradeSafety";
 
 const ASSET = "XAUUSD" as const;
@@ -57,6 +60,7 @@ function emit(
 export function createCompareBot(cfg: CompareBotConfig) {
   let workerRunning = false;
   let lastAlertAt = 0;
+  let lastAlertDirection: "BUY" | "SELL" | null = null;
   let openTrade: StrategySignalRow | null = null;
 
   function log(...args: unknown[]) {
@@ -78,6 +82,10 @@ export function createCompareBot(cfg: CompareBotConfig) {
 
     if (!openTrade) {
       const resumed = getOpenOrLatestStrategySignal(db, cfg.strategy);
+      if (resumed && lastAlertDirection == null) {
+        lastAlertDirection = resumed.direction;
+        lastAlertAt = resumed.createdAt;
+      }
       if (resumed?.outcome === "OPEN") {
         openTrade = resumed;
         log("resumed OPEN", openTrade.direction, openTrade.entry);
@@ -126,7 +134,6 @@ export function createCompareBot(cfg: CompareBotConfig) {
     }
 
     if (openTrade) return;
-    if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
 
     let sig;
     try {
@@ -136,6 +143,24 @@ export function createCompareBot(cfg: CompareBotConfig) {
       return;
     }
     if (!sig) return;
+    if (
+      sig.direction === lastAlertDirection &&
+      Date.now() - lastAlertAt < COOLDOWN_MS
+    ) {
+      return;
+    }
+    if (
+      !isFreshPendingEntryViable(
+        sig.direction,
+        sig.entry,
+        sig.sl,
+        sig.tp1,
+        last,
+        entryTolerance(ASSETS[ASSET], "scalping", last.close),
+      )
+    ) {
+      return;
+    }
 
     const row = makeStrategyRow({
       strategy: cfg.strategy,
@@ -152,6 +177,7 @@ export function createCompareBot(cfg: CompareBotConfig) {
     insertStrategyRow(db, row);
     openTrade = row;
     lastAlertAt = Date.now();
+    lastAlertDirection = sig.direction;
 
     const body = [
       `${sig.direction} @ ${sig.entry.toFixed(d)}`,
