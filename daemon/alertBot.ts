@@ -566,6 +566,7 @@ export function getAuthoritativePlan(
       const same =
         existing &&
         existing.status !== "INVALIDATED" &&
+        existing.status === resumed.status &&
         existing.side === resumed.side &&
         existing.levels.entry === resumed.levels.entry &&
         existing.levels.stopLoss === resumed.levels.stopLoss &&
