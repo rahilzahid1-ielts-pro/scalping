@@ -173,8 +173,9 @@ export function makeStrategyRow(input: {
   source: "live" | "backtest";
 }): StrategySignalRow {
   const now = Date.now();
+  const time = input.source === "live" ? now : input.time;
   return {
-    id: `${input.strategy}-${input.source}-${input.time}-${input.direction}-${input.entry}`,
+    id: `${input.strategy}-${input.source}-${time}-${input.direction}-${input.entry}`,
     strategy: input.strategy,
     direction: input.direction,
     entry: input.entry,
@@ -182,7 +183,7 @@ export function makeStrategyRow(input: {
     tp1: input.tp1,
     tp2: input.tp2,
     reason: JSON.stringify(input.reason),
-    time: input.time,
+    time,
     outcome: "OPEN",
     resolvedAt: null,
     createdAt: now,

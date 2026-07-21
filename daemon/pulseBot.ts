@@ -19,7 +19,8 @@ import {
   type PulseRow,
 } from "../src/pulse/store";
 import type { Candle } from "../src/types";
-import { barTouchedEntryLevel } from "../src/history/entryTouch";
+import { pendingEntryState } from "../src/history/entryTouch";
+import { entryTolerance } from "../src/utils/tradeSafety";
 
 const TICK_MS = Number(process.env.PULSE_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
@@ -45,7 +46,7 @@ function resolveBar(row: PulseRow, bar: Candle): "TP1_HIT" | "SL_HIT" | null {
 
 async function tick(): Promise<void> {
   const frames = await fetchMultiTimeframe(ASSET, "scalping", undefined, {
-    rebaseToLive: false,
+    rebaseToLive: true,
   });
   if (!frames.primary?.length || !frames.daily?.length) {
     log("no candles");
@@ -65,13 +66,28 @@ async function tick(): Promise<void> {
   }
 
   if (openTrade) {
-    if (!openTrade.executedAt && barTouchedEntryLevel(openTrade.entry, last)) {
-      const at = Date.now();
-      markPulseExecuted(db, openTrade.id, at);
-      openTrade = { ...openTrade, executedAt: at };
-      log("EXECUTED", openTrade.direction, "@", openTrade.entry);
+    if (!openTrade.executedAt) {
+      const state = pendingEntryState(
+        openTrade.direction,
+        openTrade.entry,
+        openTrade.sl,
+        openTrade.tp1,
+        openTrade.timestamp,
+        last,
+        entryTolerance(ASSETS[ASSET], "scalping", last.close),
+      );
+      if (state === "MISSED") {
+        updatePulseOutcome(db, openTrade.id, "INVALIDATED", 0, Date.now());
+        log("invalidated unexecuted stale lock", openTrade.direction, openTrade.entry);
+        openTrade = null;
+      } else if (state === "EXECUTED") {
+        const at = Date.now();
+        markPulseExecuted(db, openTrade.id, at);
+        openTrade = { ...openTrade, executedAt: at };
+        log("EXECUTED", openTrade.direction, "@", openTrade.entry);
+      }
     }
-    if (openTrade.executedAt) {
+    if (openTrade?.executedAt) {
       const hit = resolveBar(openTrade, last);
       if (hit) {
         const risk = Math.abs(openTrade.entry - openTrade.sl);

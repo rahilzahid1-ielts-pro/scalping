@@ -137,9 +137,10 @@ export function signalToRow(
   symbol: string,
   source: "live" | "backtest",
 ): ProRow {
+  const timestamp = source === "live" ? Date.now() : sig.time;
   return {
-    id: `pro-${source}-${sig.time}-${sig.direction}-${sig.entry}`,
-    timestamp: sig.time,
+    id: `pro-${source}-${timestamp}-${sig.direction}-${sig.entry}`,
+    timestamp,
     symbol,
     direction: sig.direction,
     entry: sig.entry,

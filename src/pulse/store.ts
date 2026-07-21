@@ -135,9 +135,10 @@ export function signalToRow(
   symbol: string,
   source: "live" | "backtest",
 ): PulseRow {
+  const timestamp = source === "live" ? Date.now() : sig.time;
   return {
-    id: `pulse-${source}-${sig.time}-${sig.direction}-${sig.entry}`,
-    timestamp: sig.time,
+    id: `pulse-${source}-${timestamp}-${sig.direction}-${sig.entry}`,
+    timestamp,
     symbol,
     direction: sig.direction,
     entry: sig.entry,

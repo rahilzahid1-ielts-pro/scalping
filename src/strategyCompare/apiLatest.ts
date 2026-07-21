@@ -20,7 +20,8 @@ import { withHistoryOpenLatest } from "../history/withHistoryOpen";
 /** Shared JSON shape for GET /api/{cipherbclone|fractal}/latest */
 export async function buildLatestPayload(strategy: CompareStrategy) {
   const liveDb = getLiveStrategyDb();
-  const rawLatest = getOpenOrLatestStrategySignal(liveDb, strategy);
+  const candidate = getOpenOrLatestStrategySignal(liveDb, strategy);
+  const rawLatest = candidate?.outcome === "OPEN" ? candidate : null;
   const histMod = strategy === "fractal" ? "fractal" : "cipher_b";
   const latest = withHistoryOpenLatest(histMod, rawLatest, (o) => ({
     id: `history-open-${histMod}`,
@@ -84,7 +85,7 @@ export async function buildLatestPayload(strategy: CompareStrategy) {
 
   try {
     const frames = await fetchMultiTimeframe("XAUUSD", "scalping", undefined, {
-      rebaseToLive: false,
+      rebaseToLive: true,
     });
     const packed = { ...frames, assetId: "XAUUSD" as const, mode: "scalping" as const };
 

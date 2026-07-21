@@ -17,7 +17,8 @@ import { withHistoryOpenLatest } from "../history/withHistoryOpen";
 
 export async function buildProLatestPayload() {
   const liveDb = getLiveProDb();
-  const rawLatest = getOpenOrLatestPro(liveDb);
+  const candidate = getOpenOrLatestPro(liveDb);
+  const rawLatest = candidate?.outcome === "OPEN" ? candidate : null;
   const latest = withHistoryOpenLatest("pro", rawLatest, (o) => ({
     id: "history-open-pro",
     timestamp: o.time,
@@ -85,7 +86,7 @@ export async function buildProLatestPayload() {
 
   try {
     const frames = await fetchMultiTimeframe("XAUUSD", "intraday", undefined, {
-      rebaseToLive: false,
+      rebaseToLive: true,
     });
     const diag = diagnoseSmcGateBlock(frames, { mode: "intraday", minConf: 80 });
     if (!diag.pass) {

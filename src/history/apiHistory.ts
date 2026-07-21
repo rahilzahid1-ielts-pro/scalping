@@ -139,7 +139,11 @@ function executionOf(
   if (rawExecutedAt != null) {
     return { executed: true, executedAt: rawExecutedAt, displayAt: rawExecutedAt };
   }
-  if (outcome === "OPEN") {
+  if (
+    outcome === "OPEN" ||
+    outcome === "INVALIDATED" ||
+    outcome === "REGIME_FLIP_INVALIDATED"
+  ) {
     return { executed: false, executedAt: null, displayAt: lockedAt };
   }
   // Legacy closed rows (pre-stamp): treat lock time as start.

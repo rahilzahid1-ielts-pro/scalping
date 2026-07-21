@@ -135,9 +135,10 @@ export function signalToRow(
   symbol: string,
   source: "live" | "backtest",
 ): QuickScalpRow {
+  const timestamp = source === "live" ? Date.now() : sig.time;
   return {
-    id: `qs-${source}-${sig.time}-${sig.direction}-${sig.entry}`,
-    timestamp: sig.time,
+    id: `qs-${source}-${timestamp}-${sig.direction}-${sig.entry}`,
+    timestamp,
     symbol,
     direction: sig.direction,
     entry: sig.entry,

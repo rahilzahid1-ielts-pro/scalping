@@ -444,8 +444,10 @@ async function tick(state: DaemonState) {
       }
       const priceCtx = {
         price: quote.price,
-        high: quote.high,
-        low: quote.low,
+        // quote.high/low are session/day extremes, not the current tick. Feeding
+        // them here falsely "executes" old entries and can instantly mark SL/TP.
+        high: quote.price,
+        low: quote.price,
         open: quote.price,
       };
       resolveOpenSignalsForSymbol(w.assetId, priceCtx);

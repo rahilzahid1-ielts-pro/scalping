@@ -20,7 +20,8 @@ import { withHistoryOpenLatest } from "../history/withHistoryOpen";
 
 export async function buildQuickScalpLatestPayload() {
   const liveDb = getLiveQuickScalpDb();
-  const rawLatest = getOpenOrLatestQuickScalp(liveDb);
+  const candidate = getOpenOrLatestQuickScalp(liveDb);
+  const rawLatest = candidate?.outcome === "OPEN" ? candidate : null;
   const latest = withHistoryOpenLatest("quick_scalp", rawLatest, (o) => ({
     id: `history-open-qs`,
     timestamp: o.time,
@@ -79,7 +80,7 @@ export async function buildQuickScalpLatestPayload() {
 
   try {
     const frames = await fetchMultiTimeframe("XAUUSD", "scalping", undefined, {
-      rebaseToLive: false,
+      rebaseToLive: true,
     });
     const diag = diagnoseSmcGateBlock(frames, { mode: "scalping", minConf: 75 });
     if (!diag.pass) {

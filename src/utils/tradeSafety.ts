@@ -16,11 +16,13 @@ export function isTooLateToEnter(
   if (risk <= 0) return true;
   if (side === "SELL") {
     if (livePrice >= stopLoss) return true;
-    return livePrice - entry > risk * 0.5;
+    // Price already ran toward target without filling the locked entry.
+    return entry - livePrice > risk * 0.5;
   }
   if (side === "BUY") {
     if (livePrice <= stopLoss) return true;
-    return entry - livePrice > risk * 0.5;
+    // Price already ran toward target without filling the locked entry.
+    return livePrice - entry > risk * 0.5;
   }
   return true;
 }

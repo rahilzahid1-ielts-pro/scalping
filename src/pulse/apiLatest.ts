@@ -15,7 +15,8 @@ import { withHistoryOpenLatest } from "../history/withHistoryOpen";
 
 export async function buildPulseLatestPayload() {
   const liveDb = getLivePulseDb();
-  const rawLatest = getOpenOrLatestPulse(liveDb);
+  const candidate = getOpenOrLatestPulse(liveDb);
+  const rawLatest = candidate?.outcome === "OPEN" ? candidate : null;
   const latest = withHistoryOpenLatest("qs_pro", rawLatest, (o) => ({
     id: "history-open-pulse",
     timestamp: o.time,
@@ -76,7 +77,7 @@ export async function buildPulseLatestPayload() {
 
   try {
     const frames = await fetchMultiTimeframe("XAUUSD", "scalping", undefined, {
-      rebaseToLive: false,
+      rebaseToLive: true,
     });
     const sig = generatePulseSignal(frames, "XAUUSD", "scalping");
     if (sig) {

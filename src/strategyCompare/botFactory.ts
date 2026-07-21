@@ -20,7 +20,8 @@ import {
   type StrategySignalRow,
 } from "./store";
 import type { Candle } from "../types";
-import { barTouchedEntryLevel } from "../history/entryTouch";
+import { pendingEntryState } from "../history/entryTouch";
+import { entryTolerance } from "../utils/tradeSafety";
 
 const ASSET = "XAUUSD" as const;
 const COOLDOWN_MS = 60 * 60 * 1000;
@@ -64,7 +65,7 @@ export function createCompareBot(cfg: CompareBotConfig) {
 
   async function tick(): Promise<void> {
     const frames = await fetchMultiTimeframe(ASSET, "scalping", undefined, {
-      rebaseToLive: false,
+      rebaseToLive: true,
     });
     if (!frames.primary?.length || !frames.daily?.length) {
       log("no candles");
@@ -84,13 +85,28 @@ export function createCompareBot(cfg: CompareBotConfig) {
     }
 
     if (openTrade) {
-      if (!openTrade.executedAt && barTouchedEntryLevel(openTrade.entry, last)) {
-        const at = Date.now();
-        markStrategyExecuted(db, openTrade.id, at);
-        openTrade = { ...openTrade, executedAt: at };
-        log("EXECUTED", openTrade.direction, "@", openTrade.entry);
+      if (!openTrade.executedAt) {
+        const state = pendingEntryState(
+          openTrade.direction,
+          openTrade.entry,
+          openTrade.sl,
+          openTrade.tp1,
+          openTrade.createdAt,
+          last,
+          entryTolerance(ASSETS[ASSET], "scalping", last.close),
+        );
+        if (state === "MISSED") {
+          updateStrategyOutcome(db, openTrade.id, "INVALIDATED", 0, Date.now());
+          log("invalidated unexecuted stale lock", openTrade.direction, openTrade.entry);
+          openTrade = null;
+        } else if (state === "EXECUTED") {
+          const at = Date.now();
+          markStrategyExecuted(db, openTrade.id, at);
+          openTrade = { ...openTrade, executedAt: at };
+          log("EXECUTED", openTrade.direction, "@", openTrade.entry);
+        }
       }
-      if (openTrade.executedAt) {
+      if (openTrade?.executedAt) {
         const hit = resolveBarOutcome(openTrade.direction, openTrade.sl, openTrade.tp1, last);
         if (hit) {
           const risk = Math.abs(openTrade.entry - openTrade.sl);
