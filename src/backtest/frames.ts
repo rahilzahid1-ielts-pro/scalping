@@ -14,6 +14,14 @@ export interface PrefetchedHtfs {
   daily: Candle[];
 }
 
+export interface FrameBundle {
+  primary: Candle[];
+  confirmation: Candle[];
+  bias: Candle[];
+  daily: Candle[];
+  asOfCloseMs: number;
+}
+
 /**
  * Precompute HTF from the full M5 series once.
  * Look-ahead is still prevented at use-time by onlyFullyClosed(asOfCloseMs):
@@ -52,13 +60,7 @@ export function framesAtIndex(
   mode: TradeMode,
   htfs: PrefetchedHtfs,
   primaryLookback = 400,
-): {
-  primary: Candle[];
-  confirmation: Candle[];
-  bias: Candle[];
-  daily: Candle[];
-  asOfCloseMs: number;
-} | null {
+): FrameBundle | null {
   if (i < 0 || i >= m5.length) return null;
   const periodMs =
     i + 1 < m5.length ? m5[i + 1].time - m5[i].time : M5_MS;

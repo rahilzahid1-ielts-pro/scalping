@@ -32,6 +32,22 @@ export const REGIME_FLIP_CONFIRM_BARS = 3;
 export const REGIME_FLIP_ENABLED = false;
 
 /**
+ * How WAITING_ENTRY plans treat isTooLateToEnter.
+ * - half_r_immediate: invalidate as soon as price runs 0.5R toward target (fb0af78)
+ *   — MEASUREMENT ONLY. Isolation A/B/C showed this destroys Main Scalp edge
+ *   (locks explode, touch%/avgR collapse). Do not enable in production.
+ * - legacy_nested: only invalidate when price is also on the SL side of entry
+ *
+ * Production default is legacy_nested.
+ */
+export type WaitingTooLateMode = "half_r_immediate" | "legacy_nested";
+export let WAITING_TOO_LATE_MODE: WaitingTooLateMode = "legacy_nested";
+
+export function setWaitingTooLateMode(mode: WaitingTooLateMode): void {
+  WAITING_TOO_LATE_MODE = mode;
+}
+
+/**
  * Trend reversed against the plan's direction.
  * Uses the SAME regime tag already logged per signal (deriveRegimeTag): no new indicator.
  */
@@ -200,11 +216,25 @@ export function shouldKeepFrozenPlan(
       base.status === "WAITING_ENTRY" &&
       isTooLateToEnter(base.side, livePrice, base.levels.entry, base.levels.stopLoss)
     ) {
-      return {
-        ...base,
-        status: "INVALIDATED",
-        note: "Price entry se 0.5R target side nikal gayi — move miss, chase mat karo.",
-      };
+      if (WAITING_TOO_LATE_MODE === "legacy_nested") {
+        // Pre-fb0af78: only drop when price is clearly past entry into risk.
+        if (
+          (base.side === "SELL" && livePrice > base.levels.entry) ||
+          (base.side === "BUY" && livePrice < base.levels.entry)
+        ) {
+          return {
+            ...base,
+            status: "INVALIDATED",
+            note: "Price SL zone mein — entry miss. Chase mat karo. New plan lo.",
+          };
+        }
+      } else {
+        return {
+          ...base,
+          status: "INVALIDATED",
+          note: "Price entry se 0.5R target side nikal gayi — move miss, chase mat karo.",
+        };
+      }
     }
   }
 

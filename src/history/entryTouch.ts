@@ -27,9 +27,10 @@ export function pendingEntryState(
 
   if (currentNearEntry || postLockBarTouched) return "EXECUTED";
 
-  // Release a pullback lock once price has already run half an R toward target.
-  // Waiting until full TP1 kept stale locks active through most of jump days.
-  if (isTooLateToEnter(direction, bar.close, entry, sl)) return "MISSED";
+  // Full TP1/SL miss only — 0.5R target-side early release was confirmed harmful
+  // for Main Scalp session-lock (lock churn / avgR collapse) and is not used here.
+  if (direction === "BUY" && (bar.close >= tp1 || bar.close <= sl)) return "MISSED";
+  if (direction === "SELL" && (bar.close <= tp1 || bar.close >= sl)) return "MISSED";
 
   return "WAITING";
 }
@@ -44,5 +45,9 @@ export function isFreshPendingEntryViable(
   tolerance: number,
   now: number = Date.now(),
 ): boolean {
+  // Keep reject-missed for brand-new inserts: if price already ran 0.5R toward
+  // target, do not open a fresh chase lock. This is lock-time gating only —
+  // it does not free an already-waiting plan for rapid re-lock churn.
+  if (isTooLateToEnter(direction, bar.close, entry, sl)) return false;
   return pendingEntryState(direction, entry, sl, tp1, now, bar, tolerance) !== "MISSED";
 }

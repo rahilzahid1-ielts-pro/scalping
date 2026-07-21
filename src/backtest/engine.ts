@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
-import type { AssetId, Candle, RegimeTag, Side, TradeMode } from "../types";
+import type {
+  AssetId,
+  Candle,
+  LiveSignal,
+  RegimeTag,
+  Side,
+  TradeMode,
+} from "../types";
 import { ASSETS } from "../config/assets";
 import { computeRegime, generateSignal } from "../strategies/signalEngine";
 import { generateFractalSignal } from "../strategies/archived/fractalSignal";
@@ -18,6 +25,7 @@ import {
   canAutoLockPlan,
   sessionDayKey,
 } from "../utils/sessionPlan";
+import { isTooLateToEnter } from "../utils/tradeSafety";
 import { isLiquiditySweepAgainst } from "../utils/liquidityWarning";
 import {
   evaluateTrendConfirm,
@@ -25,12 +33,24 @@ import {
   newTrendTracker,
   type TrendTracker,
 } from "../utils/trendConfirm";
-import { framesAtIndex, isClosedFifteenEnd, precomputeHtfs } from "./frames";
+import {
+  framesAtIndex,
+  isClosedFifteenEnd,
+  precomputeHtfs,
+  type FrameBundle,
+} from "./frames";
 import {
   insertBacktestSignal,
   setBacktestTrendDuration,
   updateBacktestSignal,
 } from "./store";
+
+/** Optional module adapter — measurement harness only; does not alter strategy code. */
+export type SessionLockCandidateFn = (
+  frames: FrameBundle,
+  mode: TradeMode,
+  assetId: AssetId,
+) => LiveSignal | null;
 
 export interface BacktestOptions {
   assetId: AssetId;
@@ -47,6 +67,17 @@ export interface BacktestOptions {
    * Default false = main desk baseline path unchanged.
    */
   requireFractalAgree?: boolean;
+  /**
+   * When set, replaces the IDLE `generateSignal` candidate (session-lock /
+   * zone-touch / SL-priority resolution stay identical). Used only for
+   * apples-to-apples module measurement — not a live behavior change.
+   */
+  signalCandidate?: SessionLockCandidateFn;
+  /**
+   * Mirror live alertBot lockPlan: refuse a new lock when the move is already
+   * 0.5R toward target (reject-already-missed). Default false = baseline engine.
+   */
+  rejectAlreadyMissed?: boolean;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -643,9 +674,27 @@ export function runWalkForward(
         continue;
       }
 
-      const signal = generateSignal(opts.assetId, mode, frames);
+      const signal = opts.signalCandidate
+        ? opts.signalCandidate(frames, mode, opts.assetId)
+        : generateSignal(opts.assetId, mode, frames);
       if (
+        !signal ||
         !canAutoLockPlan(mode, signal, state.plan, opts.assetId, asOf)
+      ) {
+        byMode.set(mode, state);
+        continue;
+      }
+
+      if (
+        opts.rejectAlreadyMissed &&
+        signal.levels &&
+        (signal.side === "BUY" || signal.side === "SELL") &&
+        isTooLateToEnter(
+          signal.side,
+          bar.close,
+          signal.levels.entry,
+          signal.levels.stopLoss,
+        )
       ) {
         byMode.set(mode, state);
         continue;
