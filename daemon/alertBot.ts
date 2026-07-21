@@ -435,6 +435,25 @@ async function tick(state: DaemonState) {
           side: plan.side,
           levels: plan.levels,
         });
+
+        // A fresh lock can hit its entry in the same worker cycle. In that case
+        // checkOne() promotes the plan before this row is inserted, so its first
+        // markZoneTouched() call cannot find the row. Re-stamp after logging;
+        // markZoneTouched is idempotent and also repairs the current active plan
+        // after a daemon restart/deploy.
+        if (plan.status === "IN_TRADE_HINT") {
+          markZoneTouched(
+            makePlanKey(
+              w.assetId,
+              w.mode,
+              plan.side,
+              plan.levels.entry,
+              plan.levels.stopLoss,
+              plan.levels.takeProfit1,
+            ),
+            Date.now(),
+          );
+        }
       }
       // SCALPING-ONLY: stamp trendConfirmedAt once the row exists in signals.db.
       if (
