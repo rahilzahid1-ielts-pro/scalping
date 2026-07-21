@@ -1135,13 +1135,22 @@ button.active {
   font-size: 0.78rem;
   color: var(--muted);
 }
-.history-field input[type="date"] {
+.history-field input[type="date"],
+.history-field select {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--line);
   border-radius: 10px;
   color: inherit;
   padding: 0.45rem 0.65rem;
   font: inherit;
+}
+.history-field select {
+  min-width: 8.5rem;
+  cursor: pointer;
+}
+.history-field select option {
+  background: #0d131a;
+  color: var(--text);
 }
 .history-modules {
   display: flex;
@@ -1163,6 +1172,9 @@ button.active {
   background: var(--accent-soft);
 }
 .history-today { margin-left: 0; }
+.history-download {
+  white-space: nowrap;
+}
 .history-summary {
   display: flex;
   flex-wrap: wrap;
