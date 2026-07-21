@@ -31,6 +31,7 @@ import { generateProSignal } from "../src/strategies/proEngine";
 import { generatePulseSignal } from "../src/strategies/pulseEngine";
 import { generateFractalLiveSignal } from "../src/strategies/fractalLive";
 import { generateCipherBLiveSignal } from "../src/strategies/cipherBLive";
+import { setWaitingTooLateMode } from "../src/services/tradePlan";
 
 const DEFAULT_FILE = "C:/scalping/data/XAUUSD_M5.json";
 const OUT = "data/_session_lock_all_modules.json";
@@ -38,6 +39,11 @@ const SPREAD = 0.25;
 const DAYS = 365;
 const ASSET: AssetId = "XAUUSD";
 const LOW_N = 50;
+/** 30 pips on the live XAUUSD EAs = exactly $3.00 price distance. */
+const FIXED_DISTANCE = 3;
+const MFE_CHECKPOINTS = [1, 3, 5] as const;
+/** Production B-state: reject-missed at lock kept; 0.5R wait-invalidation off. */
+const REJECT_ALREADY_MISSED = true;
 
 type ModuleSpec = {
   id: string;
@@ -237,6 +243,7 @@ function runOne(
     spread: SPREAD,
     windowStartIdx,
     trendConfirmBars: 4,
+    rejectAlreadyMissed: REJECT_ALREADY_MISSED,
     signalCandidate: spec.candidate,
     onProgress: (done, total) => {
       if (done === 0 || done === total || done % 10000 === 0) {
@@ -256,6 +263,92 @@ function runOne(
   const tp1Hits = resolved.filter((s) => s.outcomeTp1 === "WIN").length;
   const slHits = resolved.filter((s) => s.outcomeTp1 === "LOSS").length;
   const tp2Hits = touched.filter((s) => s.tp2Hit).length;
+  const closeTimeToIndex = new Map<number, number>();
+  for (let i = 0; i < candles.length; i++) {
+    const periodMs =
+      i + 1 < candles.length
+        ? candles[i + 1].time - candles[i].time
+        : 5 * 60 * 1000;
+    closeTimeToIndex.set(candles[i].time + periodMs, i);
+  }
+  const tpFirstBars: number[] = [];
+  let slFirst = 0;
+  let raceUnresolved = 0;
+  let executedEvaluated = 0;
+  const mfeByCheckpoint = new Map<number, number[]>(
+    MFE_CHECKPOINTS.map((checkpoint) => [checkpoint, []]),
+  );
+
+  for (const signal of touched) {
+    const touchedAt = signal.zoneTouchedAt;
+    if (touchedAt == null) continue;
+    const entryIndex = closeTimeToIndex.get(touchedAt);
+    if (entryIndex == null) continue;
+    executedEvaluated += 1;
+
+    const target =
+      signal.side === "BUY"
+        ? signal.entry + FIXED_DISTANCE
+        : signal.entry - FIXED_DISTANCE;
+    const adverse =
+      signal.side === "BUY"
+        ? signal.entry - FIXED_DISTANCE
+        : signal.entry + FIXED_DISTANCE;
+
+    let raceResolved = false;
+    for (let i = entryIndex; i < candles.length; i++) {
+      const bar = candles[i];
+      const hitAdverse =
+        signal.side === "BUY" ? bar.low <= adverse : bar.high >= adverse;
+      const hitTarget =
+        signal.side === "BUY" ? bar.high >= target : bar.low <= target;
+
+      // Same ambiguity policy as the trusted pipeline: adverse/SL wins ties.
+      if (hitAdverse) {
+        slFirst += 1;
+        raceResolved = true;
+        break;
+      }
+      if (hitTarget) {
+        // Execution candle is bar 1, following candle is bar 2, etc.
+        tpFirstBars.push(i - entryIndex + 1);
+        raceResolved = true;
+        break;
+      }
+    }
+    if (!raceResolved) raceUnresolved += 1;
+
+    for (const checkpoint of MFE_CHECKPOINTS) {
+      const endIndex = entryIndex + checkpoint - 1;
+      if (endIndex >= candles.length) continue;
+      let maxFavorable = 0;
+      for (let i = entryIndex; i <= endIndex; i++) {
+        const favorable =
+          signal.side === "BUY"
+            ? candles[i].high - signal.entry
+            : signal.entry - candles[i].low;
+        maxFavorable = Math.max(maxFavorable, favorable);
+      }
+      mfeByCheckpoint.get(checkpoint)!.push(maxFavorable);
+    }
+  }
+  const tpFirstPct =
+    executedEvaluated > 0
+      ? (tpFirstBars.length / executedEvaluated) * 100
+      : null;
+  const slFirstPct =
+    executedEvaluated > 0 ? (slFirst / executedEvaluated) * 100 : null;
+  const avgBarsToTp =
+    tpFirstBars.length > 0
+      ? tpFirstBars.reduce((sum, bars) => sum + bars, 0) / tpFirstBars.length
+      : null;
+  const average = (values: number[]): number | null =>
+    values.length > 0
+      ? values.reduce((sum, value) => sum + value, 0) / values.length
+      : null;
+  const avgFavorableBar1 = average(mfeByCheckpoint.get(1)!);
+  const avgFavorableBar3 = average(mfeByCheckpoint.get(3)!);
+  const avgFavorableBar5 = average(mfeByCheckpoint.get(5)!);
   const avgRFull = (() => {
     const closed = touched.filter(
       (s) => s.fullPlanClosed && s.realizedRFull != null,
@@ -273,7 +366,7 @@ function runOne(
 
   const zoneTouchPct = zoneTouchRate(stats);
   const winRate = conditionalTp1WinRate(stats);
-  const lowConfidence = resolved.length < LOW_N;
+  const lowConfidence = executedEvaluated < LOW_N;
 
   const row = {
     id: spec.id,
@@ -282,10 +375,23 @@ function runOne(
     locked: stats.signalsFired,
     zoneTouched: stats.zoneTouched,
     zoneTouchPct,
+    executedN: executedEvaluated,
     executedResolved: resolved.length,
     tp1Hits,
     tp2Hits,
     slHits,
+    tpFirst: tpFirstBars.length,
+    slFirst,
+    raceUnresolved,
+    tpFirstPct,
+    slFirstPct,
+    avgBarsToTp,
+    avgFavorableBar1,
+    avgFavorableBar3,
+    avgFavorableBar5,
+    mfeSamplesBar1: mfeByCheckpoint.get(1)!.length,
+    mfeSamplesBar3: mfeByCheckpoint.get(3)!.length,
+    mfeSamplesBar5: mfeByCheckpoint.get(5)!.length,
     winRate,
     avgR: avgRFull ?? avgRTp1,
     avgR_tp1: avgRTp1,
@@ -302,8 +408,9 @@ function runOne(
     row.avgR == null ? "n/a" : `${row.avgR >= 0 ? "+" : ""}${row.avgR.toFixed(3)}R`;
   console.log(
     `${spec.label.padEnd(22)} locked=${String(row.locked).padStart(4)}  ` +
-      `touch=${zt.padStart(6)}  n=${String(row.executedResolved).padStart(4)}  ` +
-      `WR=${wr.padStart(6)}  avgR=${ar}` +
+      `touch=${zt.padStart(6)}  n=${String(row.executedN).padStart(4)}  ` +
+      `WR=${wr.padStart(6)}  avgR=${ar}  ` +
+      `fixedTP=${tpFirstPct == null ? "n/a" : `${tpFirstPct.toFixed(1)}%`}` +
       (lowConfidence ? "  ⚠ LOW CONFIDENCE" : ""),
   );
   return row;
@@ -315,6 +422,9 @@ function main() {
     console.error(`File not found: ${file}`);
     process.exit(1);
   }
+
+  // Match production B-state after 0.5R wait-invalidation revert.
+  setWaitingTooLateMode("legacy_nested");
 
   console.log(`Loading ${file}…`);
   const loaded = loadHistoricalFile(file);
@@ -330,7 +440,8 @@ Bars       : ${loaded.quality.bars}
 Window     : last ${DAYS}d from end (start idx ${winStart})
 Spread     : ${SPREAD}
 Resolution : canAutoLockPlan → createFrozenPlan → zone-touch → SL-first same-bar
-Gates      : current post-hotfix engines (same-candle fractal, strict Pro Daily)
+Lifecycle  : B-state (reject-missed ON, 0.5R wait-invalidation OFF / legacy nested)
+Gates      : current engines (same-candle fractal, strict Pro Daily)
 `);
 
   const results = [];
@@ -342,7 +453,7 @@ Gates      : current post-hotfix engines (same-candle fractal, strict Pro Daily)
   const payload = {
     generatedAt: new Date().toISOString(),
     method:
-      "runWalkForward session-lock (same as trusted 292 baseline). Module engines supply candidates only; zone-touch required before TP1/SL count.",
+      `runWalkForward session-lock (same as trusted 292 baseline). Module engines supply candidates only; zone-touch required. Test A uses exactly +$${FIXED_DISTANCE.toFixed(2)}/-$${FIXED_DISTANCE.toFixed(2)} from spread-adjusted entry, execution candle counted as bar 1, SL wins same-bar ties. Test B is cumulative maximum favorable excursion through bars ${MFE_CHECKPOINTS.join(", ")}.`,
     file,
     days: DAYS,
     spread: SPREAD,
@@ -355,21 +466,37 @@ Gates      : current post-hotfix engines (same-candle fractal, strict Pro Daily)
   writeFileSync(OUT, JSON.stringify(payload, null, 2));
   console.log(`\nWrote ${OUT}`);
 
-  console.log("\n======== COMBINED TABLE ========");
+  console.log(`\n======== TEST A: ±$${FIXED_DISTANCE.toFixed(2)} RACE ========`);
   console.log(
-    "Module                 | Locked | Touch% | Exec n | TP1 | TP2 | SL | Win%   | Avg R   | MaxDD  | LoseStreak | Flag",
+    "Module                 | Exec n | TP first | SL first | Avg bars to TP | Unresolved | Flag",
   );
   console.log(
-    "-----------------------|--------|--------|--------|-----|-----|----|--------|---------|--------|------------|------",
+    "-----------------------|--------|----------|----------|----------------|------------|------",
   );
   for (const r of results) {
-    const zt = r.zoneTouchPct == null ? "n/a" : `${r.zoneTouchPct.toFixed(1)}%`;
-    const wr = r.winRate == null ? "n/a" : `${r.winRate.toFixed(1)}%`;
-    const ar =
-      r.avgR == null ? "n/a" : `${r.avgR >= 0 ? "+" : ""}${r.avgR.toFixed(3)}`;
+    const tp = r.tpFirstPct == null ? "n/a" : `${r.tpFirstPct.toFixed(1)}%`;
+    const sl = r.slFirstPct == null ? "n/a" : `${r.slFirstPct.toFixed(1)}%`;
+    const bars = r.avgBarsToTp == null ? "n/a" : r.avgBarsToTp.toFixed(2);
     const flag = r.lowConfidence ? "LOW CONFIDENCE — small sample" : "";
     console.log(
-      `${r.label.padEnd(22)} | ${String(r.locked).padStart(6)} | ${zt.padStart(6)} | ${String(r.executedResolved).padStart(6)} | ${String(r.tp1Hits).padStart(3)} | ${String(r.tp2Hits).padStart(3)} | ${String(r.slHits).padStart(2)} | ${wr.padStart(6)} | ${ar.padStart(7)} | ${String(r.maxDrawdownR).padStart(6)} | ${String(r.longestLosingStreak).padStart(10)} | ${flag}`,
+      `${r.label.padEnd(22)} | ${String(r.executedN).padStart(6)} | ${tp.padStart(8)} | ${sl.padStart(8)} | ${bars.padStart(14)} | ${String(r.raceUnresolved).padStart(10)} | ${flag}`,
+    );
+  }
+
+  console.log("\n======== TEST B: CUMULATIVE FAVORABLE EXCURSION ========");
+  console.log(
+    "Module                 | Exec n | Avg @ bar 1 | Avg @ bar 3 | Avg @ bar 5 | Flag",
+  );
+  console.log(
+    "-----------------------|--------|-------------|-------------|-------------|------",
+  );
+  for (const r of results) {
+    const b1 = r.avgFavorableBar1 == null ? "n/a" : r.avgFavorableBar1.toFixed(3);
+    const b3 = r.avgFavorableBar3 == null ? "n/a" : r.avgFavorableBar3.toFixed(3);
+    const b5 = r.avgFavorableBar5 == null ? "n/a" : r.avgFavorableBar5.toFixed(3);
+    const flag = r.lowConfidence ? "LOW CONFIDENCE — small sample" : "";
+    console.log(
+      `${r.label.padEnd(22)} | ${String(r.executedN).padStart(6)} | ${b1.padStart(11)} | ${b3.padStart(11)} | ${b5.padStart(11)} | ${flag}`,
     );
   }
 }
