@@ -213,7 +213,9 @@ export function startIntra30Worker(): void {
 }
 
 export function shouldAutoStartIntra30Worker(): boolean {
-  const flag = (process.env.ENABLE_INTRA30_WORKER ?? "0").toLowerCase();
+  const flag = String(process.env.ENABLE_INTRA30_WORKER ?? "0")
+    .trim()
+    .toLowerCase();
   return flag === "1" || flag === "true" || flag === "on";
 }
 
