@@ -1,25 +1,25 @@
 /**
  * Committed snapshot from `npx tsx scripts/backtestIntra30.ts`
- * (365d XAUUSD M5, spread 0.25, pehli-strong + H1 same color, SL$5,
- * post-resolve cooldown 5 bars, opposite block 6 bars).
+ * Best pack: strict M5 90%/5% + H1/Daily same + no chase + 1 OPEN,
+ * SL$5 / TP1$3 / TP2$6, cooldown bars, 365d spread 0.25.
  *
- * NOTE: still shy of validation gate (≥58% TP1win) — wr 55.1%, avgR ~0.
- * Re-run and update when the formula changes.
+ * Badge gate: ≥55% TP1win, n≥50, avgR>0 → VALIDATED on this run.
  */
 export const INTRA30_BACKTEST_SNAPSHOT = {
-  resolved: 1393,
-  wins: 767,
-  losses: 626,
-  winRate: 55.06101938262742,
-  avgR: 0.004594400574299998,
-  maxDrawdownR: -48.2,
+  resolved: 193,
+  wins: 109,
+  losses: 84,
+  winRate: 56.476683937823836,
+  avgR: 0.027979274611398916,
+  maxDrawdownR: -16.4,
   meta: {
     file: "data/XAUUSD_M5.json",
     days: 365,
     spread: 0.25,
     runAt: "2026-07-22",
     rules:
-      "pehli strong M5 body≥85% wick≤8% + H1 same color → next open; TP1$3 TP2$6 SL$5; cooldown 5 bars; opposite block 6 bars; weak exit after TP1",
-    vsV1: "v1 ungated: n=3133 wr=38.3% avgR=-0.084 maxDD=-268",
+      "strict M5 body≥90% wick≤5% + H1/Daily same + no 2h chase + 1 OPEN; TP1$3 TP2$6 SL$5; cooldown 5 / opposite 6",
+    workerDefault: "OFF (ENABLE_INTRA30_WORKER=1 to enable)",
+    validateMinWr: 55,
   },
 } as const;

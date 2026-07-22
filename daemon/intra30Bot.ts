@@ -215,6 +215,10 @@ async function tick(): Promise<void> {
     return;
   }
   if (!sig) return;
+  if (openTrades.length >= 1) {
+    log("skip — already 1 OPEN (best-pack single slot)");
+    return;
+  }
   if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
   const resolveBlock = blockedByResolveCooldown(sig.direction);
   if (resolveBlock) {
@@ -284,7 +288,7 @@ export function startIntra30Worker(): void {
   }
   workerRunning = true;
   log(
-    "started — Intra30 (pehli strong + H1 · SL $5 · resolve cooldown / opposite block)",
+    "started — Intra30 best pack (strict M5 + H1/Daily · no chase · 1 OPEN · SL $5) · worker needs ENABLE_INTRA30_WORKER=1",
   );
   void (async () => {
     for (;;) {

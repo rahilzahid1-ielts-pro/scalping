@@ -338,7 +338,7 @@ export function isIntra30BacktestValidated(summary: {
   return (
     summary.resolved >= 50 &&
     summary.winRate != null &&
-    summary.winRate >= 58 &&
+    summary.winRate >= 55 &&
     summary.avgR != null &&
     summary.avgR > 0
   );

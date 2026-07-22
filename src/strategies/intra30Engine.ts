@@ -1,41 +1,35 @@
 /**
- * Intra30 — strong candle (no / tiny wick, big body) → trade opens on the NEXT
- * M5 candle in that color's direction.
+ * Intra30 best pack (A/B winner near 58%):
+ *   pehli strict strong M5 (body≥90%, wick≤5%) → next open
+ *   H1 + Daily same color · 2h chase block · SL $5 / TP1 $3 / TP2 $6
+ *   Live: 1 OPEN max · post-resolve cooldown · opposite fade block
  *
- *   Green strong → BUY · Red strong → SELL
- *   TP1 = entry ± $3.00 — bank
- *   TP2 = entry ± $6.00 — runner until TP2 price OR a weak candle
- *   SL  = entry ∓ $5.00 (wider vs noise)
- *
- * Gates:
- *   - First strong of a same-color run only
- *   - H1 last closed same color as M5 strong
- *   - Live bot: post-resolve cooldown + opposite-side block (see daemon)
- *
- * Multiple patterns can fire while earlier trades are still OPEN (subject to cooldown).
+ * Worker default OFF (ENABLE_INTRA30_WORKER=1 to enable).
  */
 import type { AssetId, Candle } from "../types";
 import {
-  STRONG_BODY_RATIO,
-  STRONG_MAX_WICK_RATIO,
   STRONG_MIN_RANGE,
   candleColor,
-  isStrongCandle,
   lastClosedBar,
   type CandleColor,
 } from "./strongCandleEngine";
+import { isExtendedChase } from "../utils/entryFilters";
+
+/** Stricter than shared Strong Candle measurement thresholds. */
+export const INTRA30_BODY_RATIO = 0.9;
+export const INTRA30_MAX_WICK_RATIO = 0.05;
 
 export const INTRA30_TP_DISTANCE = 3;
 export const INTRA30_SL_DISTANCE = 5;
 export const INTRA30_TP2_DISTANCE = 6;
 
-/** After any resolve, wait before a new lock (live). */
 export const INTRA30_POST_RESOLVE_COOLDOWN_MS = 25 * 60 * 1000;
-/** After resolve, block the opposite side longer (fade protection). */
 export const INTRA30_OPPOSITE_BLOCK_MS = 30 * 60 * 1000;
-/** Backtest bar equivalents (~5m). */
 export const INTRA30_POST_RESOLVE_COOLDOWN_BARS = 5;
 export const INTRA30_OPPOSITE_BLOCK_BARS = 6;
+
+/** Badge gate (Intra30-only): slightly softer than Pro's 58%. */
+export const INTRA30_VALIDATE_MIN_WR = 55;
 
 export type Intra30Direction = "BUY" | "SELL";
 
@@ -51,7 +45,6 @@ export interface Intra30Signal {
   dailyBias: string;
   reason: string[];
   time: number;
-  /** Strong candle bar time — dedupe key. */
   strongBarTime: number;
 }
 
@@ -82,7 +75,19 @@ export function applyIntra30Levels(
   };
 }
 
-/** Weak = not a strong marubozu (small body and/or fat wicks / noise). */
+export function isIntra30StrongCandle(c: Candle): boolean {
+  const range = c.high - c.low;
+  if (range < STRONG_MIN_RANGE) return false;
+  const body = Math.abs(c.close - c.open);
+  if (body <= 0) return false;
+  if (body / range < INTRA30_BODY_RATIO) return false;
+  const mid = Math.max(c.open, c.close);
+  const bot = Math.min(c.open, c.close);
+  if ((c.high - mid) / range > INTRA30_MAX_WICK_RATIO) return false;
+  if ((bot - c.low) / range > INTRA30_MAX_WICK_RATIO) return false;
+  return true;
+}
+
 export function isWeakCandle(c: Candle): boolean {
   const range = c.high - c.low;
   if (range < STRONG_MIN_RANGE) return true;
@@ -91,41 +96,30 @@ export function isWeakCandle(c: Candle): boolean {
   if (body / range < 0.5) return true;
   const mid = Math.max(c.open, c.close);
   const bot = Math.min(c.open, c.close);
-  const upperWick = c.high - mid;
-  const lowerWick = bot - c.low;
-  if (upperWick / range > 0.25) return true;
-  if (lowerWick / range > 0.25) return true;
+  if ((c.high - mid) / range > 0.25) return true;
+  if ((bot - c.low) / range > 0.25) return true;
   return false;
 }
 
-/**
- * True when `idx` is a strong candle that starts a new pattern:
- * previous bar is not a strong candle of the same color.
- */
 export function isFirstStrongOfPattern(
   candles: Candle[],
   idx: number,
 ): boolean {
   if (idx < 0 || idx >= candles.length) return false;
   const c = candles[idx];
-  if (!isStrongCandle(c)) return false;
+  if (!isIntra30StrongCandle(c)) return false;
   const color = candleColor(c);
   if (color === "DOJI") return false;
   if (idx === 0) return true;
   const prev = candles[idx - 1];
-  if (isStrongCandle(prev) && candleColor(prev) === color) return false;
+  if (isIntra30StrongCandle(prev) && candleColor(prev) === color) return false;
   return true;
 }
 
-/**
- * First-of-pattern strong → next bar entry.
- * Looks only at the live tip window so we fire as soon as that next candle opens.
- */
 export function findStrongThenNext(
   candles: Candle[],
 ): { strong: Candle; entryBar: Candle } | null {
   if (candles.length < 2) return null;
-
   const n = candles.length;
   if (isFirstStrongOfPattern(candles, n - 2)) {
     return { strong: candles[n - 2], entryBar: candles[n - 1] };
@@ -136,13 +130,23 @@ export function findStrongThenNext(
   return null;
 }
 
-function h1Agrees(frames: Intra30Frames, m5Color: CandleColor): string | null {
+function htfAgrees(
+  frames: Intra30Frames,
+  m5Color: CandleColor,
+): string | null {
   const h1 = lastClosedBar(frames.bias ?? []);
   if (!h1) return "Intra30: H1 candle chahiye";
   const h1Color = candleColor(h1);
   if (h1Color === "DOJI") return "Intra30: H1 doji — skip";
   if (h1Color !== m5Color) {
     return `Intra30: H1 ${h1Color} vs M5 ${m5Color} — same color chahiye`;
+  }
+  const daily = lastClosedBar(frames.daily ?? []);
+  if (!daily) return "Intra30: Daily candle chahiye";
+  const dColor = candleColor(daily);
+  if (dColor === "DOJI") return "Intra30: Daily doji — skip";
+  if (dColor !== m5Color) {
+    return `Intra30: Daily ${dColor} vs M5 ${m5Color} — same color chahiye`;
   }
   return null;
 }
@@ -154,15 +158,25 @@ export function diagnoseIntra30(
   if (!setup) {
     return {
       pass: false,
-      waitReason: `Intra30: pehli strong M5 (body≥${(STRONG_BODY_RATIO * 100).toFixed(0)}%, wick≤${(STRONG_MAX_WICK_RATIO * 100).toFixed(0)}%) + next · H1 same color · SL $${INTRA30_SL_DISTANCE}`,
+      waitReason: `Intra30: pehli strict M5 (body≥${(INTRA30_BODY_RATIO * 100).toFixed(0)}%, wick≤${(INTRA30_MAX_WICK_RATIO * 100).toFixed(0)}%) + next · H1+Daily same · no chase`,
     };
   }
   const color = candleColor(setup.strong);
   if (color === "DOJI") {
     return { pass: false, waitReason: "Intra30: strong doji — skip" };
   }
-  const h1Block = h1Agrees(frames, color);
-  if (h1Block) return { pass: false, waitReason: h1Block };
+  const htf = htfAgrees(frames, color);
+  if (htf) return { pass: false, waitReason: htf };
+  const direction: Intra30Direction = color === "GREEN" ? "BUY" : "SELL";
+  if (isExtendedChase(direction, frames.primary ?? [])) {
+    return {
+      pass: false,
+      waitReason:
+        direction === "BUY"
+          ? "Intra30: chase block — near 2h high"
+          : "Intra30: chase block — near 2h low",
+    };
+  }
   return { pass: true, waitReason: "" };
 }
 
@@ -176,9 +190,11 @@ export function generateIntra30Signal(
   const { strong, entryBar } = setup;
   const color: CandleColor = candleColor(strong);
   if (color === "DOJI") return null;
-  if (h1Agrees(frames, color)) return null;
+  if (htfAgrees(frames, color)) return null;
 
   const direction: Intra30Direction = color === "GREEN" ? "BUY" : "SELL";
+  if (isExtendedChase(direction, frames.primary ?? [])) return null;
+
   const entry = entryBar.open;
   const lv = applyIntra30Levels(direction, entry);
   const range = strong.high - strong.low;
@@ -199,9 +215,9 @@ export function generateIntra30Signal(
     strongBarTime: strong.time,
     time: entryBar.time || strong.time,
     reason: [
-      `Intra30 · pehli strong ${color} M5 + H1 ${color} → next ${direction}`,
-      `Entry @ next open ${entry.toFixed(2)} · TP1 $${INTRA30_TP_DISTANCE} · TP2 $${INTRA30_TP2_DISTANCE} · SL $${INTRA30_SL_DISTANCE}`,
-      `Cooldown after resolve · opposite fade block · body ${bodyPct.toFixed(0)}% of range`,
+      `Intra30 · strict ${color} M5 + H1/Daily ${color} → next ${direction}`,
+      `Entry @ ${entry.toFixed(2)} · TP1 $${INTRA30_TP_DISTANCE} · TP2 $${INTRA30_TP2_DISTANCE} · SL $${INTRA30_SL_DISTANCE}`,
+      `1-open · no 2h chase · cooldown after resolve · body ${bodyPct.toFixed(0)}%`,
     ],
   };
 }

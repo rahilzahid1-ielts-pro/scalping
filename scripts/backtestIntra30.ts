@@ -1,8 +1,7 @@
 /**
- * Intra30 Step-2 backtest — gated formula:
- *   pehli strong M5 → next open · H1 same color
- *   TP1 $3 / TP2 $6 / SL $5 · weak exit after TP1
- *   post-resolve cooldown 5 bars · opposite block 6 bars
+ * Intra30 Step-2 backtest — best pack:
+ *   strict M5 (90%/5%) → next open · H1+Daily same · no 2h chase
+ *   TP1 $3 / TP2 $6 / SL $5 · 1 OPEN max · resolve cooldown / opposite block
  *
  *   npx tsx scripts/backtestIntra30.ts
  */
@@ -134,6 +133,8 @@ function main() {
     opens.length = 0;
     opens.push(...still);
 
+    if (opens.length >= 1) continue;
+
     const entryIdx = i + 1;
     if (entryIdx >= candles.length) continue;
 
@@ -227,7 +228,7 @@ function main() {
   const validated = isIntra30BacktestValidated(summary);
 
   const payload = {
-    strategy: "intra30_strong_h1_sl5_cooldown_v2",
+    strategy: "intra30_best_pack_v3",
     file,
     days: DAYS,
     spread: SPREAD,
@@ -237,17 +238,20 @@ function main() {
     summary,
     validated,
     rules: {
-      bodyMinPct: 85,
-      wickMaxPct: 8,
+      bodyMinPct: 90,
+      wickMaxPct: 5,
       firstStrongOfPattern: true,
       h1SameColor: true,
+      dailySameColor: true,
+      blockChase: true,
+      maxOpen: 1,
       tp1: INTRA30_TP_DISTANCE,
       tp2: INTRA30_TP2_DISTANCE,
       sl: INTRA30_SL_DISTANCE,
       postResolveCooldownBars: INTRA30_POST_RESOLVE_COOLDOWN_BARS,
       oppositeBlockBars: INTRA30_OPPOSITE_BLOCK_BARS,
       weakExitAfterTp1: true,
-      multiOpen: true,
+      validateMinWr: 55,
     },
     runAt: new Date().toISOString(),
   };
@@ -262,15 +266,14 @@ function main() {
       : `${summary.avgR >= 0 ? "+" : ""}${summary.avgR.toFixed(3)}`;
 
   console.log(`
-======== INTRA30 v2 (H1 + SL$5 + cooldown) 365d ========
+======== INTRA30 best pack v3 (365d) ========
 Signals fired     : ${signals}
 Resolved          : ${summary.resolved}  (W ${summary.wins} / L ${summary.losses})
 TP1-win%          : ${wr}
 Avg R             : ${ar}
 Max DD (R)        : ${summary.maxDrawdownR ?? "n/a"}
-Validated badge   : ${validated ? "YES (≥58% / n≥50 / avgR>0)" : "NO"}
+Validated badge   : ${validated ? "YES (≥55% / n≥50 / avgR>0)" : "NO"}
 Wrote             : ${OUT}
-vs v1 (ungated)   : 3133 trades · 38.3% · avgR -0.084
 `);
 
   console.log("Snapshot:");

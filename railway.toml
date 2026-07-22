@@ -14,7 +14,8 @@ restartPolicyMaxRetries = 10
 #   ENABLE_ALERT_WORKER=1
 # prodServer auto-starts the alert worker and pushes Telegram notifications.
 #
-# Intra30: KEEP ENABLE_INTRA30_WORKER=0 unless Step-2 session-lock is approved.
+# Intra30: KEEP ENABLE_INTRA30_WORKER=0 (best pack still measurement-lean;
+# badge gate ≥55%. Explicit =1 only after you accept live risk).
 # (Default in code is also OFF — requires explicit =1 to start.)
 #
 # IMPORTANT: Railway Volume MUST be mounted at /app/data

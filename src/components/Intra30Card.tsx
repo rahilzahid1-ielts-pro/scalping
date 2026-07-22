@@ -181,8 +181,8 @@ export function Intra30Card() {
       <p className="action-now-label">INTRA30 · Gold</p>
       <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
-        Pehli strong + H1 same color → next M5 · TP1 $3 · TP2 $6 · SL $5 ·
-        resolve cooldown / opposite block · multi OK
+        Pehli strict strong (90%/5%) + H1/Daily same · no 2h chase · 1 OPEN ·
+        TP1 $3 · TP2 $6 · SL $5 · worker default OFF
       </p>
 
       <ExitAdvisoryBanner advisory={advisory} onDismiss={() => setAdvisory(null)} />
