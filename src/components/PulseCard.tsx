@@ -118,7 +118,7 @@ export function PulseCard() {
 
   const locked = data?.latest
     ? data.latest
-    : cached
+    : cached && cached.outcome === "OPEN"
       ? {
           direction: cached.direction,
           entry: cached.entry,
@@ -133,7 +133,7 @@ export function PulseCard() {
           timestamp: cached.time,
         }
       : null;
-  const usingPhoneCache = !data?.latest && !!cached;
+  const usingPhoneCache = !data?.latest && !!locked;
   const isConfirmed =
     !!locked &&
     (locked.outcome === "OPEN" ||
@@ -142,6 +142,7 @@ export function PulseCard() {
       locked.outcome === "SL_HIT" ||
       locked.outcome === "INVALIDATED");
 
+  // Phone cache may only paint OPEN (redeploy). Resolved TP/SL never from cache.
   const shown = isConfirmed
     ? {
         direction: locked!.direction,

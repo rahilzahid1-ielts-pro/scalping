@@ -2,8 +2,13 @@
  * Phone/local paint cache for module locks.
  * Survives Railway redeploys that wipe empty (no-volume) SQLite.
  * Not authority — server `latest` always wins when present.
+ *
+ * v2: resolved TP/SL must not ghost for 48h after server clears `latest`
+ * (that stuck QS Pro on "BUY · TP2 HIT · phone cache").
  */
-const PREFIX = "go_lock_cache_v1:";
+const PREFIX = "go_lock_cache_v2:";
+/** Drop any leftover v1 ghosts once. */
+const LEGACY_PREFIX = "go_lock_cache_v1:";
 
 export interface CachedLock {
   direction: "BUY" | "SELL";
@@ -17,7 +22,16 @@ export interface CachedLock {
   metaExtra?: Record<string, unknown>;
 }
 
+function purgeLegacy(moduleKey: string): void {
+  try {
+    localStorage.removeItem(LEGACY_PREFIX + moduleKey);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function loadCachedLock(moduleKey: string): CachedLock | null {
+  purgeLegacy(moduleKey);
   try {
     const raw = localStorage.getItem(PREFIX + moduleKey);
     if (!raw) return null;
@@ -33,6 +47,7 @@ export function loadCachedLock(moduleKey: string): CachedLock | null {
 }
 
 export function saveCachedLock(moduleKey: string, lock: CachedLock): void {
+  purgeLegacy(moduleKey);
   try {
     localStorage.setItem(PREFIX + moduleKey, JSON.stringify(lock));
   } catch {
@@ -41,6 +56,7 @@ export function saveCachedLock(moduleKey: string, lock: CachedLock): void {
 }
 
 export function clearCachedLock(moduleKey: string): void {
+  purgeLegacy(moduleKey);
   try {
     localStorage.removeItem(PREFIX + moduleKey);
   } catch {
@@ -50,7 +66,9 @@ export function clearCachedLock(moduleKey: string): void {
 
 /**
  * Server row wins when present.
- * If server empty (redeploy wipe): keep OPEN forever (until 7d), keep resolved 48h.
+ * If server empty:
+ *   - keep OPEN briefly (redeploy wipe survival, max 7d)
+ *   - never keep resolved TP/SL — those ghost locks freeze the desk
  */
 export function syncCachedLock(
   moduleKey: string,
@@ -62,17 +80,17 @@ export function syncCachedLock(
   }
   const cached = loadCachedLock(moduleKey);
   if (!cached) return null;
-  const age = Date.now() - (cached.time || 0);
+
   if (cached.outcome === "OPEN") {
+    const age = Date.now() - (cached.time || 0);
     if (age > 7 * 24 * 60 * 60 * 1000) {
       clearCachedLock(moduleKey);
       return null;
     }
     return cached;
   }
-  if (age > 48 * 60 * 60 * 1000) {
-    clearCachedLock(moduleKey);
-    return null;
-  }
-  return cached;
+
+  // TP1/TP2/SL/INVALIDATED: server said null → desk is free.
+  clearCachedLock(moduleKey);
+  return null;
 }
