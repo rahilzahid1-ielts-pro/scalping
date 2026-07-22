@@ -16,12 +16,15 @@ import {
   QUICK_SCALP_BACKTEST_SNAPSHOT,
   isQuickScalpBacktestValidated,
 } from "./backtestSnapshot";
-import { withHistoryOpenLatest } from "../history/withHistoryOpen";
+import {
+  selectUiLatest,
+  withHistoryOpenLatest,
+} from "../history/withHistoryOpen";
 
 export async function buildQuickScalpLatestPayload() {
   const liveDb = getLiveQuickScalpDb();
   const candidate = getOpenOrLatestQuickScalp(liveDb);
-  const rawLatest = candidate?.outcome === "OPEN" ? candidate : null;
+  const rawLatest = selectUiLatest(candidate);
   const latest = withHistoryOpenLatest("quick_scalp", rawLatest, (o) => ({
     id: `history-open-qs`,
     timestamp: o.time,

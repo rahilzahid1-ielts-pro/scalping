@@ -15,13 +15,16 @@ import { fetchMultiTimeframe } from "../services/marketData";
 import { diagnoseSmcGateBlock } from "../strategies/smcGateStatus";
 import { generateFractalLiveSignal } from "../strategies/fractalLive";
 import { generateCipherBLiveSignal } from "../strategies/cipherBLive";
-import { withHistoryOpenLatest } from "../history/withHistoryOpen";
+import {
+  selectUiLatest,
+  withHistoryOpenLatest,
+} from "../history/withHistoryOpen";
 
 /** Shared JSON shape for GET /api/{cipherbclone|fractal}/latest */
 export async function buildLatestPayload(strategy: CompareStrategy) {
   const liveDb = getLiveStrategyDb();
   const candidate = getOpenOrLatestStrategySignal(liveDb, strategy);
-  const rawLatest = candidate?.outcome === "OPEN" ? candidate : null;
+  const rawLatest = selectUiLatest(candidate);
   const histMod = strategy === "fractal" ? "fractal" : "cipher_b";
   const latest = withHistoryOpenLatest(histMod, rawLatest, (o) => ({
     id: `history-open-${histMod}`,

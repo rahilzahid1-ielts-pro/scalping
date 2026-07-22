@@ -96,6 +96,7 @@ export function syncExitAdvisory(
   }
 
   if (serverLock && (serverLock.outcome === "TP1_HIT" || serverLock.outcome === "SL_HIT")) {
+    // Clean resolve — never show EXIT after TP/SL already hit.
     clearRaw(snapKey);
     clearRaw(`adv:${moduleKey}`);
     return null;
@@ -123,6 +124,12 @@ export function syncExitAdvisory(
   if (!serverLock && prevRaw) {
     try {
       const prev = JSON.parse(prevRaw) as ConfirmedLockSnap;
+      // If the previous row was already a resolved TP/SL snap, just clear — no EXIT.
+      if (prev.outcome === "TP1_HIT" || prev.outcome === "SL_HIT") {
+        clearRaw(snapKey);
+        clearRaw(`adv:${moduleKey}`);
+        return null;
+      }
       if (prev.outcome === "OPEN") {
         const adv: ExitAdvisory = {
           moduleKey,

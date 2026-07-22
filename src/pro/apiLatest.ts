@@ -13,12 +13,15 @@ import {
   isProBacktestValidated,
 } from "./store";
 import { PRO_BACKTEST_SNAPSHOT } from "./backtestSnapshot";
-import { withHistoryOpenLatest } from "../history/withHistoryOpen";
+import {
+  selectUiLatest,
+  withHistoryOpenLatest,
+} from "../history/withHistoryOpen";
 
 export async function buildProLatestPayload() {
   const liveDb = getLiveProDb();
   const candidate = getOpenOrLatestPro(liveDb);
-  const rawLatest = candidate?.outcome === "OPEN" ? candidate : null;
+  const rawLatest = selectUiLatest(candidate);
   const latest = withHistoryOpenLatest("pro", rawLatest, (o) => ({
     id: "history-open-pro",
     timestamp: o.time,

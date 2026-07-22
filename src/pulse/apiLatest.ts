@@ -11,12 +11,15 @@ import {
   PULSE_BACKTEST_SNAPSHOT,
   isPulseBacktestValidated,
 } from "./backtestSnapshot";
-import { withHistoryOpenLatest } from "../history/withHistoryOpen";
+import {
+  selectUiLatest,
+  withHistoryOpenLatest,
+} from "../history/withHistoryOpen";
 
 export async function buildPulseLatestPayload() {
   const liveDb = getLivePulseDb();
   const candidate = getOpenOrLatestPulse(liveDb);
-  const rawLatest = candidate?.outcome === "OPEN" ? candidate : null;
+  const rawLatest = selectUiLatest(candidate);
   const latest = withHistoryOpenLatest("qs_pro", rawLatest, (o) => ({
     id: "history-open-pulse",
     timestamp: o.time,
