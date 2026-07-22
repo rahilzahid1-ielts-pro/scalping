@@ -2,6 +2,7 @@
  * Shared JSON for GET /api/intra30/latest (vite + prodServer).
  */
 import { fetchMultiTimeframe } from "../services/marketData";
+import { fetchTradingViewQuote } from "../services/liveQuotes";
 import {
   diagnoseIntra30,
   generateIntra30Signal,
@@ -18,6 +19,9 @@ import {
   selectUiLatest,
   withHistoryOpenLatest,
 } from "../history/withHistoryOpen";
+
+/** Same guard as bot — hide Yahoo-skewed preview levels. */
+const MAX_ENTRY_LIVE_GAP = 4;
 
 export async function buildIntra30LatestPayload() {
   const liveDb = getLiveIntra30Db();
@@ -91,11 +95,12 @@ export async function buildIntra30LatestPayload() {
   } | null = null;
 
   try {
-    const frames = await fetchMultiTimeframe("XAUUSD", "scalping", undefined, {
+    const quote = await fetchTradingViewQuote("XAUUSD");
+    const frames = await fetchMultiTimeframe("XAUUSD", "scalping", quote.price, {
       rebaseToLive: true,
     });
     const sig = generateIntra30Signal("XAUUSD", frames);
-    if (sig) {
+    if (sig && Math.abs(sig.entry - quote.price) <= MAX_ENTRY_LIVE_GAP) {
       live = {
         direction: sig.direction,
         entry: sig.entry,
@@ -106,6 +111,8 @@ export async function buildIntra30LatestPayload() {
         regime: sig.regime,
         dailyBias: sig.dailyBias,
       };
+    } else if (sig) {
+      waitReason = `Intra30: entry ${sig.entry.toFixed(2)} desk mid ${quote.price.toFixed(2)} se door — Yahoo skew skip`;
     } else {
       waitReason = diagnoseIntra30(frames).waitReason;
     }

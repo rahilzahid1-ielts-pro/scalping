@@ -30,6 +30,7 @@ interface LatestPayload {
     reason: string;
     outcome: string;
     timestamp: number;
+    executedAt?: number | null;
   } | null;
   backtestSummary: {
     resolved: number;
@@ -96,6 +97,7 @@ export function Intra30Card() {
                   tp1: j.latest.tp1,
                   outcome: j.latest.outcome,
                   time: j.latest.timestamp,
+                  executedAt: j.latest.executedAt,
                 }
               : null,
             j.waitReason,
@@ -230,7 +232,7 @@ export function Intra30Card() {
         </p>
       )}
 
-      {forming && !shown && (
+      {forming && !shown && !advisory && (
         <>
           <div className="action-now-levels">
             <div>
@@ -242,13 +244,17 @@ export function Intra30Card() {
               <strong>{forming.sl.toFixed(2)}</strong>
             </div>
             <div>
-              <span>TP (+$3)</span>
+              <span>TP1 (+$3)</span>
               <strong>{forming.tp1.toFixed(2)}</strong>
+            </div>
+            <div>
+              <span>TP2 (+$6)</span>
+              <strong>{forming.tp2.toFixed(2)}</strong>
             </div>
           </div>
           <p className="action-now-detail">
-            Preview lean {forming.direction} · conf {forming.confidence}% ·{" "}
-            {forming.regime} · daily {forming.dailyBias}
+            Preview only (not locked) · {forming.direction} · conf{" "}
+            {forming.confidence}% · {forming.regime}
           </p>
         </>
       )}
@@ -265,8 +271,12 @@ export function Intra30Card() {
               <strong>{shown.sl.toFixed(2)}</strong>
             </div>
             <div>
-              <span>TP (+$3)</span>
+              <span>TP1 (+$3)</span>
               <strong>{shown.tp1.toFixed(2)}</strong>
+            </div>
+            <div>
+              <span>TP2 (+$6)</span>
+              <strong>{shown.tp2.toFixed(2)}</strong>
             </div>
           </div>
           <p className="action-now-detail">

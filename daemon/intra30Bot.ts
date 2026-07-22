@@ -7,6 +7,7 @@
  */
 import { ASSETS } from "../src/config/assets";
 import { fetchMultiTimeframe } from "../src/services/marketData";
+import { fetchTradingViewQuote } from "../src/services/liveQuotes";
 import {
   generateIntra30Signal,
   isWeakCandle,
@@ -34,6 +35,8 @@ import { entryTolerance } from "../src/utils/tradeSafety";
 const TICK_MS = Number(process.env.INTRA30_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
 const COOLDOWN_MS = 5 * 60 * 1000;
+/** Reject Yahoo-futures ghosts vs OANDA desk mid (seen as ~$10+ entry skew). */
+const MAX_ENTRY_LIVE_GAP = 4;
 
 let workerRunning = false;
 let lastAlertAt = 0;
@@ -61,7 +64,16 @@ function priceOutcome(
 }
 
 async function tick(): Promise<void> {
-  const frames = await fetchMultiTimeframe(ASSET, "scalping", undefined, {
+  // Desk mid is OANDA via TradingView — never fall back to Yahoo GC=F for locks.
+  let liveQuote;
+  try {
+    liveQuote = await fetchTradingViewQuote(ASSET);
+  } catch (e) {
+    log("skip tick — TV quote failed:", e instanceof Error ? e.message : e);
+    return;
+  }
+
+  const frames = await fetchMultiTimeframe(ASSET, "scalping", liveQuote.price, {
     rebaseToLive: true,
   });
 
@@ -77,6 +89,7 @@ async function tick(): Promise<void> {
       ? frames.primary[frames.primary.length - 2]
       : null;
   const d = ASSETS[ASSET].decimals;
+  const livePx = liveQuote.price;
 
   if (!openTrade) {
     const resumed = getOpenOrLatestIntra30(db);
@@ -153,6 +166,16 @@ async function tick(): Promise<void> {
   if (!sig) return;
   if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
   if (hasIntra30StrongBar(db, sig.strongBarTime)) return;
+  if (Math.abs(sig.entry - livePx) > MAX_ENTRY_LIVE_GAP) {
+    log(
+      "skip ghost entry",
+      sig.entry.toFixed(d),
+      "vs live",
+      livePx.toFixed(d),
+      `(gap $${Math.abs(sig.entry - livePx).toFixed(2)})`,
+    );
+    return;
+  }
   if (
     !isFreshPendingEntryViable(
       sig.direction,

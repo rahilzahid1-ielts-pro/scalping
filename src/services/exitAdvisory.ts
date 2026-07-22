@@ -27,6 +27,8 @@ export interface ConfirmedLockSnap {
   tp1: number;
   outcome: string;
   time: number;
+  /** If false/null, lock never filled — don't scare with EXIT. */
+  executedAt?: number | null;
 }
 
 function loadRaw(key: string): string | null {
@@ -108,6 +110,13 @@ export function syncExitAdvisory(
   }
 
   if (serverLock && serverLock.outcome === "INVALIDATED") {
+    // Never-filled stale lock (e.g. Yahoo ghost vs OANDA mid) — no EXIT banner.
+    if (serverLock.executedAt == null) {
+      clearRaw(snapKey);
+      clearRaw(`adv:${moduleKey}`);
+      clearCachedLock(moduleKey);
+      return null;
+    }
     const adv: ExitAdvisory = {
       moduleKey,
       moduleLabel,
@@ -140,6 +149,13 @@ export function syncExitAdvisory(
         return null;
       }
       if (prev.outcome === "OPEN") {
+        // Preview/lock vanished without a fill — clear quietly, no EXIT scare.
+        if (prev.executedAt == null) {
+          clearRaw(snapKey);
+          clearRaw(`adv:${moduleKey}`);
+          clearCachedLock(moduleKey);
+          return null;
+        }
         const adv: ExitAdvisory = {
           moduleKey,
           moduleLabel,
