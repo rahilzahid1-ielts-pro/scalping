@@ -7,6 +7,7 @@ type ModuleId =
   | "quick_scalp"
   | "qs_pro"
   | "pro"
+  | "intra30"
   | "cipher_b"
   | "fractal";
 
@@ -141,6 +142,7 @@ const MODULES: { id: ModuleId; label: string }[] = [
   { id: "all", label: "All" },
   { id: "scalp", label: "Scalp" },
   { id: "intraday", label: "Intraday" },
+  { id: "intra30", label: "Intra30" },
   { id: "quick_scalp", label: "Quick Scalp" },
   { id: "qs_pro", label: "QS Pro" },
   { id: "pro", label: "Pro" },

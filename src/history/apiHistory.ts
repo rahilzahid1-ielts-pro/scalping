@@ -5,6 +5,7 @@
 import { listAllSignals } from "../calibration/db";
 import { getLiveQuickScalpDb, listQuickScalpRows } from "../quickScalp/store";
 import { getLiveProDb, listProRows } from "../pro/store";
+import { getLiveIntra30Db, listIntra30Rows } from "../intra30/store";
 import { getLivePulseDb, listPulseRows } from "../pulse/store";
 import { getLiveStrategyDb, listStrategyRows } from "../strategyCompare/store";
 
@@ -16,6 +17,7 @@ export type HistoryModuleId =
   | "quick_scalp"
   | "qs_pro"
   | "pro"
+  | "intra30"
   | "cipher_b"
   | "fractal";
 
@@ -63,6 +65,7 @@ const LABELS: Record<HistoryModuleId, string> = {
   quick_scalp: "Quick Scalp",
   qs_pro: "QS Pro",
   pro: "Pro",
+  intra30: "Intra30",
   cipher_b: "Cipher B",
   fractal: "TTrades Fractal",
 };
@@ -377,6 +380,26 @@ export async function buildHistoryPayload(opts: {
     });
   }
 
+  for (const r of safeCollect(() => listIntra30Rows(getLiveIntra30Db()))) {
+    if (!includeTrade(r.timestamp, r.executedAt, r.outcome)) continue;
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    pushTrade(all, {
+      id: r.id,
+      module: "intra30",
+      side: r.direction,
+      entry: r.entry,
+      sl: r.sl,
+      tp1: r.tp1,
+      tp2: r.tp2,
+      outcome: r.outcome,
+      realizedR: r.realizedR,
+      lockedAt: r.timestamp,
+      executedAt: r.executedAt,
+      resolvedAt: r.resolvedAt,
+    });
+  }
+
   for (const r of safeCollect(() => listStrategyRows(getLiveStrategyDb()))) {
     if (r.strategy !== "cipher_b_clone" && r.strategy !== "fractal") continue;
     if (!includeTrade(r.time, r.executedAt, r.outcome)) continue;
@@ -409,6 +432,7 @@ export async function buildHistoryPayload(opts: {
   const modules: HistoryModuleId[] = [
     "scalp",
     "intraday",
+    "intra30",
     "quick_scalp",
     "qs_pro",
     "pro",

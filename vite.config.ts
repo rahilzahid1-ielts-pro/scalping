@@ -133,6 +133,36 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
+        if (req.url?.startsWith("/api/intra30/")) {
+          try {
+            const url = req.url.split("?")[0];
+            if (
+              url === "/api/intra30/latest" &&
+              (req.method === "GET" || !req.method)
+            ) {
+              const { buildIntra30LatestPayload } = await import(
+                "./src/intra30/apiLatest"
+              );
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(await buildIntra30LatestPayload()));
+              return;
+            }
+            res.statusCode = 404;
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ ok: false, error: "unknown intra30 route" }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "intra30 api error",
+              }),
+            );
+          }
+          return;
+        }
+
         if (req.url?.startsWith("/api/pulse/")) {
           try {
             const url = req.url.split("?")[0];

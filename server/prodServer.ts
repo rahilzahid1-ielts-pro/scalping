@@ -335,6 +335,12 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/intra30/latest" && req.method === "GET") {
+      const { buildIntra30LatestPayload } = await import("../src/intra30/apiLatest");
+      sendJson(res, 200, await buildIntra30LatestPayload());
+      return;
+    }
+
     if (path === "/api/pulse/latest" && req.method === "GET") {
       const { buildPulseLatestPayload } = await import("../src/pulse/apiLatest");
       sendJson(res, 200, await buildPulseLatestPayload());
@@ -537,6 +543,20 @@ server.listen(PORT, "0.0.0.0", () => {
     },
   ).catch((e) => {
     console.error("[prodServer] Failed to start Pro worker:", e);
+  });
+
+  void import("../daemon/intra30Bot").then(
+    ({ startIntra30Worker, shouldAutoStartIntra30Worker }) => {
+      if (shouldAutoStartIntra30Worker()) {
+        startIntra30Worker();
+      } else {
+        console.log(
+          "[prodServer] Intra30 worker OFF — set ENABLE_INTRA30_WORKER=1 to enable",
+        );
+      }
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Failed to start Intra30 worker:", e);
   });
 
   void import("../daemon/pulseBot").then(

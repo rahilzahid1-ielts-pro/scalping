@@ -6,6 +6,7 @@
 import { listOpenSignals } from "../calibration/resolveOutcomes";
 import { getLiveQuickScalpDb, listQuickScalpRows } from "../quickScalp/store";
 import { getLiveProDb, listProRows } from "../pro/store";
+import { getLiveIntra30Db, listIntra30Rows } from "../intra30/store";
 import { getLivePulseDb, listPulseRows } from "../pulse/store";
 import { getLiveStrategyDb, listStrategyRows } from "../strategyCompare/store";
 import {
@@ -97,6 +98,29 @@ export function getActiveOpenLock(module: ActiveModuleId): ActiveOpenLock | null
   if (module === "pro") {
     const rows = safe(() =>
       listProRows(getLiveProDb()).filter((r) => r.outcome === "OPEN"),
+    );
+    if (!rows?.length) return null;
+    const r = rows.reduce((a, b) => (a.timestamp >= b.timestamp ? a : b));
+    return {
+      module,
+      direction: r.direction,
+      entry: r.entry,
+      sl: r.sl,
+      tp1: r.tp1,
+      tp2: r.tp2,
+      outcome: "OPEN",
+      time: r.timestamp,
+      executedAt: r.executedAt ?? null,
+      reason: r.reason,
+      confidence: r.confidence,
+      dailyBias: r.dailyBias,
+      regime: r.regime,
+    };
+  }
+
+  if (module === "intra30") {
+    const rows = safe(() =>
+      listIntra30Rows(getLiveIntra30Db()).filter((r) => r.outcome === "OPEN"),
     );
     if (!rows?.length) return null;
     const r = rows.reduce((a, b) => (a.timestamp >= b.timestamp ? a : b));

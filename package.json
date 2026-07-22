@@ -13,6 +13,7 @@
     "backtest": "tsx daemon/backtest.ts",
     "quickscalp": "tsx daemon/quickScalpBot.ts",
     "pro": "tsx daemon/proBot.ts",
+    "intra30": "tsx daemon/intra30Bot.ts",
     "pulse": "tsx daemon/pulseBot.ts",
     "cipherb": "tsx daemon/cipherBBot.ts",
     "fractal": "tsx daemon/fractalBot.ts",
