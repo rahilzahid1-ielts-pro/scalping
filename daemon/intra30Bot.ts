@@ -1,5 +1,6 @@
 /**
- * Intra30 bot — strong candle → next M5 bar entry.
+ * Intra30 bot — first strong of pattern → next M5 bar entry.
+ * Multiple OPEN trades allowed; each new pattern can fire while others run.
  * TP1 $3 / TP2 $6 / SL $3; TP2 runner exits on weak candle.
  *
  * Local:  npm run intra30
@@ -15,9 +16,9 @@ import {
 import { dispatchTradeAlert } from "../src/services/notify";
 import {
   getLiveIntra30Db,
-  getOpenOrLatestIntra30,
   hasIntra30StrongBar,
   insertIntra30Row,
+  listOpenIntra30,
   markIntra30Executed,
   signalToRow,
   updateIntra30Outcome,
@@ -34,15 +35,17 @@ import { entryTolerance } from "../src/utils/tradeSafety";
 
 const TICK_MS = Number(process.env.INTRA30_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
-const COOLDOWN_MS = 5 * 60 * 1000;
+/** Per-alert floor only — strongBarTime is the real dedupe across patterns. */
+const COOLDOWN_MS = 20_000;
 /** Reject Yahoo-futures ghosts vs OANDA desk mid (seen as ~$10+ entry skew). */
 const MAX_ENTRY_LIVE_GAP = 4;
 
 let workerRunning = false;
 let lastAlertAt = 0;
-let openTrade: Intra30Row | null = null;
-/** After TP1 price touch, runner stays open until TP2 or weak candle. */
-let tp1Reached = false;
+/** All live OPEN trades (multi-signal). */
+let openTrades: Intra30Row[] = [];
+/** Per-trade TP1 reached flags (by row id). */
+const tp1ReachedById = new Map<string, boolean>();
 
 function log(...args: unknown[]) {
   console.log(`[intra30 ${new Date().toLocaleTimeString()}]`, ...args);
@@ -63,8 +66,81 @@ function priceOutcome(
   return null;
 }
 
+function syncOpenTradesFromDb(): void {
+  const db = getLiveIntra30Db();
+  openTrades = listOpenIntra30(db);
+  const liveIds = new Set(openTrades.map((t) => t.id));
+  for (const id of [...tp1ReachedById.keys()]) {
+    if (!liveIds.has(id)) tp1ReachedById.delete(id);
+  }
+}
+
+function manageOpenTrade(
+  db: ReturnType<typeof getLiveIntra30Db>,
+  trade: Intra30Row,
+  last: Candle,
+  prior: Candle | null,
+): Intra30Row | null {
+  let row = trade;
+
+  if (!row.executedAt) {
+    const state = pendingEntryState(
+      row.direction,
+      row.entry,
+      row.sl,
+      row.tp1,
+      row.timestamp,
+      last,
+      entryTolerance(ASSETS[ASSET], "scalping", last.close),
+    );
+    if (state === "MISSED") {
+      updateIntra30Outcome(db, row.id, "INVALIDATED", 0, Date.now());
+      log("invalidated unexecuted stale lock", row.direction, row.entry);
+      tp1ReachedById.delete(row.id);
+      return null;
+    }
+    if (state === "EXECUTED") {
+      const at = Date.now();
+      markIntra30Executed(db, row.id, at);
+      row = { ...row, executedAt: at };
+      log("EXECUTED", row.direction, "@", row.entry);
+    }
+  }
+
+  if (row.executedAt) {
+    let outcome: Intra30Outcome | null = null;
+    const px = priceOutcome(row, last);
+    if (px === "SL_HIT") outcome = "SL_HIT";
+    else if (px === "TP2_HIT") outcome = "TP2_HIT";
+    else if (px === "TP1_TOUCH") tp1ReachedById.set(row.id, true);
+
+    if (
+      !outcome &&
+      tp1ReachedById.get(row.id) &&
+      prior &&
+      isWeakCandle(prior)
+    ) {
+      outcome = "TP1_HIT";
+    }
+
+    if (outcome) {
+      updateIntra30Outcome(
+        db,
+        row.id,
+        outcome,
+        intra30RealizedR(outcome),
+        Date.now(),
+      );
+      log("resolved", row.direction, outcome, "@", row.entry);
+      tp1ReachedById.delete(row.id);
+      return null;
+    }
+  }
+
+  return row;
+}
+
 async function tick(): Promise<void> {
-  // Desk mid is OANDA via TradingView — never fall back to Yahoo GC=F for locks.
   let liveQuote;
   try {
     liveQuote = await fetchTradingViewQuote(ASSET);
@@ -91,71 +167,15 @@ async function tick(): Promise<void> {
   const d = ASSETS[ASSET].decimals;
   const livePx = liveQuote.price;
 
-  if (!openTrade) {
-    const resumed = getOpenOrLatestIntra30(db);
-    if (resumed?.outcome === "OPEN") {
-      openTrade = resumed;
-      tp1Reached = false;
-      log("resumed OPEN", openTrade.direction, openTrade.entry);
-    }
+  syncOpenTradesFromDb();
+  const stillOpen: Intra30Row[] = [];
+  for (const trade of openTrades) {
+    const kept = manageOpenTrade(db, trade, last, prior);
+    if (kept) stillOpen.push(kept);
   }
+  openTrades = stillOpen;
 
-  if (openTrade) {
-    if (!openTrade.executedAt) {
-      const state = pendingEntryState(
-        openTrade.direction,
-        openTrade.entry,
-        openTrade.sl,
-        openTrade.tp1,
-        openTrade.timestamp,
-        last,
-        entryTolerance(ASSETS[ASSET], "scalping", last.close),
-      );
-      if (state === "MISSED") {
-        updateIntra30Outcome(db, openTrade.id, "INVALIDATED", 0, Date.now());
-        log(
-          "invalidated unexecuted stale lock",
-          openTrade.direction,
-          openTrade.entry,
-        );
-        openTrade = null;
-        tp1Reached = false;
-      } else if (state === "EXECUTED") {
-        const at = Date.now();
-        markIntra30Executed(db, openTrade.id, at);
-        openTrade = { ...openTrade, executedAt: at };
-        log("EXECUTED", openTrade.direction, "@", openTrade.entry);
-      }
-    }
-    if (openTrade?.executedAt) {
-      let outcome: Intra30Outcome | null = null;
-      const px = priceOutcome(openTrade, last);
-      if (px === "SL_HIT") outcome = "SL_HIT";
-      else if (px === "TP2_HIT") outcome = "TP2_HIT";
-      else if (px === "TP1_TOUCH") tp1Reached = true;
-
-      // Runner: after TP1, close on weak closed candle (TP1 banked).
-      if (!outcome && tp1Reached && prior && isWeakCandle(prior)) {
-        outcome = "TP1_HIT";
-      }
-
-      if (outcome) {
-        updateIntra30Outcome(
-          db,
-          openTrade.id,
-          outcome,
-          intra30RealizedR(outcome),
-          Date.now(),
-        );
-        log("resolved", openTrade.direction, outcome);
-        openTrade = null;
-        tp1Reached = false;
-      }
-    }
-  }
-
-  if (openTrade) return;
-
+  // Always scan for a NEW first-of-pattern setup (even while other trades OPEN).
   let sig;
   try {
     sig = generateIntra30Signal(ASSET, frames);
@@ -191,18 +211,25 @@ async function tick(): Promise<void> {
 
   const row = signalToRow(sig, ASSET, "live");
   insertIntra30Row(db, row);
-  openTrade = row;
-  tp1Reached = false;
+  openTrades = [row, ...openTrades];
+  tp1ReachedById.set(row.id, false);
   lastAlertAt = Date.now();
 
+  const openN = openTrades.length;
   const body = [
     `${sig.direction} @ ${sig.entry.toFixed(d)}`,
     `SL ${sig.sl.toFixed(d)} · TP1 ${sig.tp1.toFixed(d)} (+$3) · TP2 ${sig.tp2.toFixed(d)} (+$6)`,
-    `Strong candle → next bar · TP2 until weak candle`,
+    `Pehli strong → next bar · open trades now: ${openN}`,
     ...sig.reason.slice(0, 3),
   ].join("\n");
 
-  log("SIGNAL >>>", sig.direction, sig.entry, `conf=${sig.confidence}`);
+  log(
+    "SIGNAL >>>",
+    sig.direction,
+    sig.entry,
+    `conf=${sig.confidence}`,
+    `open=${openN}`,
+  );
   await dispatchTradeAlert({
     kind: "PLAN_LOCK",
     assetId: ASSET,
@@ -221,7 +248,7 @@ export function startIntra30Worker(): void {
   }
   workerRunning = true;
   log(
-    "started — Intra30 (strong candle → next bar, TP1 $3 / TP2 $6 / weak exit)",
+    "started — Intra30 multi-signal (pehli strong → next bar; new pattern while OPEN OK)",
   );
   void (async () => {
     for (;;) {

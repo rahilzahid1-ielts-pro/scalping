@@ -14,6 +14,7 @@ import {
   summarizeIntra30,
   countResolvedIntra30,
   isIntra30BacktestValidated,
+  listOpenIntra30,
 } from "./store";
 import {
   selectUiLatest,
@@ -127,6 +128,7 @@ export async function buildIntra30LatestPayload() {
     live,
     waitReason: live || latest ? null : waitReason,
     historyOpen: latest?.outcome === "OPEN",
+    openCount: listOpenIntra30(liveDb).length,
     backtestSummary,
     badge: validated
       ? null

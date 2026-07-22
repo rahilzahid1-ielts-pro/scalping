@@ -7,6 +7,12 @@
  *   TP2 = entry ± $6.00 (60 points) — runner until TP2 price OR a weak candle
  *   SL  = entry ∓ $3.00
  *
+ * Pattern rule: signal on the FIRST strong candle of a run only.
+ * Consecutive same-color strong candles do not re-fire; after a break
+ * (weak / opposite / non-strong), the next first strong starts a new pattern.
+ *
+ * Multiple patterns can fire while earlier trades are still OPEN.
+ *
  * No SMC / H1 gates — formula is candle-structure only.
  */
 import type { AssetId, Candle } from "../types";
@@ -84,24 +90,42 @@ export function isWeakCandle(c: Candle): boolean {
   return false;
 }
 
+/**
+ * True when `idx` is a strong candle that starts a new pattern:
+ * previous bar is not a strong candle of the same color.
+ */
+export function isFirstStrongOfPattern(
+  candles: Candle[],
+  idx: number,
+): boolean {
+  if (idx < 0 || idx >= candles.length) return false;
+  const c = candles[idx];
+  if (!isStrongCandle(c)) return false;
+  const color = candleColor(c);
+  if (color === "DOJI") return false;
+  if (idx === 0) return true;
+  const prev = candles[idx - 1];
+  if (isStrongCandle(prev) && candleColor(prev) === color) return false;
+  return true;
+}
+
+/**
+ * First-of-pattern strong → next bar entry.
+ * Looks only at the live tip window so we fire as soon as that next candle opens.
+ */
 export function findStrongThenNext(
   candles: Candle[],
 ): { strong: Candle; entryBar: Candle } | null {
   if (candles.length < 2) return null;
 
-  // Tip may be forming: […, strong, nextForming]
-  const a = candles[candles.length - 2];
-  const b = candles[candles.length - 1];
-  if (isStrongCandle(a) && candleColor(a) !== "DOJI") {
-    return { strong: a, entryBar: b };
+  const n = candles.length;
+  // […, firstStrong, nextForming]
+  if (isFirstStrongOfPattern(candles, n - 2)) {
+    return { strong: candles[n - 2], entryBar: candles[n - 1] };
   }
-
-  // Next bar already closed: […, strong, entryClosed, tip?]
-  if (candles.length >= 3) {
-    const s = candles[candles.length - 3];
-    if (isStrongCandle(s) && candleColor(s) !== "DOJI") {
-      return { strong: s, entryBar: a };
-    }
+  // […, firstStrong, entryClosed, tip?]
+  if (n >= 3 && isFirstStrongOfPattern(candles, n - 3)) {
+    return { strong: candles[n - 3], entryBar: candles[n - 2] };
   }
   return null;
 }
@@ -113,7 +137,7 @@ export function diagnoseIntra30(
   if (!setup) {
     return {
       pass: false,
-      waitReason: `Intra30: strong M5 (body≥${(STRONG_BODY_RATIO * 100).toFixed(0)}%, wick≤${(STRONG_MAX_WICK_RATIO * 100).toFixed(0)}%) + next candle chahiye`,
+      waitReason: `Intra30: pehli strong M5 (body≥${(STRONG_BODY_RATIO * 100).toFixed(0)}%, wick≤${(STRONG_MAX_WICK_RATIO * 100).toFixed(0)}%) + next candle · consecutive strong pe dubara nahi`,
     };
   }
   return { pass: true, waitReason: "" };
@@ -151,9 +175,9 @@ export function generateIntra30Signal(
     strongBarTime: strong.time,
     time: entryBar.time || strong.time,
     reason: [
-      `Intra30 · strong ${color} M5 (no/tiny wick) → next candle ${direction}`,
+      `Intra30 · pehli strong ${color} M5 → next candle ${direction} (pattern start)`,
       `Entry @ next open ${entry.toFixed(2)} · TP1 $${INTRA30_TP_DISTANCE} (30pts) · TP2 $${INTRA30_TP2_DISTANCE} · SL $${INTRA30_SL_DISTANCE}`,
-      `TP2 runner until weak candle or TP2 price · body ${bodyPct.toFixed(0)}% of range`,
+      `Nayi pehli strong (pattern break ke baad) = naya signal · body ${bodyPct.toFixed(0)}% of range`,
     ],
   };
 }

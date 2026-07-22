@@ -8,6 +8,7 @@ interface LatestPayload {
   validated: boolean;
   badge: string | null;
   waitReason?: string | null;
+  openCount?: number;
   live?: {
     direction: "BUY" | "SELL";
     entry: number;
@@ -180,8 +181,8 @@ export function Intra30Card() {
       <p className="action-now-label">INTRA30 · Gold</p>
       <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
-        Strong candle (no/tiny wick) → next M5 opens trade · TP1 $3 (30pts) ·
-        TP2 $6 until weak candle · SL $3
+        Pehli strong candle (no/tiny wick) → next M5 trade · nayi pattern =
+        naya signal (multi OK) · TP1 $3 · TP2 $6 until weak · SL $3
       </p>
 
       <ExitAdvisoryBanner advisory={advisory} onDismiss={() => setAdvisory(null)} />
@@ -281,6 +282,9 @@ export function Intra30Card() {
           </div>
           <p className="action-now-detail">
             Daily: {shown.dailyBias} · {shown.meta}
+            {data?.openCount != null && data.openCount > 1
+              ? ` · ${data.openCount} OPEN signals`
+              : ""}
           </p>
           {shown.reasons.length > 0 && (
             <ul className="rationale">

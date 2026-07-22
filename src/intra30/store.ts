@@ -255,6 +255,16 @@ export function getOpenOrLatestIntra30(db: Database.Database): Intra30Row | null
   return getLatestIntra30(db);
 }
 
+/** All live OPEN rows (newest first) — multi-signal desk. */
+export function listOpenIntra30(db: Database.Database): Intra30Row[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM intra30_signals WHERE outcome = 'OPEN' ORDER BY timestamp DESC`,
+    )
+    .all() as Record<string, unknown>[];
+  return rows.map(rowFromDb);
+}
+
 export function listIntra30Rows(db: Database.Database): Intra30Row[] {
   const rows = db
     .prepare(`SELECT * FROM intra30_signals ORDER BY timestamp ASC`)
