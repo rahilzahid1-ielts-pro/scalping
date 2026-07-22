@@ -843,12 +843,13 @@ button.active {
   min-height: 320px;
 }
 
-.action-now {
-  border-radius: 18px;
-  padding: 1.35rem 1.4rem;
-  border: 2px solid var(--line);
-  background: var(--bg-elevated);
-  animation: rise 0.5s ease both;
+.action-now.watch-setup {
+  border-style: dashed;
+  opacity: 0.96;
+}
+
+.action-now.watch-setup .action-now-label {
+  letter-spacing: 0.12em;
 }
 
 .action-now-label {

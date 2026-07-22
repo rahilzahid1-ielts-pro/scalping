@@ -5,6 +5,7 @@ import { generateSignal } from "./strategies/signalEngine";
 import type { AssetId, LiveSignal, TradeMode } from "./types";
 import { TradingViewChart } from "./components/TradingViewChart";
 import { ActionNow } from "./components/ActionNow";
+import { WatchSetupCard } from "./components/WatchSetupCard";
 import { QuickScalpCard } from "./components/QuickScalpCard";
 import { ProCard } from "./components/ProCard";
 import { Intra30Card } from "./components/Intra30Card";
@@ -45,6 +46,8 @@ export default function App() {
     | "history"
   >("main");
   const [signal, setSignal] = useState<LiveSignal | null>(null);
+  /** Live engine lean while a locked plan is active (second box). */
+  const [watchSignal, setWatchSignal] = useState<LiveSignal | null>(null);
   /** Display cache of server plan; lock decisions live in alertBot only. */
   const [plan, setPlan] = useState<FrozenPlan | null>(boot.plan);
   const [forceNewPlan, setForceNewPlan] = useState(0);
@@ -115,6 +118,14 @@ export default function App() {
           : null;
 
       if (active) {
+        // Keep raw engine lean for the live watch box (new setup while trade OPEN).
+        const leanDiffers =
+          next.side !== "WAIT" &&
+          !!next.levels &&
+          (next.side !== active.side ||
+            Math.abs(next.levels.entry - active.levels.entry) >= 0.5);
+        setWatchSignal(leanDiffers ? { ...next, levels: { ...next.levels! } } : null);
+
         next.levels = active.levels;
         next.side = active.side;
         const swept = isLiquiditySweepAgainst(active.side, frames.primary);
@@ -143,6 +154,8 @@ export default function App() {
             winProbability: displayedWinChance(next.confidence, { conflictCapped: true }),
           };
         }
+      } else {
+        setWatchSignal(null);
       }
 
       setSignal(next);
@@ -163,6 +176,7 @@ export default function App() {
       setPlan(null);
       planRef.current = null;
       setSignal(null);
+      setWatchSignal(null);
       setLoading(true);
     }
     void refresh();
@@ -206,6 +220,20 @@ export default function App() {
       liquidityWarn,
     );
   }, [signal, planForThisMode, livePrice, asset, quote, liquidityWarn]);
+
+  /** Second box: live engine lean while locked trade is still running. */
+  const watchNow = useMemo(() => {
+    if (!watchSignal || !livePrice || !hasActivePlan) return null;
+    if (watchSignal.side === "WAIT" || !watchSignal.levels) return null;
+    return computeNowAction(
+      watchSignal,
+      null,
+      livePrice,
+      asset,
+      quote,
+      false,
+    );
+  }, [watchSignal, livePrice, hasActivePlan, asset, quote]);
 
   // Key ONLY on locked entry — refresh must not reset alert arming wrongly
   const planKey = planForThisMode
@@ -285,7 +313,7 @@ export default function App() {
           <span className="brand-mark">GO</span>
           <div>
             <h1>Trade Alert</h1>
-            <p>Intraday = 1 zone / din · alert on lock + entry hit</p>
+            <p>Intraday = 1 lock / din · live mid updates · naya setup alag watch box</p>
           </div>
         </div>
         <div className="topbar-meta">
@@ -464,19 +492,24 @@ export default function App() {
               moduleLabel="TTrades Fractal"
             />
           ) : (
-            nowAction && (
-              <ActionNow
-                now={nowAction}
-                assetId={assetId}
-                alertsOn={alertsOn}
-                onToggleAlerts={() => void toggleAlerts()}
-                onTestSound={testAlertSound}
-                pushState={pushState}
-                onEnablePush={() => void enablePushNotifications()}
-                onTestPush={() => void testPushNotification()}
-                pushBusy={pushBusy}
-              />
-            )
+            <>
+              {nowAction && (
+                <ActionNow
+                  now={nowAction}
+                  assetId={assetId}
+                  alertsOn={alertsOn}
+                  onToggleAlerts={() => void toggleAlerts()}
+                  onTestSound={testAlertSound}
+                  pushState={pushState}
+                  onEnablePush={() => void enablePushNotifications()}
+                  onTestPush={() => void testPushNotification()}
+                  pushBusy={pushBusy}
+                />
+              )}
+              {deskView === "main" && watchNow && (
+                <WatchSetupCard now={watchNow} assetId={assetId} />
+              )}
+            </>
           )}
 
           {deskView === "main" && signal && (

@@ -103,7 +103,8 @@ export function canAutoLockPlan(
 
 export function signalInterval(mode: TradeMode, hasActivePlan: boolean): number {
   if (mode === "intraday") {
-    return hasActivePlan ? 5 * 60_000 : 3 * 60_000;
+    // Active trade: poll often so locked status + watch-setup stay live.
+    return hasActivePlan ? 15_000 : 60_000;
   }
   return 30_000;
 }
