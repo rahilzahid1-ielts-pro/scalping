@@ -5,7 +5,9 @@ export const ASSETS: Record<AssetId, AssetConfig> = {
     id: "XAUUSD",
     name: "Gold",
     symbol: "XAU/USD",
-    tvSymbol: "OANDA:XAUUSD",
+    // Chart embed: TVC:GOLD is reliable on free Advanced Chart widget.
+    // Live mid stays on OANDA via quoteTicker (scanner).
+    tvSymbol: "TVC:GOLD",
     quoteTicker: "OANDA:XAUUSD",
     quoteMarket: "cfd",
     yahooSymbol: "GC=F",
