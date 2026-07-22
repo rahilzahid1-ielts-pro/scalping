@@ -12,7 +12,12 @@ export const DATA_DIR = join(ROOT, "data");
 export const LIVE_DB_PATH = join(DATA_DIR, "signals.db");
 export const BACKTEST_DB_PATH = join(DATA_DIR, "backtest-results.db");
 
-export type PulseOutcome = "OPEN" | "TP1_HIT" | "SL_HIT" | "INVALIDATED";
+export type PulseOutcome =
+  | "OPEN"
+  | "TP1_HIT"
+  | "TP2_HIT"
+  | "SL_HIT"
+  | "INVALIDATED";
 
 export interface PulseRow {
   id: string;
@@ -224,7 +229,7 @@ export function countResolvedPulse(db: Database.Database): number {
   const r = db
     .prepare(
       `SELECT COUNT(*) AS n FROM pulse_signals
-        WHERE outcome IN ('TP1_HIT','SL_HIT')`,
+        WHERE outcome IN ('TP1_HIT','TP2_HIT','SL_HIT')`,
     )
     .get() as { n: number };
   return r?.n ?? 0;
@@ -239,12 +244,25 @@ export function summarizePulse(db: Database.Database): {
   maxDrawdownR: number | null;
 } {
   const rows = listPulseRows(db).filter(
-    (r) => r.outcome === "TP1_HIT" || r.outcome === "SL_HIT",
+    (r) =>
+      r.outcome === "TP1_HIT" ||
+      r.outcome === "TP2_HIT" ||
+      r.outcome === "SL_HIT",
   );
-  const wins = rows.filter((r) => r.outcome === "TP1_HIT").length;
+  const wins = rows.filter(
+    (r) => r.outcome === "TP1_HIT" || r.outcome === "TP2_HIT",
+  ).length;
   const losses = rows.filter((r) => r.outcome === "SL_HIT").length;
   const resolved = wins + losses;
-  const rs = rows.map((r) => r.realizedR ?? (r.outcome === "TP1_HIT" ? 0.85 : -1));
+  const rs = rows.map((r) => {
+    if (r.realizedR != null) return r.realizedR;
+    if (r.outcome === "SL_HIT") return -1;
+    if (r.outcome === "TP2_HIT") {
+      const risk = Math.abs(r.entry - r.sl);
+      return risk > 0 ? Math.abs(r.tp2 - r.entry) / risk : 1.5;
+    }
+    return 0.85;
+  });
   const avgR = resolved > 0 ? rs.reduce((a, b) => a + b, 0) / resolved : null;
 
   let peak = 0;

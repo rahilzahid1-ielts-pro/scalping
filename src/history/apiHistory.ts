@@ -108,6 +108,7 @@ export function formatKarachi(ms: number): string {
 }
 
 function outcomeLabel(outcome: string, outcomeTp1?: string | null): string {
+  if (outcome === "TP2_HIT") return "TP2 HIT";
   if (outcome === "TP1_HIT" || outcomeTp1 === "WIN") return "TP1 HIT";
   if (outcome === "SL_HIT" || outcomeTp1 === "LOSS") return "SL HIT";
   if (outcome === "OPEN") return "OPEN";
@@ -154,7 +155,7 @@ function executionOf(
 }
 
 function isWin(outcome: string): boolean {
-  return outcome === "TP1_HIT";
+  return outcome === "TP1_HIT" || outcome === "TP2_HIT";
 }
 function isLoss(outcome: string): boolean {
   return outcome === "SL_HIT";

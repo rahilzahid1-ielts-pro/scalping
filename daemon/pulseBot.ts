@@ -1,5 +1,5 @@
 /**
- * QS Pro (Pulse) bot — SMC + fractal-agree + fast TP1.
+ * QS Pro (Pulse) bot — SMC + fractal-agree + fast TP1, with TP2 upgrade.
  * Isolated from alertBot / Pro / Quick Scalp.
  *
  * Local: npm run pulse
@@ -16,6 +16,7 @@ import {
   markPulseExecuted,
   signalToRow,
   updatePulseOutcome,
+  type PulseOutcome,
   type PulseRow,
 } from "../src/pulse/store";
 import type { Candle } from "../src/types";
@@ -37,14 +38,52 @@ function log(...args: unknown[]) {
   console.log(`[pulse ${new Date().toLocaleTimeString()}]`, ...args);
 }
 
-function resolveBar(row: PulseRow, bar: Candle): "TP1_HIT" | "SL_HIT" | null {
+function hitTp2(row: PulseRow, bar: Candle): boolean {
+  return row.direction === "BUY"
+    ? bar.high >= row.tp2
+    : bar.low <= row.tp2;
+}
+
+function resolveBar(
+  row: PulseRow,
+  bar: Candle,
+): "TP1_HIT" | "TP2_HIT" | "SL_HIT" | null {
   const buy = row.direction === "BUY";
   const hitSl = buy ? bar.low <= row.sl : bar.high >= row.sl;
-  const hitTp = buy ? bar.high >= row.tp1 : bar.low <= row.tp1;
-  if (hitSl && hitTp) return "SL_HIT";
+  const hitTp1 = buy ? bar.high >= row.tp1 : bar.low <= row.tp1;
+  const tp2 = hitTp2(row, bar);
+  // Same-bar ambiguity: SL wins ties.
+  if (hitSl && (hitTp1 || tp2)) return "SL_HIT";
   if (hitSl) return "SL_HIT";
-  if (hitTp) return "TP1_HIT";
+  if (tp2) return "TP2_HIT";
+  if (hitTp1) return "TP1_HIT";
   return null;
+}
+
+function realizedRFor(
+  row: PulseRow,
+  hit: "TP1_HIT" | "TP2_HIT" | "SL_HIT",
+): number {
+  if (hit === "SL_HIT") return -1;
+  const risk = Math.abs(row.entry - row.sl);
+  if (risk <= 0) return hit === "TP2_HIT" ? 1.5 : 0.85;
+  const target = hit === "TP2_HIT" ? row.tp2 : row.tp1;
+  return Math.abs(target - row.entry) / risk;
+}
+
+/** If an already-closed TP1 row later reaches TP2, upgrade the outcome. */
+function maybeUpgradeTp1ToTp2(db: ReturnType<typeof getLivePulseDb>, bar: Candle) {
+  const latest = getOpenOrLatestPulse(db);
+  if (!latest || latest.outcome !== "TP1_HIT") return;
+  if (!hitTp2(latest, bar)) return;
+  updatePulseOutcome(
+    db,
+    latest.id,
+    "TP2_HIT",
+    realizedRFor(latest, "TP2_HIT"),
+    Date.now(),
+  );
+  log("upgraded", latest.direction, "TP1_HIT → TP2_HIT @", latest.tp2);
 }
 
 async function tick(): Promise<void> {
@@ -59,6 +98,8 @@ async function tick(): Promise<void> {
   const db = getLivePulseDb();
   const last = frames.primary[frames.primary.length - 1];
   const d = ASSETS[ASSET].decimals;
+
+  maybeUpgradeTp1ToTp2(db, last);
 
   if (!openTrade) {
     const resumed = getOpenOrLatestPulse(db);
@@ -93,11 +134,15 @@ async function tick(): Promise<void> {
     if (openTrade?.executedAt) {
       const hit = resolveBar(openTrade, last);
       if (hit) {
-        const risk = Math.abs(openTrade.entry - openTrade.sl);
-        const tp1R = risk > 0 ? Math.abs(openTrade.tp1 - openTrade.entry) / risk : 0.85;
-        const r = hit === "TP1_HIT" ? tp1R : -1;
-        updatePulseOutcome(db, openTrade.id, hit, r, Date.now());
+        updatePulseOutcome(
+          db,
+          openTrade.id,
+          hit as PulseOutcome,
+          realizedRFor(openTrade, hit),
+          Date.now(),
+        );
         log("resolved", openTrade.direction, hit);
+        // TP1 closes the active lock for new entries; TP2 may upgrade later.
         openTrade = null;
       }
     }

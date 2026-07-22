@@ -138,6 +138,7 @@ export function PulseCard() {
     !!locked &&
     (locked.outcome === "OPEN" ||
       locked.outcome === "TP1_HIT" ||
+      locked.outcome === "TP2_HIT" ||
       locked.outcome === "SL_HIT" ||
       locked.outcome === "INVALIDATED");
 
@@ -157,7 +158,14 @@ export function PulseCard() {
       }
     : null;
 
-  const forming = !shown ? (data?.live ?? null) : null;
+  const resolvedShown =
+    shown &&
+    (shown.outcome === "TP1_HIT" ||
+      shown.outcome === "TP2_HIT" ||
+      shown.outcome === "SL_HIT" ||
+      shown.outcome === "INVALIDATED");
+  // After TP/SL, still surface the next lean so the desk isn't "dead" for 15m.
+  const forming = !shown || resolvedShown ? (data?.live ?? null) : null;
   const tone =
     shown?.direction === "BUY"
       ? "enter-buy"
@@ -167,7 +175,7 @@ export function PulseCard() {
   const headline = shown
     ? shown.outcome === "OPEN"
       ? shown.direction
-      : `${shown.direction} · ${shown.outcome.replace("_", " ")}`
+      : `${shown.direction} · ${shown.outcome.replace(/_/g, " ")}`
     : "WAITING";
 
   return (

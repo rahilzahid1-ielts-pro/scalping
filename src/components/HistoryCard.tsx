@@ -76,7 +76,7 @@ function px(n: number): string {
 }
 
 function outcomeClass(outcome: string): string {
-  if (outcome === "TP1_HIT") return "hist-out win";
+  if (outcome === "TP1_HIT" || outcome === "TP2_HIT") return "hist-out win";
   if (outcome === "SL_HIT") return "hist-out loss";
   if (outcome === "OPEN") return "hist-out open";
   return "hist-out other";
@@ -89,7 +89,7 @@ function execClass(label: string): string {
 function matchesResult(trade: HistoryTrade, filter: ResultFilter): boolean {
   if (filter === "all") return true;
   if (filter === "open") return trade.outcome === "OPEN";
-  if (filter === "tp1") return trade.outcome === "TP1_HIT";
+  if (filter === "tp1") return trade.outcome === "TP1_HIT" || trade.outcome === "TP2_HIT";
   if (filter === "sl") return trade.outcome === "SL_HIT";
   return (
     trade.outcome === "INVALIDATED" ||
