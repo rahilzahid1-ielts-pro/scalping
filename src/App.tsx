@@ -222,18 +222,12 @@ export default function App() {
   }, [signal, planForThisMode, livePrice, asset, quote, liquidityWarn]);
 
   /** Second box: live engine lean while locked trade is still running. */
-  const watchNow = useMemo(() => {
-    if (!watchSignal || !livePrice || !hasActivePlan) return null;
-    if (watchSignal.side === "WAIT" || !watchSignal.levels) return null;
-    return computeNowAction(
-      watchSignal,
-      null,
-      livePrice,
-      asset,
-      quote,
-      false,
-    );
-  }, [watchSignal, livePrice, hasActivePlan, asset, quote]);
+  const showWatch =
+    !!watchSignal &&
+    !!livePrice &&
+    hasActivePlan &&
+    watchSignal.side !== "WAIT" &&
+    !!watchSignal.levels;
 
   // Key ONLY on locked entry — refresh must not reset alert arming wrongly
   const planKey = planForThisMode
@@ -506,8 +500,13 @@ export default function App() {
                   pushBusy={pushBusy}
                 />
               )}
-              {deskView === "main" && watchNow && (
-                <WatchSetupCard now={watchNow} assetId={assetId} />
+              {deskView === "main" && showWatch && watchSignal && (
+                <WatchSetupCard
+                  signal={watchSignal}
+                  livePrice={livePrice}
+                  quote={quote}
+                  assetId={assetId}
+                />
               )}
             </>
           )}
