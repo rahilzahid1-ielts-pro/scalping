@@ -1,5 +1,5 @@
 #property strict
-#property version   "1.01"
+#property version   "1.02"
 #property description "QS Pro auto-trader. Consumes authoritative production Pulse locks."
 
 #include <Trade/Trade.mqh>
@@ -11,6 +11,12 @@ input int PollSeconds = 5;
 input int HttpTimeoutMs = 10000;
 input double MarketEntryTolerance = 0.05;
 input double FixedTpSlDistance = 3.00;
+// Late History-EXECUTED catch-up: only if price still this close to locked entry
+// and NOT already moving against the side (prevents buying into a dump).
+input double MaxLateEntryDistance = 0.50;
+// While WAITING: if price already ran past entry in the signal direction by up
+// to this amount, take market (catch fast continuation) instead of Limit wait.
+input double MaxContinuationChase = 1.50;
 input ulong MagicNumber = 26072202;
 input int MaxDeviationPoints = 50;
 input bool RequireHedgingAccount = true;
@@ -196,27 +202,50 @@ void DeletePendingOrders()
    }
 }
 
-bool PriceStillInsideFixedBand(const string side, const double entry)
+double LivePx(const string side)
 {
-   double ask = SymbolInfoDouble(TradeSymbol, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(TradeSymbol, SYMBOL_BID);
-   double px = (side == "BUY") ? ask : bid;
-   return (px >= entry - FixedTpSlDistance && px <= entry + FixedTpSlDistance);
+   return (side == "BUY")
+          ? SymbolInfoDouble(TradeSymbol, SYMBOL_ASK)
+          : SymbolInfoDouble(TradeSymbol, SYMBOL_BID);
 }
 
-bool SubmitMarket(const string side, double entry, const string signalKey)
+bool IsAdversed(const string side, const double entry, const double px)
 {
+   if(side == "BUY") return (px < entry - MarketEntryTolerance);
+   if(side == "SELL") return (px > entry + MarketEntryTolerance);
+   return true;
+}
+
+bool CanLateMarket(const string side, const double entry)
+{
+   double px = LivePx(side);
+   if(IsAdversed(side, entry, px)) return false;
+   return (MathAbs(px - entry) <= MaxLateEntryDistance);
+}
+
+bool OrderOk(const bool submitted)
+{
+   if(!submitted) return false;
+   uint retcode = trade.ResultRetcode();
+   return (retcode == TRADE_RETCODE_DONE ||
+           retcode == TRADE_RETCODE_DONE_PARTIAL ||
+           retcode == TRADE_RETCODE_PLACED);
+}
+
+bool SubmitMarketLive(const string side, const string signalKey)
+{
+   double px = LivePx(side);
    double sl = 0.0;
    double tp = 0.0;
    if(side == "BUY")
    {
-      sl = entry - FixedTpSlDistance;
-      tp = entry + FixedTpSlDistance;
+      sl = px - FixedTpSlDistance;
+      tp = px + FixedTpSlDistance;
    }
    else if(side == "SELL")
    {
-      sl = entry + FixedTpSlDistance;
-      tp = entry - FixedTpSlDistance;
+      sl = px + FixedTpSlDistance;
+      tp = px - FixedTpSlDistance;
    }
    else return false;
 
@@ -225,20 +254,10 @@ bool SubmitMarket(const string side, double entry, const string signalKey)
    tp = NormalizeDouble(tp, digits);
    double lots = NormalizeLots(FixedLots);
    string comment = "QSPro:" + signalKey;
-   bool ok = false;
-
-   if(side == "BUY")
-      ok = trade.Buy(lots, TradeSymbol, 0.0, sl, tp, comment);
-   else
-      ok = trade.Sell(lots, TradeSymbol, 0.0, sl, tp, comment);
-
-   if(ok)
-   {
-      uint retcode = trade.ResultRetcode();
-      ok = (retcode == TRADE_RETCODE_DONE ||
-            retcode == TRADE_RETCODE_DONE_PARTIAL ||
-            retcode == TRADE_RETCODE_PLACED);
-   }
+   bool ok = (side == "BUY")
+             ? trade.Buy(lots, TradeSymbol, 0.0, sl, tp, comment)
+             : trade.Sell(lots, TradeSymbol, 0.0, sl, tp, comment);
+   ok = OrderOk(ok);
    if(!ok)
       Print("Market order failed: ", trade.ResultRetcode(), " ",
             trade.ResultRetcodeDescription());
@@ -249,7 +268,6 @@ bool SubmitAtLockedEntry(const string side, double entry, const string signalKey
 {
    double sl = 0.0;
    double tp = 0.0;
-   // User execution profile: fixed 30-pip ($3.00) symmetric exit from entry.
    if(side == "BUY")
    {
       sl = entry - FixedTpSlDistance;
@@ -275,33 +293,35 @@ bool SubmitAtLockedEntry(const string side, double entry, const string signalKey
    if(side == "BUY")
    {
       if(MathAbs(ask - entry) <= MarketEntryTolerance)
-         ok = trade.Buy(lots, TradeSymbol, 0.0, sl, tp, comment);
-      else if(entry < ask)
-         ok = trade.BuyLimit(lots, entry, TradeSymbol, sl, tp,
-                             ORDER_TIME_GTC, 0, comment);
-      else
-         ok = trade.BuyStop(lots, entry, TradeSymbol, sl, tp,
-                            ORDER_TIME_GTC, 0, comment);
+         return SubmitMarketLive(side, signalKey);
+      if(ask > entry)
+      {
+         if(ask <= entry + MaxContinuationChase)
+            return SubmitMarketLive(side, signalKey);
+         Print("QS Pro skip — BUY already chased past ",
+               MaxContinuationChase, " from ", entry, " (ask=", ask, ")");
+         return false;
+      }
+      ok = trade.BuyStop(lots, entry, TradeSymbol, sl, tp,
+                         ORDER_TIME_GTC, 0, comment);
    }
    else if(side == "SELL")
    {
       if(MathAbs(bid - entry) <= MarketEntryTolerance)
-         ok = trade.Sell(lots, TradeSymbol, 0.0, sl, tp, comment);
-      else if(entry > bid)
-         ok = trade.SellLimit(lots, entry, TradeSymbol, sl, tp,
-                              ORDER_TIME_GTC, 0, comment);
-      else
-         ok = trade.SellStop(lots, entry, TradeSymbol, sl, tp,
-                             ORDER_TIME_GTC, 0, comment);
+         return SubmitMarketLive(side, signalKey);
+      if(bid < entry)
+      {
+         if(bid >= entry - MaxContinuationChase)
+            return SubmitMarketLive(side, signalKey);
+         Print("QS Pro skip — SELL already chased past ",
+               MaxContinuationChase, " from ", entry, " (bid=", bid, ")");
+         return false;
+      }
+      ok = trade.SellStop(lots, entry, TradeSymbol, sl, tp,
+                          ORDER_TIME_GTC, 0, comment);
    }
 
-   if(ok)
-   {
-      uint retcode = trade.ResultRetcode();
-      ok = (retcode == TRADE_RETCODE_DONE ||
-            retcode == TRADE_RETCODE_DONE_PARTIAL ||
-            retcode == TRADE_RETCODE_PLACED);
-   }
+   ok = OrderOk(ok);
    if(!ok)
       Print("Order failed: ", trade.ResultRetcode(), " ", trade.ResultRetcodeDescription());
    return ok;
@@ -349,7 +369,6 @@ void PollSignal()
 
    if(AlreadyHandled(timestamp) || HasExposure()) return;
 
-   // Waiting for entry: arm pending / market at locked price.
    if(!executed)
    {
       DeletePendingOrders();
@@ -359,31 +378,38 @@ void PollSignal()
          Print("QS Pro WAITING armed: ", side, " @ ", entry,
                " fixed TP/SL ", FixedTpSlDistance);
       }
+      else
+      {
+         double px = LivePx(side);
+         if((side == "BUY" && px > entry + MaxContinuationChase) ||
+            (side == "SELL" && px < entry - MaxContinuationChase))
+            MarkHandled(timestamp);
+      }
       return;
    }
 
-   // History EXECUTED: catch up with market if still inside ±$3.00 band.
-   if(!PriceStillInsideFixedBand(side, entry))
+   if(!CanLateMarket(side, entry))
    {
       MarkHandled(timestamp);
-      Print("QS Pro late entry skipped — price already outside ±",
-            FixedTpSlDistance, " of ", entry);
+      Print("QS Pro late entry skipped — adversed or farther than ",
+            MaxLateEntryDistance, " from ", entry, " (live=", LivePx(side), ")");
       return;
    }
    DeletePendingOrders();
-   if(SubmitMarket(side, entry, IntegerToString(timestamp)))
+   if(SubmitMarketLive(side, IntegerToString(timestamp)))
    {
       MarkHandled(timestamp);
-      Print("QS Pro late MARKET fill: ", side, " locked entry ", entry,
-            " fixed TP/SL ", FixedTpSlDistance);
+      Print("QS Pro late MARKET fill near entry ", entry,
+            " live=", LivePx(side));
    }
 }
 
 int OnInit()
 {
-   if(FixedTpSlDistance <= 0.0)
+   if(FixedTpSlDistance <= 0.0 || MaxLateEntryDistance < 0.0 ||
+      MaxContinuationChase < 0.0)
    {
-      Print("FixedTpSlDistance must be greater than zero.");
+      Print("Invalid distance inputs.");
       return INIT_PARAMETERS_INCORRECT;
    }
    if(RequireHedgingAccount &&

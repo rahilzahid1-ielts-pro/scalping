@@ -42,8 +42,15 @@ default.
 - QS Pro magic: `26072202`
 - Poll interval: 5 seconds
 - TP/SL: fixed symmetric `$3.00`; module direction and locked entry stay unchanged
-- Entry: exact locked entry using Limit/Stop pending order, or market only when
-  price is within `MarketEntryTolerance` (default 0.05).
+- Entry:
+  - Price at/under entry (BUY): BuyStop at locked entry (or market if within
+    `MarketEntryTolerance`).
+  - Price already ran with the signal (fast move): market chase up to
+    `MaxContinuationChase` (default `$1.50`) — no sitting on a Limit that never
+    fills.
+  - Late History-EXECUTED catch-up: market only if still within
+    `MaxLateEntryDistance` (default `$0.50`) **and not adversed**. Never buy into
+    a dump just because price is still inside the old ±$3 band.
 
 If your broker uses a suffix such as `XAUUSD.a`, change `TradeSymbol` in the EA
 inputs.
@@ -55,11 +62,8 @@ inputs.
 - Pending order is removed if the server lock disappears or is invalidated.
 - Existing positions are not closed when the API lock disappears; broker-side
   SL/TP remain responsible for the exit.
-- Waiting locks: place Limit/Stop at the locked entry (or market if already there).
-- Already-executed History locks (`IN_TRADE_HINT` / `executedAt` set): take a
-  **market** fill only while live price is still inside the fixed ±$3.00 band
-  around the locked entry. Outside that band the lock is marked handled and
-  skipped — no deep chase.
+- Market fills use live price for the ±$3.00 TP/SL (not a stale lock price).
+- Adverse late entries are marked handled and never retried every poll.
 
 ## If History shows EXECUTED but MT5 is flat
 
