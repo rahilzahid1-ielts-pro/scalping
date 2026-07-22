@@ -10,6 +10,7 @@ import type { Intra30Signal } from "../strategies/intra30Engine";
 import {
   INTRA30_SL_DISTANCE,
   INTRA30_TP_DISTANCE,
+  INTRA30_TP2_DISTANCE,
 } from "../strategies/intra30Engine";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -17,7 +18,12 @@ export const DATA_DIR = join(ROOT, "data");
 export const LIVE_DB_PATH = join(DATA_DIR, "signals.db");
 export const BACKTEST_DB_PATH = join(DATA_DIR, "backtest-results.db");
 
-export type Intra30Outcome = "OPEN" | "TP1_HIT" | "SL_HIT" | "INVALIDATED";
+export type Intra30Outcome =
+  | "OPEN"
+  | "TP1_HIT"
+  | "TP2_HIT"
+  | "SL_HIT"
+  | "INVALIDATED";
 
 export interface Intra30Row {
   id: string;
@@ -38,6 +44,7 @@ export interface Intra30Row {
   resolvedAt: number | null;
   executedAt: number | null;
   source: "live" | "backtest";
+  strongBarTime: number | null;
 }
 
 const SCHEMA = `
@@ -59,18 +66,23 @@ CREATE TABLE IF NOT EXISTS intra30_signals (
   realized_r    REAL,
   resolved_at   INTEGER,
   executed_at   INTEGER,
-  source        TEXT NOT NULL DEFAULT 'live'
+  source        TEXT NOT NULL DEFAULT 'live',
+  strong_bar_time INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_intra30_ts ON intra30_signals(timestamp);
 CREATE INDEX IF NOT EXISTS idx_intra30_outcome ON intra30_signals(outcome);
 `;
 
-function ensureExecutedAtColumn(db: Database.Database): void {
+function ensureColumns(db: Database.Database): void {
   const cols = db.prepare(`PRAGMA table_info(intra30_signals)`).all() as {
     name: string;
   }[];
-  if (!cols.some((c) => c.name === "executed_at")) {
+  const names = new Set(cols.map((c) => c.name));
+  if (!names.has("executed_at")) {
     db.exec(`ALTER TABLE intra30_signals ADD COLUMN executed_at INTEGER`);
+  }
+  if (!names.has("strong_bar_time")) {
+    db.exec(`ALTER TABLE intra30_signals ADD COLUMN strong_bar_time INTEGER`);
   }
 }
 
@@ -84,7 +96,7 @@ function openDb(path: string, tag: number): Database.Database {
   db.pragma("busy_timeout = 5000");
   db.pragma(`application_id = ${tag}`);
   db.exec(SCHEMA);
-  ensureExecutedAtColumn(db);
+  ensureColumns(db);
   return db;
 }
 
@@ -133,6 +145,7 @@ function rowFromDb(r: Record<string, unknown>): Intra30Row {
     resolvedAt: r.resolved_at == null ? null : Number(r.resolved_at),
     executedAt: r.executed_at == null ? null : Number(r.executed_at),
     source: (r.source as "live" | "backtest") ?? "live",
+    strongBarTime: r.strong_bar_time == null ? null : Number(r.strong_bar_time),
   };
 }
 
@@ -161,6 +174,7 @@ export function signalToRow(
     resolvedAt: null,
     executedAt: null,
     source,
+    strongBarTime: sig.strongBarTime,
   };
 }
 
@@ -168,10 +182,10 @@ export function insertIntra30Row(db: Database.Database, row: Intra30Row): void {
   db.prepare(
     `INSERT OR IGNORE INTO intra30_signals
       (id, timestamp, symbol, direction, entry, sl, tp1, tp2, confidence, regime,
-       outcome, reason, daily_bias, strategy, realized_r, resolved_at, executed_at, source)
+       outcome, reason, daily_bias, strategy, realized_r, resolved_at, executed_at, source, strong_bar_time)
      VALUES
       (@id, @timestamp, @symbol, @direction, @entry, @sl, @tp1, @tp2, @confidence, @regime,
-       @outcome, @reason, @dailyBias, @strategy, @realizedR, @resolvedAt, @executedAt, @source)`,
+       @outcome, @reason, @dailyBias, @strategy, @realizedR, @resolvedAt, @executedAt, @source, @strongBarTime)`,
   ).run(row);
 }
 
@@ -201,10 +215,27 @@ export function updateIntra30Outcome(
   ).run(outcome, realizedR, resolvedAt, id);
 }
 
-/** Risk unit = SL distance ($6); TP ($3) = +0.5R. */
-export function intra30RealizedR(outcome: "TP1_HIT" | "SL_HIT"): number {
+/** Risk unit = SL ($3). TP1 = +1R, TP2 = +2R. */
+export function intra30RealizedR(
+  outcome: "TP1_HIT" | "TP2_HIT" | "SL_HIT",
+): number {
   if (outcome === "SL_HIT") return -1;
+  if (outcome === "TP2_HIT") {
+    return INTRA30_TP2_DISTANCE / INTRA30_SL_DISTANCE;
+  }
   return INTRA30_TP_DISTANCE / INTRA30_SL_DISTANCE;
+}
+
+export function hasIntra30StrongBar(
+  db: Database.Database,
+  strongBarTime: number,
+): boolean {
+  const r = db
+    .prepare(
+      `SELECT 1 AS ok FROM intra30_signals WHERE strong_bar_time = ? LIMIT 1`,
+    )
+    .get(strongBarTime) as { ok: number } | undefined;
+  return Boolean(r);
 }
 
 export function getLatestIntra30(db: Database.Database): Intra30Row | null {
@@ -235,7 +266,7 @@ export function countResolvedIntra30(db: Database.Database): number {
   const r = db
     .prepare(
       `SELECT COUNT(*) AS n FROM intra30_signals
-        WHERE outcome IN ('TP1_HIT','SL_HIT')`,
+        WHERE outcome IN ('TP1_HIT','TP2_HIT','SL_HIT')`,
     )
     .get() as { n: number };
   return r?.n ?? 0;
@@ -250,18 +281,24 @@ export function summarizeIntra30(db: Database.Database): {
   maxDrawdownR: number | null;
 } {
   const rows = listIntra30Rows(db).filter(
-    (r) => r.outcome === "TP1_HIT" || r.outcome === "SL_HIT",
+    (r) =>
+      r.outcome === "TP1_HIT" ||
+      r.outcome === "TP2_HIT" ||
+      r.outcome === "SL_HIT",
   );
-  const wins = rows.filter((r) => r.outcome === "TP1_HIT").length;
+  const wins = rows.filter(
+    (r) => r.outcome === "TP1_HIT" || r.outcome === "TP2_HIT",
+  ).length;
   const losses = rows.filter((r) => r.outcome === "SL_HIT").length;
   const resolved = wins + losses;
-  const rs = rows.map(
-    (r) =>
-      r.realizedR ??
-      (r.outcome === "TP1_HIT"
-        ? INTRA30_TP_DISTANCE / INTRA30_SL_DISTANCE
-        : -1),
-  );
+  const rs = rows.map((r) => {
+    if (r.realizedR != null) return r.realizedR;
+    if (r.outcome === "SL_HIT") return -1;
+    if (r.outcome === "TP2_HIT") {
+      return INTRA30_TP2_DISTANCE / INTRA30_SL_DISTANCE;
+    }
+    return INTRA30_TP_DISTANCE / INTRA30_SL_DISTANCE;
+  });
   const avgR = resolved > 0 ? rs.reduce((a, b) => a + b, 0) / resolved : null;
 
   let peak = 0;

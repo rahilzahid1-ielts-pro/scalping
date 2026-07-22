@@ -2,9 +2,10 @@
  * Shared JSON for GET /api/intra30/latest (vite + prodServer).
  */
 import { fetchMultiTimeframe } from "../services/marketData";
-import { generateIntra30Signal } from "../strategies/intra30Engine";
-import { diagnoseSmcGateBlock } from "../strategies/smcGateStatus";
-import { INTRADAY_LOCK_MIN_CONF } from "../utils/sessionPlan";
+import {
+  diagnoseIntra30,
+  generateIntra30Signal,
+} from "../strategies/intra30Engine";
 import {
   getLiveIntra30Db,
   getOpenOrLatestIntra30,
@@ -41,6 +42,7 @@ export async function buildIntra30LatestPayload() {
     resolvedAt: null,
     executedAt: o.executedAt ?? null,
     source: "live" as const,
+    strongBarTime: null,
   }));
 
   let backtestSummary: {
@@ -89,7 +91,7 @@ export async function buildIntra30LatestPayload() {
   } | null = null;
 
   try {
-    const frames = await fetchMultiTimeframe("XAUUSD", "intraday", undefined, {
+    const frames = await fetchMultiTimeframe("XAUUSD", "scalping", undefined, {
       rebaseToLive: true,
     });
     const sig = generateIntra30Signal("XAUUSD", frames);
@@ -105,13 +107,7 @@ export async function buildIntra30LatestPayload() {
         dailyBias: sig.dailyBias,
       };
     } else {
-      const diag = diagnoseSmcGateBlock(frames, {
-        mode: "intraday",
-        minConf: INTRADAY_LOCK_MIN_CONF,
-      });
-      waitReason = diag.pass
-        ? "Intraday gates soft-pass but Intra30 engine null"
-        : diag.waitReason;
+      waitReason = diagnoseIntra30(frames).waitReason;
     }
   } catch (e) {
     waitReason = e instanceof Error ? e.message : "market fetch failed";

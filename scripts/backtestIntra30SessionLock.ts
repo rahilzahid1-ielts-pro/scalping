@@ -5,7 +5,7 @@
  *
  * Same pipeline as Main Intraday / sessionLockAllModules:
  * canAutoLockPlan → createFrozenPlan → zone-touch → SL-first.
- * Candidate = generateIntra30Signal (Intraday gates + fixed exits).
+ * Candidate = generateIntra30Signal (strong candle → next bar, TP $3 / SL $3).
  */
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { loadHistoricalFile, windowStartIndex } from "../src/backtest/loadData";
@@ -121,7 +121,7 @@ Bars       : ${loaded.quality.bars}
 Window     : last ${DAYS}d (start idx ${winStart})
 Spread     : ${SPREAD}
 Resolution : canAutoLockPlan → createFrozenPlan → zone-touch → SL-first
-Candidate  : generateIntra30Signal (Intraday gates + fixed exits)
+Candidate  : generateIntra30Signal (strong candle → next M5, TP/SL $3)
 `);
 
   const db = resetDb();
@@ -198,7 +198,7 @@ Candidate  : generateIntra30Signal (Intraday gates + fixed exits)
   const payload = {
     generatedAt: new Date().toISOString(),
     method:
-      "runWalkForward session-lock (trusted baseline). Intra30 candidate = generateIntra30Signal (Intraday entry gates + TP $3 / SL $6). Zone-touch required. Reject-missed ON, 0.5R wait-invalidation OFF.",
+      "runWalkForward session-lock. Intra30 candidate = strong-candle next-bar (TP $3 / SL $3 / TP2 $6). Zone-touch required. Reject-missed ON, 0.5R wait-invalidation OFF.",
     file,
     days: DAYS,
     spread: SPREAD,

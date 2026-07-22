@@ -140,6 +140,7 @@ export function Intra30Card() {
     !!locked &&
     (locked.outcome === "OPEN" ||
       locked.outcome === "TP1_HIT" ||
+      locked.outcome === "TP2_HIT" ||
       locked.outcome === "SL_HIT" ||
       locked.outcome === "INVALIDATED");
 
@@ -177,8 +178,8 @@ export function Intra30Card() {
       <p className="action-now-label">INTRA30 · Gold</p>
       <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
-        Intraday copy · fixed TP $3.00 (30 pts) · SL $6.00 (60 pts) · same SMC
-        gates
+        Strong candle (no/tiny wick) → next M5 opens trade · TP1 $3 (30pts) ·
+        TP2 $6 until weak candle · SL $3
       </p>
 
       <ExitAdvisoryBanner advisory={advisory} onDismiss={() => setAdvisory(null)} />
@@ -237,7 +238,7 @@ export function Intra30Card() {
               <strong>{forming.entry.toFixed(2)}</strong>
             </div>
             <div>
-              <span>SL (−$6)</span>
+              <span>SL (−$3)</span>
               <strong>{forming.sl.toFixed(2)}</strong>
             </div>
             <div>
@@ -260,7 +261,7 @@ export function Intra30Card() {
               <strong>{shown.entry.toFixed(2)}</strong>
             </div>
             <div>
-              <span>SL (−$6)</span>
+              <span>SL (−$3)</span>
               <strong>{shown.sl.toFixed(2)}</strong>
             </div>
             <div>
