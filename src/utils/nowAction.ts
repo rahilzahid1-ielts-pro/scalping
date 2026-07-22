@@ -277,9 +277,11 @@ export function computeNowAction(
     };
   }
 
+  // Session zone: use live mid (what the desk/chart shows). Probe stays for
+  // TOO_LATE / risk only — bid-side probe was keeping WAIT while mid sat in zone.
   const inZone =
     zoneLow != null && zoneHigh != null
-      ? probe >= Math.min(zoneLow, zoneHigh) && probe <= Math.max(zoneLow, zoneHigh)
+      ? p >= Math.min(zoneLow, zoneHigh) && p <= Math.max(zoneLow, zoneHigh)
       : isInEntryZone(side, probe, entry, tol);
 
   if (inZone) {
