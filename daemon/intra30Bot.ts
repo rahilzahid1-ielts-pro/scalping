@@ -3,7 +3,8 @@
  * Isolated from daemon/alertBot.ts plan locks.
  *
  * Local:  npm run intra30
- * Auto:   ENABLE_INTRA30_WORKER=1 (or auto on Railway)
+ * Prod:   ENABLE_INTRA30_WORKER=1 required (default OFF — no Railway auto-start
+ *         until Step-2 session-lock backtest is approved).
  */
 import { ASSETS } from "../src/config/assets";
 import { fetchMultiTimeframe } from "../src/services/marketData";
@@ -176,10 +177,10 @@ export function startIntra30Worker(): void {
 }
 
 export function shouldAutoStartIntra30Worker(): boolean {
-  const flag = (process.env.ENABLE_INTRA30_WORKER ?? "auto").toLowerCase();
-  if (flag === "0" || flag === "false" || flag === "off") return false;
-  if (flag === "1" || flag === "true" || flag === "on") return true;
-  return Boolean(process.env.RAILWAY_ENVIRONMENT);
+  // Default OFF. Never auto-start on Railway — requires explicit opt-in after
+  // Step-2 session-lock measurement is approved.
+  const flag = (process.env.ENABLE_INTRA30_WORKER ?? "0").toLowerCase();
+  return flag === "1" || flag === "true" || flag === "on";
 }
 
 async function main() {
