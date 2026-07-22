@@ -142,6 +142,29 @@ function lockPlan(
       state.plans[key] = null;
       // fall through to canAutoLockPlan for immediate fresh evaluation
     } else {
+      // TP2 complete: close History runner so resume cannot revive ACTIVE lock.
+      if (
+        kept &&
+        kept.status === "INVALIDATED" &&
+        typeof kept.note === "string" &&
+        kept.note.startsWith("TP2 ")
+      ) {
+        try {
+          invalidateLoggedPlan(
+            makePlanKey(
+              assetId,
+              mode,
+              current.side,
+              current.levels.entry,
+              current.levels.stopLoss,
+              current.levels.takeProfit1,
+            ),
+            kept.note,
+          );
+        } catch {
+          /* ignore */
+        }
+      }
       state.plans[key] = kept;
       return state.plans[key];
     }
@@ -250,13 +273,47 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
   );
 
   // Daemon plan missing after redeploy but History still has OPEN → resume
+  // Never revive a runner that already reached TP2 (would stick UI on ACTIVE forever).
   if (!plan || plan.status === "INVALIDATED") {
     try {
       const resumed = planFromOpenSignal(assetId, mode);
       if (resumed) {
-        state.plans[planKey(assetId, mode)] = resumed;
-        plan = resumed;
-        log(`checkOne resumed OPEN ${assetId}/${mode} @ ${resumed.levels.entry}`);
+        const tp2 = resumed.levels.takeProfit2;
+        const tp2Done =
+          tp2 != null &&
+          Number.isFinite(tp2) &&
+          ((resumed.side === "BUY" && live >= tp2) ||
+            (resumed.side === "SELL" && live <= tp2));
+        if (tp2Done) {
+          try {
+            invalidateLoggedPlan(
+              makePlanKey(
+                assetId,
+                mode,
+                resumed.side,
+                resumed.levels.entry,
+                resumed.levels.stopLoss,
+                resumed.levels.takeProfit1,
+              ),
+              "TP2 already hit — skip resume",
+            );
+          } catch {
+            /* ignore */
+          }
+          if (!plan || plan.status !== "INVALIDATED") {
+            plan = {
+              ...resumed,
+              status: "INVALIDATED",
+              note: `TP2 ${tp2} hit — plan complete.`,
+            };
+            state.plans[planKey(assetId, mode)] = plan;
+          }
+          log(`checkOne skip resume (TP2 done) ${assetId}/${mode}`);
+        } else {
+          state.plans[planKey(assetId, mode)] = resumed;
+          plan = resumed;
+          log(`checkOne resumed OPEN ${assetId}/${mode} @ ${resumed.levels.entry}`);
+        }
       }
     } catch {
       /* ignore */

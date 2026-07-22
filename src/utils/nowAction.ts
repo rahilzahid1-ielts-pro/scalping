@@ -127,15 +127,46 @@ export function computeNowAction(
   }
 
   if (plan?.status === "IN_TRADE_HINT") {
+    const tp2 = plan.levels.takeProfit2;
+    const tp2Reached =
+      tp2 != null &&
+      Number.isFinite(tp2) &&
+      ((plan.side === "BUY" && p >= tp2) ||
+        (plan.side === "SELL" && p <= tp2));
     const tp1Reached =
       (plan.side === "BUY" && p >= plan.levels.takeProfit1) ||
       (plan.side === "SELL" && p <= plan.levels.takeProfit1);
+    if (tp2Reached) {
+      return {
+        action: "PLAN_DEAD",
+        headline: "TP2 COMPLETE",
+        headlineUr: "TP2 HIT — PLAN COMPLETE",
+        detail: `TP2 ${tp2} hit. Intraday = 1 zone / din — aaj naya auto lock nahi; Scalp / dusre tabs check karo ya kal wait.`,
+        confidence: conf,
+        winProbability: winProb,
+        side: plan.side,
+        entry: plan.levels.entry,
+        entryZoneLow: plan.entryZoneLow ?? null,
+        entryZoneHigh: plan.entryZoneHigh ?? null,
+        safeZoneLow: plan.safeZoneLow ?? null,
+        safeZoneHigh: plan.safeZoneHigh ?? null,
+        stopLoss: plan.levels.stopLoss,
+        takeProfit: plan.levels.takeProfit1,
+        takeProfit2: plan.levels.takeProfit2,
+        livePrice: p,
+        distanceToEntry: roundPrice(p - plan.levels.entry, decimals),
+        inEntryZone: false,
+        conflictingSignals: conflict,
+        sessionLocked: false,
+        liquidityWarning: liqWarn,
+      };
+    }
     return {
       action: "TRADE_ACTIVE",
       headline: `${plan.side} TRADE ACTIVE`,
       headlineUr: `${plan.side} TRADE CHAL RAHI HAI`,
       detail: tp1Reached
-        ? `TP1 ${plan.levels.takeProfit1} reach ho gaya. Remaining position ko plan ke mutabiq manage karo; SL ${plan.levels.stopLoss}.`
+        ? `TP1 ${plan.levels.takeProfit1} reach ho gaya. Remaining position ko plan ke mutabiq manage karo; SL ${plan.levels.stopLoss} · TP2 ${plan.levels.takeProfit2}.`
         : `Entered ${plan.side} @ ${plan.levels.entry}. Fresh signal is trade ko cancel nahi karta. SL ${plan.levels.stopLoss} · TP1 ${plan.levels.takeProfit1}.`,
       confidence: conf,
       winProbability: winProb,

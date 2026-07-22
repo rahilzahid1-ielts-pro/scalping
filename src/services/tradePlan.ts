@@ -212,6 +212,25 @@ export function shouldKeepFrozenPlan(
         note: "SL hit. New plan only after fresh setup.",
       };
     }
+    // TP2 (final runner on many desks, always last on Intraday where TP2=TP3)
+    // must release the frozen lock — otherwise UI stays TRADE ACTIVE forever.
+    const tp2 = base.levels.takeProfit2;
+    if (
+      base.status === "IN_TRADE_HINT" &&
+      tp2 != null &&
+      Number.isFinite(tp2)
+    ) {
+      const tp2Hit =
+        (base.side === "BUY" && livePrice >= tp2) ||
+        (base.side === "SELL" && livePrice <= tp2);
+      if (tp2Hit) {
+        return {
+          ...base,
+          status: "INVALIDATED",
+          note: `TP2 ${tp2} hit — plan complete.`,
+        };
+      }
+    }
     if (
       base.status === "WAITING_ENTRY" &&
       isTooLateToEnter(base.side, livePrice, base.levels.entry, base.levels.stopLoss)

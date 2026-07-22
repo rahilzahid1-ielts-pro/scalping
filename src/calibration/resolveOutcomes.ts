@@ -138,6 +138,17 @@ function applyPostTp1(
   if (winner.kind === "TP2") {
     sig.tp2Hit = true;
     sig.tp2HitAt = now;
+    // Intraday (and any plan where TP2 is the last runner) must close the full
+    // plan on TP2 — otherwise History stays "active" and the desk never unlocks.
+    const tp3Beyond =
+      sig.tp3 != null &&
+      Number.isFinite(sig.tp3) &&
+      (sig.side === "BUY" ? sig.tp3 > sig.tp2 + 1e-9 : sig.tp3 < sig.tp2 - 1e-9);
+    if (!tp3Beyond) {
+      sig.tp3Hit = true;
+      sig.tp3HitAt = now;
+      sig.fullPlanClosed = true;
+    }
   }
   if (winner.kind === "TP3") {
     // Price reached TP3 ⇒ TP2 was also available on the path
