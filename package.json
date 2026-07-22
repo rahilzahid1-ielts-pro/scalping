@@ -18,6 +18,7 @@
     "cipherb": "tsx daemon/cipherBBot.ts",
     "fractal": "tsx daemon/fractalBot.ts",
     "backtest:pro": "tsx daemon/backtest.ts --strategy=pro --file=data/XAUUSD_M5.json --days=365 --spread=0.25",
+    "backtest:intra30": "tsx scripts/backtestIntra30.ts",
     "gen-vapid": "node scripts/gen-vapid.mjs",
     "gen-icons": "node scripts/gen-icons.mjs"
   },

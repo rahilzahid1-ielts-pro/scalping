@@ -16,6 +16,7 @@ import {
   isIntra30BacktestValidated,
   listOpenIntra30,
 } from "./store";
+import { INTRA30_BACKTEST_SNAPSHOT } from "./backtestSnapshot";
 import {
   selectUiLatest,
   withHistoryOpenLatest,
@@ -68,19 +69,19 @@ export async function buildIntra30LatestPayload() {
       validated = isIntra30BacktestValidated(backtestSummary);
     }
   } catch {
-    /* no local backtest DB */
+    /* no local backtest DB — fall through to snapshot */
   }
 
-  if (!backtestSummary) {
+  if (!backtestSummary || backtestSummary.resolved === 0) {
     backtestSummary = {
-      resolved: 0,
-      wins: 0,
-      losses: 0,
-      winRate: null,
-      avgR: null,
-      maxDrawdownR: null,
+      resolved: INTRA30_BACKTEST_SNAPSHOT.resolved,
+      wins: INTRA30_BACKTEST_SNAPSHOT.wins,
+      losses: INTRA30_BACKTEST_SNAPSHOT.losses,
+      winRate: INTRA30_BACKTEST_SNAPSHOT.winRate,
+      avgR: INTRA30_BACKTEST_SNAPSHOT.avgR,
+      maxDrawdownR: INTRA30_BACKTEST_SNAPSHOT.maxDrawdownR,
     };
-    validated = false;
+    validated = isIntra30BacktestValidated(backtestSummary);
   }
 
   let waitReason: string | null = null;
