@@ -723,7 +723,7 @@ export function ensureAlertWorker(): void {
 /** Start background poll loop (idempotent). Used by CLI and Railway prodServer. */
 export function startAlertWorker(): void {
   if (workerRunning) {
-    log("Worker already running — skip");
+    // Silent — /api/plan/current calls ensureAlertWorker on every UI poll.
     return;
   }
   workerRunning = true;

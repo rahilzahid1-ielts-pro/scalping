@@ -78,6 +78,31 @@ export async function fetchTradingViewQuote(assetId: AssetId): Promise<LiveQuote
   };
 }
 
+type TvCache = { quote: LiveQuote; at: number };
+const tvQuoteCache = new Map<AssetId, TvCache>();
+const TV_CACHE_MAX_AGE_MS = 3 * 60_000;
+
+/**
+ * Prefer fresh TradingView/OANDA mid; on 429/transient failure reuse last good
+ * quote for a few minutes so Intra30 / rebase aren't hard-stopped.
+ */
+export async function fetchTradingViewQuoteCached(
+  assetId: AssetId,
+  maxAgeMs = TV_CACHE_MAX_AGE_MS,
+): Promise<LiveQuote> {
+  try {
+    const quote = await fetchTradingViewQuote(assetId);
+    tvQuoteCache.set(assetId, { quote, at: Date.now() });
+    return quote;
+  } catch (e) {
+    const hit = tvQuoteCache.get(assetId);
+    if (hit && Date.now() - hit.at <= maxAgeMs) {
+      return { ...hit.quote, ts: Date.now(), source: `${hit.quote.source} (cached)` };
+    }
+    throw e;
+  }
+}
+
 async function fetchBinanceSpotFrom(
   basePath: "/api/binance" | "/api/binance-data",
   symbol: string,

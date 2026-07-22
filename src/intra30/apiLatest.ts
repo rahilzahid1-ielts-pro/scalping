@@ -2,7 +2,7 @@
  * Shared JSON for GET /api/intra30/latest (vite + prodServer).
  */
 import { fetchMultiTimeframe } from "../services/marketData";
-import { fetchTradingViewQuote } from "../services/liveQuotes";
+import { fetchTradingViewQuoteCached } from "../services/liveQuotes";
 import {
   diagnoseIntra30,
   generateIntra30Signal,
@@ -96,7 +96,7 @@ export async function buildIntra30LatestPayload() {
   } | null = null;
 
   try {
-    const quote = await fetchTradingViewQuote("XAUUSD");
+    const quote = await fetchTradingViewQuoteCached("XAUUSD");
     const frames = await fetchMultiTimeframe("XAUUSD", "scalping", quote.price, {
       rebaseToLive: true,
     });

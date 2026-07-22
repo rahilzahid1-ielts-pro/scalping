@@ -8,7 +8,7 @@
  */
 import { ASSETS } from "../src/config/assets";
 import { fetchMultiTimeframe } from "../src/services/marketData";
-import { fetchTradingViewQuote } from "../src/services/liveQuotes";
+import { fetchTradingViewQuoteCached } from "../src/services/liveQuotes";
 import {
   generateIntra30Signal,
   isWeakCandle,
@@ -143,7 +143,7 @@ function manageOpenTrade(
 async function tick(): Promise<void> {
   let liveQuote;
   try {
-    liveQuote = await fetchTradingViewQuote(ASSET);
+    liveQuote = await fetchTradingViewQuoteCached(ASSET);
   } catch (e) {
     log("skip tick — TV quote failed:", e instanceof Error ? e.message : e);
     return;
