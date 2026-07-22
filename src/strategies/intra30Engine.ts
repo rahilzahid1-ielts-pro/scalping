@@ -3,17 +3,16 @@
  * M5 candle in that color's direction.
  *
  *   Green strong → BUY · Red strong → SELL
- *   TP1 = entry ± $3.00 (30 points) — bank
- *   TP2 = entry ± $6.00 (60 points) — runner until TP2 price OR a weak candle
- *   SL  = entry ∓ $3.00
+ *   TP1 = entry ± $3.00 — bank
+ *   TP2 = entry ± $6.00 — runner until TP2 price OR a weak candle
+ *   SL  = entry ∓ $5.00 (wider vs noise)
  *
- * Pattern rule: signal on the FIRST strong candle of a run only.
- * Consecutive same-color strong candles do not re-fire; after a break
- * (weak / opposite / non-strong), the next first strong starts a new pattern.
+ * Gates:
+ *   - First strong of a same-color run only
+ *   - H1 last closed same color as M5 strong
+ *   - Live bot: post-resolve cooldown + opposite-side block (see daemon)
  *
- * Multiple patterns can fire while earlier trades are still OPEN.
- *
- * No SMC / H1 gates — formula is candle-structure only.
+ * Multiple patterns can fire while earlier trades are still OPEN (subject to cooldown).
  */
 import type { AssetId, Candle } from "../types";
 import {
@@ -22,12 +21,21 @@ import {
   STRONG_MIN_RANGE,
   candleColor,
   isStrongCandle,
+  lastClosedBar,
   type CandleColor,
 } from "./strongCandleEngine";
 
 export const INTRA30_TP_DISTANCE = 3;
-export const INTRA30_SL_DISTANCE = 3;
+export const INTRA30_SL_DISTANCE = 5;
 export const INTRA30_TP2_DISTANCE = 6;
+
+/** After any resolve, wait before a new lock (live). */
+export const INTRA30_POST_RESOLVE_COOLDOWN_MS = 25 * 60 * 1000;
+/** After resolve, block the opposite side longer (fade protection). */
+export const INTRA30_OPPOSITE_BLOCK_MS = 30 * 60 * 1000;
+/** Backtest bar equivalents (~5m). */
+export const INTRA30_POST_RESOLVE_COOLDOWN_BARS = 5;
+export const INTRA30_OPPOSITE_BLOCK_BARS = 6;
 
 export type Intra30Direction = "BUY" | "SELL";
 
@@ -119,13 +127,22 @@ export function findStrongThenNext(
   if (candles.length < 2) return null;
 
   const n = candles.length;
-  // […, firstStrong, nextForming]
   if (isFirstStrongOfPattern(candles, n - 2)) {
     return { strong: candles[n - 2], entryBar: candles[n - 1] };
   }
-  // […, firstStrong, entryClosed, tip?]
   if (n >= 3 && isFirstStrongOfPattern(candles, n - 3)) {
     return { strong: candles[n - 3], entryBar: candles[n - 2] };
+  }
+  return null;
+}
+
+function h1Agrees(frames: Intra30Frames, m5Color: CandleColor): string | null {
+  const h1 = lastClosedBar(frames.bias ?? []);
+  if (!h1) return "Intra30: H1 candle chahiye";
+  const h1Color = candleColor(h1);
+  if (h1Color === "DOJI") return "Intra30: H1 doji — skip";
+  if (h1Color !== m5Color) {
+    return `Intra30: H1 ${h1Color} vs M5 ${m5Color} — same color chahiye`;
   }
   return null;
 }
@@ -137,9 +154,15 @@ export function diagnoseIntra30(
   if (!setup) {
     return {
       pass: false,
-      waitReason: `Intra30: pehli strong M5 (body≥${(STRONG_BODY_RATIO * 100).toFixed(0)}%, wick≤${(STRONG_MAX_WICK_RATIO * 100).toFixed(0)}%) + next candle · consecutive strong pe dubara nahi`,
+      waitReason: `Intra30: pehli strong M5 (body≥${(STRONG_BODY_RATIO * 100).toFixed(0)}%, wick≤${(STRONG_MAX_WICK_RATIO * 100).toFixed(0)}%) + next · H1 same color · SL $${INTRA30_SL_DISTANCE}`,
     };
   }
+  const color = candleColor(setup.strong);
+  if (color === "DOJI") {
+    return { pass: false, waitReason: "Intra30: strong doji — skip" };
+  }
+  const h1Block = h1Agrees(frames, color);
+  if (h1Block) return { pass: false, waitReason: h1Block };
   return { pass: true, waitReason: "" };
 }
 
@@ -153,6 +176,7 @@ export function generateIntra30Signal(
   const { strong, entryBar } = setup;
   const color: CandleColor = candleColor(strong);
   if (color === "DOJI") return null;
+  if (h1Agrees(frames, color)) return null;
 
   const direction: Intra30Direction = color === "GREEN" ? "BUY" : "SELL";
   const entry = entryBar.open;
@@ -175,9 +199,9 @@ export function generateIntra30Signal(
     strongBarTime: strong.time,
     time: entryBar.time || strong.time,
     reason: [
-      `Intra30 · pehli strong ${color} M5 → next candle ${direction} (pattern start)`,
-      `Entry @ next open ${entry.toFixed(2)} · TP1 $${INTRA30_TP_DISTANCE} (30pts) · TP2 $${INTRA30_TP2_DISTANCE} · SL $${INTRA30_SL_DISTANCE}`,
-      `Nayi pehli strong (pattern break ke baad) = naya signal · body ${bodyPct.toFixed(0)}% of range`,
+      `Intra30 · pehli strong ${color} M5 + H1 ${color} → next ${direction}`,
+      `Entry @ next open ${entry.toFixed(2)} · TP1 $${INTRA30_TP_DISTANCE} · TP2 $${INTRA30_TP2_DISTANCE} · SL $${INTRA30_SL_DISTANCE}`,
+      `Cooldown after resolve · opposite fade block · body ${bodyPct.toFixed(0)}% of range`,
     ],
   };
 }

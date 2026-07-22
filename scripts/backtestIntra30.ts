@@ -1,23 +1,23 @@
 /**
- * Intra30 Step-2 backtest — same live formula:
- *   pehli strong M5 (body≥85%, wick≤8%) → next bar open
- *   TP1 $3 / TP2 $6 / SL $3 · after TP1, weak candle → TP1_HIT
- *   Multi-open OK (dedupe strongBarTime)
+ * Intra30 Step-2 backtest — gated formula:
+ *   pehli strong M5 → next open · H1 same color
+ *   TP1 $3 / TP2 $6 / SL $5 · weak exit after TP1
+ *   post-resolve cooldown 5 bars · opposite block 6 bars
  *
  *   npx tsx scripts/backtestIntra30.ts
- *   npx tsx scripts/backtestIntra30.ts --file=C:\path\XAUUSD_M5.json
- *
- * Writes data/intra30-backtest.db + prints snapshot numbers for
- * src/intra30/backtestSnapshot.ts (Railway badge fallback).
  */
 import { existsSync, writeFileSync } from "node:fs";
 import { loadHistoricalFile, windowStartIndex } from "../src/backtest/loadData";
+import { framesAtIndex, precomputeHtfs } from "../src/backtest/frames";
 import {
   generateIntra30Signal,
   isWeakCandle,
   INTRA30_SL_DISTANCE,
   INTRA30_TP_DISTANCE,
   INTRA30_TP2_DISTANCE,
+  INTRA30_POST_RESOLVE_COOLDOWN_BARS,
+  INTRA30_OPPOSITE_BLOCK_BARS,
+  type Intra30Direction,
   type Intra30Signal,
 } from "../src/strategies/intra30Engine";
 import {
@@ -37,7 +37,7 @@ const OUT = "data/_intra30_strong_candle_backtest.json";
 const SPREAD = 0.25;
 const DAYS = 365;
 const ASSET: AssetId = "XAUUSD";
-const MAX_HOLD_BARS = 96; // 8h M5
+const MAX_HOLD_BARS = 96;
 
 function argValue(argv: string[], name: string): string | undefined {
   const hit = argv.find((a) => a.startsWith(`${name}=`));
@@ -47,21 +47,6 @@ function argValue(argv: string[], name: string): string | undefined {
 function applySpread(side: "BUY" | "SELL", open: number, spread: number): number {
   if (spread <= 0) return open;
   return side === "BUY" ? open + spread : open - spread;
-}
-
-/** Closed bars through strong + forming tip at entry bar open only. */
-function framesAtEntryTip(m5: Candle[], entryIdx: number) {
-  const tip = m5[entryIdx];
-  const closed = m5.slice(Math.max(0, entryIdx - 400), entryIdx);
-  const forming: Candle = {
-    time: tip.time,
-    open: tip.open,
-    high: tip.open,
-    low: tip.open,
-    close: tip.open,
-    volume: 0,
-  };
-  return { primary: [...closed, forming] };
 }
 
 type OpenTrade = {
@@ -103,6 +88,7 @@ function main() {
   const loaded = loadHistoricalFile(file);
   const candles = loaded.candles;
   const winStart = windowStartIndex(candles, DAYS);
+  const htfs = precomputeHtfs(candles);
 
   const db = getBacktestIntra30Db(true);
   const usedStrong = new Set<number>();
@@ -110,9 +96,10 @@ function main() {
 
   let signals = 0;
   let unresolved = 0;
+  let lastResolveBar = -10_000;
+  let lastResolveSide: Intra30Direction | null = null;
 
   for (let i = Math.max(winStart, 220); i < candles.length - 1; i++) {
-    // Resolve existing opens on this closed bar (and prior for weak exit).
     const bar = candles[i];
     const prior = i > 0 ? candles[i - 1] : null;
     const still: OpenTrade[] = [];
@@ -127,7 +114,6 @@ function main() {
         outcome = "TP1_HIT";
       }
       if (!outcome && i - t.entryIdx >= MAX_HOLD_BARS) {
-        // Time stop as TP1 if already banked, else invalidate-ish → count as SL for R
         outcome = t.tp1Reached ? "TP1_HIT" : "SL_HIT";
       }
 
@@ -139,6 +125,8 @@ function main() {
           intra30RealizedR(outcome === "SL_HIT" ? "SL_HIT" : outcome),
           bar.time,
         );
+        lastResolveBar = i;
+        lastResolveSide = t.sig.direction;
       } else {
         still.push(t);
       }
@@ -146,15 +134,41 @@ function main() {
     opens.length = 0;
     opens.push(...still);
 
-    // New signal: tip = next bar after current closed bar i
     const entryIdx = i + 1;
     if (entryIdx >= candles.length) continue;
-    const frames = framesAtEntryTip(candles, entryIdx);
+
+    const base = framesAtIndex(candles, i, "scalping", htfs);
+    if (!base) continue;
+    const tip = candles[entryIdx];
+    const forming: Candle = {
+      time: tip.time,
+      open: tip.open,
+      high: tip.open,
+      low: tip.open,
+      close: tip.open,
+      volume: 0,
+    };
+    const frames = {
+      primary: [...base.primary, forming],
+      confirmation: base.confirmation,
+      bias: base.bias,
+      daily: base.daily,
+    };
+
     const sig = generateIntra30Signal(ASSET, frames);
     if (!sig) continue;
     if (usedStrong.has(sig.strongBarTime)) continue;
-    // Only accept if the strong bar is the bar we just closed (i)
     if (sig.strongBarTime !== candles[i].time) continue;
+
+    const barsSinceResolve = i - lastResolveBar;
+    if (barsSinceResolve < INTRA30_POST_RESOLVE_COOLDOWN_BARS) continue;
+    if (
+      lastResolveSide &&
+      sig.direction !== lastResolveSide &&
+      barsSinceResolve < INTRA30_OPPOSITE_BLOCK_BARS
+    ) {
+      continue;
+    }
 
     usedStrong.add(sig.strongBarTime);
     const entry = applySpread(sig.direction, candles[entryIdx].open, SPREAD);
@@ -181,7 +195,6 @@ function main() {
     };
     const row = signalToRow(adjusted, ASSET, "backtest");
     insertIntra30Row(db, row);
-    // Mark executed at entry open
     db.prepare(
       `UPDATE intra30_signals SET executed_at = ?, outcome = 'OPEN' WHERE id = ?`,
     ).run(candles[entryIdx].time, row.id);
@@ -199,9 +212,14 @@ function main() {
     signals++;
   }
 
-  // Force-close leftovers at end
   for (const t of opens) {
-    updateIntra30Outcome(db, t.rowId, "SL_HIT", -1, candles[candles.length - 1].time);
+    updateIntra30Outcome(
+      db,
+      t.rowId,
+      "SL_HIT",
+      -1,
+      candles[candles.length - 1].time,
+    );
     unresolved++;
   }
 
@@ -209,7 +227,7 @@ function main() {
   const validated = isIntra30BacktestValidated(summary);
 
   const payload = {
-    strategy: "intra30_strong_candle_v1",
+    strategy: "intra30_strong_h1_sl5_cooldown_v2",
     file,
     days: DAYS,
     spread: SPREAD,
@@ -222,9 +240,12 @@ function main() {
       bodyMinPct: 85,
       wickMaxPct: 8,
       firstStrongOfPattern: true,
+      h1SameColor: true,
       tp1: INTRA30_TP_DISTANCE,
       tp2: INTRA30_TP2_DISTANCE,
       sl: INTRA30_SL_DISTANCE,
+      postResolveCooldownBars: INTRA30_POST_RESOLVE_COOLDOWN_BARS,
+      oppositeBlockBars: INTRA30_OPPOSITE_BLOCK_BARS,
       weakExitAfterTp1: true,
       multiOpen: true,
     },
@@ -241,7 +262,7 @@ function main() {
       : `${summary.avgR >= 0 ? "+" : ""}${summary.avgR.toFixed(3)}`;
 
   console.log(`
-======== INTRA30 STRONG-CANDLE BACKTEST (365d) ========
+======== INTRA30 v2 (H1 + SL$5 + cooldown) 365d ========
 Signals fired     : ${signals}
 Resolved          : ${summary.resolved}  (W ${summary.wins} / L ${summary.losses})
 TP1-win%          : ${wr}
@@ -249,9 +270,10 @@ Avg R             : ${ar}
 Max DD (R)        : ${summary.maxDrawdownR ?? "n/a"}
 Validated badge   : ${validated ? "YES (≥58% / n≥50 / avgR>0)" : "NO"}
 Wrote             : ${OUT}
+vs v1 (ungated)   : 3133 trades · 38.3% · avgR -0.084
 `);
 
-  console.log("Snapshot paste → src/intra30/backtestSnapshot.ts:");
+  console.log("Snapshot:");
   console.log(
     JSON.stringify(
       {

@@ -12,6 +12,12 @@ import { fetchTradingViewQuoteCached } from "../src/services/liveQuotes";
 import {
   generateIntra30Signal,
   isWeakCandle,
+  INTRA30_POST_RESOLVE_COOLDOWN_MS,
+  INTRA30_OPPOSITE_BLOCK_MS,
+  INTRA30_SL_DISTANCE,
+  INTRA30_TP_DISTANCE,
+  INTRA30_TP2_DISTANCE,
+  type Intra30Direction,
 } from "../src/strategies/intra30Engine";
 import { dispatchTradeAlert } from "../src/services/notify";
 import {
@@ -46,9 +52,33 @@ let lastAlertAt = 0;
 let openTrades: Intra30Row[] = [];
 /** Per-trade TP1 reached flags (by row id). */
 const tp1ReachedById = new Map<string, boolean>();
+/** Last resolved trade — drives cooldown / opposite block. */
+let lastResolveAt = 0;
+let lastResolveSide: Intra30Direction | null = null;
 
 function log(...args: unknown[]) {
   console.log(`[intra30 ${new Date().toLocaleTimeString()}]`, ...args);
+}
+
+function noteResolve(side: Intra30Direction): void {
+  lastResolveAt = Date.now();
+  lastResolveSide = side;
+}
+
+function blockedByResolveCooldown(side: Intra30Direction): string | null {
+  if (!lastResolveAt) return null;
+  const age = Date.now() - lastResolveAt;
+  if (age < INTRA30_POST_RESOLVE_COOLDOWN_MS) {
+    return `post-resolve cooldown ${Math.ceil((INTRA30_POST_RESOLVE_COOLDOWN_MS - age) / 60000)}m`;
+  }
+  if (
+    lastResolveSide &&
+    side !== lastResolveSide &&
+    age < INTRA30_OPPOSITE_BLOCK_MS
+  ) {
+    return `opposite fade block after ${lastResolveSide}`;
+  }
+  return null;
 }
 
 function priceOutcome(
@@ -132,6 +162,7 @@ function manageOpenTrade(
         Date.now(),
       );
       log("resolved", row.direction, outcome, "@", row.entry);
+      noteResolve(row.direction);
       tp1ReachedById.delete(row.id);
       return null;
     }
@@ -185,6 +216,11 @@ async function tick(): Promise<void> {
   }
   if (!sig) return;
   if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
+  const resolveBlock = blockedByResolveCooldown(sig.direction);
+  if (resolveBlock) {
+    log("skip", resolveBlock);
+    return;
+  }
   if (hasIntra30StrongBar(db, sig.strongBarTime)) return;
   if (Math.abs(sig.entry - livePx) > MAX_ENTRY_LIVE_GAP) {
     log(
@@ -218,8 +254,8 @@ async function tick(): Promise<void> {
   const openN = openTrades.length;
   const body = [
     `${sig.direction} @ ${sig.entry.toFixed(d)}`,
-    `SL ${sig.sl.toFixed(d)} · TP1 ${sig.tp1.toFixed(d)} (+$3) · TP2 ${sig.tp2.toFixed(d)} (+$6)`,
-    `Pehli strong → next bar · open trades now: ${openN}`,
+    `SL ${sig.sl.toFixed(d)} (−$${INTRA30_SL_DISTANCE}) · TP1 ${sig.tp1.toFixed(d)} (+$${INTRA30_TP_DISTANCE}) · TP2 ${sig.tp2.toFixed(d)} (+$${INTRA30_TP2_DISTANCE})`,
+    `H1 agree · cooldown after resolve · open trades: ${openN}`,
     ...sig.reason.slice(0, 3),
   ].join("\n");
 
@@ -248,7 +284,7 @@ export function startIntra30Worker(): void {
   }
   workerRunning = true;
   log(
-    "started — Intra30 multi-signal (pehli strong → next bar; new pattern while OPEN OK)",
+    "started — Intra30 (pehli strong + H1 · SL $5 · resolve cooldown / opposite block)",
   );
   void (async () => {
     for (;;) {

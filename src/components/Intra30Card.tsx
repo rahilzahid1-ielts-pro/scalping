@@ -181,8 +181,8 @@ export function Intra30Card() {
       <p className="action-now-label">INTRA30 · Gold</p>
       <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
-        Pehli strong candle (no/tiny wick) → next M5 trade · nayi pattern =
-        naya signal (multi OK) · TP1 $3 · TP2 $6 until weak · SL $3
+        Pehli strong + H1 same color → next M5 · TP1 $3 · TP2 $6 · SL $5 ·
+        resolve cooldown / opposite block · multi OK
       </p>
 
       <ExitAdvisoryBanner advisory={advisory} onDismiss={() => setAdvisory(null)} />
@@ -241,7 +241,7 @@ export function Intra30Card() {
               <strong>{forming.entry.toFixed(2)}</strong>
             </div>
             <div>
-              <span>SL (−$3)</span>
+              <span>SL (−$5)</span>
               <strong>{forming.sl.toFixed(2)}</strong>
             </div>
             <div>
@@ -268,7 +268,7 @@ export function Intra30Card() {
               <strong>{shown.entry.toFixed(2)}</strong>
             </div>
             <div>
-              <span>SL (−$3)</span>
+              <span>SL (−$5)</span>
               <strong>{shown.sl.toFixed(2)}</strong>
             </div>
             <div>
