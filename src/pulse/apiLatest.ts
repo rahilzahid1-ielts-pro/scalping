@@ -1,5 +1,8 @@
 import { fetchMultiTimeframe } from "../services/marketData";
-import { generatePulseSignal } from "../strategies/pulseEngine";
+import {
+  diagnosePulseGate,
+  generatePulseSignal,
+} from "../strategies/pulseEngine";
 import {
   getLivePulseDb,
   getOpenOrLatestPulse,
@@ -95,8 +98,7 @@ export async function buildPulseLatestPayload() {
         dailyBias: sig.dailyBias,
       };
     } else {
-      waitReason =
-        "QS Pro: SMC BUY/SELL + fractal breakout agree chahiye (lean gate)";
+      waitReason = diagnosePulseGate(frames, "XAUUSD", "scalping").waitReason;
     }
   } catch (e) {
     waitReason = e instanceof Error ? e.message : "market fetch failed";

@@ -25,6 +25,10 @@ import {
   pendingEntryState,
 } from "../src/history/entryTouch";
 import { entryTolerance } from "../src/utils/tradeSafety";
+import {
+  noteLeanDeskLock,
+  shouldSkipCorrelatedLeanLock,
+} from "../src/utils/leanDeskCooldown";
 
 const TICK_MS = Number(process.env.PULSE_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
@@ -160,6 +164,12 @@ async function tick(): Promise<void> {
   if (!sig) return;
   if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
   if (
+    shouldSkipCorrelatedLeanLock("qs_pro", sig.direction, sig.entry)
+  ) {
+    log("skip correlated lean (Fractal already locked nearby)");
+    return;
+  }
+  if (
     !isFreshPendingEntryViable(
       sig.direction,
       sig.entry,
@@ -176,6 +186,7 @@ async function tick(): Promise<void> {
   insertPulseRow(db, row);
   openTrade = row;
   lastAlertAt = Date.now();
+  noteLeanDeskLock("qs_pro", sig.direction, sig.entry);
 
   const body = [
     `${sig.direction} QS PRO @ ${sig.entry.toFixed(d)}`,

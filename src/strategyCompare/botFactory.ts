@@ -25,6 +25,10 @@ import {
   pendingEntryState,
 } from "../history/entryTouch";
 import { entryTolerance } from "../utils/tradeSafety";
+import {
+  noteLeanDeskLock,
+  shouldSkipCorrelatedLeanLock,
+} from "../utils/leanDeskCooldown";
 
 const ASSET = "XAUUSD" as const;
 const COOLDOWN_MS = 60 * 60 * 1000;
@@ -140,6 +144,13 @@ export function createCompareBot(cfg: CompareBotConfig) {
     if (!sig) return;
     if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
     if (
+      cfg.strategy === "fractal" &&
+      shouldSkipCorrelatedLeanLock("fractal", sig.direction, sig.entry)
+    ) {
+      log("skip correlated lean (QS Pro already locked nearby)");
+      return;
+    }
+    if (
       !isFreshPendingEntryViable(
         sig.direction,
         sig.entry,
@@ -167,6 +178,9 @@ export function createCompareBot(cfg: CompareBotConfig) {
     insertStrategyRow(db, row);
     openTrade = row;
     lastAlertAt = Date.now();
+    if (cfg.strategy === "fractal") {
+      noteLeanDeskLock("fractal", sig.direction, sig.entry);
+    }
 
     const body = [
       `${sig.direction} @ ${sig.entry.toFixed(d)}`,

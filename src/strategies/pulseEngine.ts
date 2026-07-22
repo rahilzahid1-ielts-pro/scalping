@@ -3,7 +3,9 @@
  *
  * Formula (validated pieces):
  * - SMC generateSignal on scalping TFs (frequency like Quick Scalp)
- * - Fractal direction MUST agree with SMC side (best gate-lift; no quality stack)
+ * - Fractal direction MUST agree with SMC side
+ * - Daily bias MUST agree (same as Quick Scalp — blocks counter-daily chase)
+ * - No spike-top / dump chase (2h extension filter)
  * - Fast TP1 @ 0.85R (BLITZ bank) — exit quick
  *
  * Isolated from alertBot / Pro / Quick Scalp locks.
@@ -11,6 +13,7 @@
 import type { AssetId, Candle, TradeMode } from "../types";
 import { generateFractalSignal } from "./archived/fractalSignal";
 import { generateSignal } from "./signalEngine";
+import { leanDeskEntryBlock } from "../utils/entryFilters";
 
 const RR_TP1 = 0.85;
 const RR_TP2 = 1.5;
@@ -39,18 +42,50 @@ export interface PulseFrames {
   daily: Candle[];
 }
 
+export function diagnosePulseGate(
+  frames: PulseFrames,
+  assetId: AssetId = "XAUUSD",
+  mode: TradeMode = "scalping",
+): { pass: boolean; waitReason: string } {
+  const fractal = generateFractalSignal({ candles: frames.primary });
+  if (!fractal) {
+    return { pass: false, waitReason: "QS Pro: fractal breakout nahi" };
+  }
+  const smc = generateSignal(assetId, mode, frames);
+  if (smc.side !== "BUY" && smc.side !== "SELL") {
+    return { pass: false, waitReason: "QS Pro: SMC WAIT — no BUY/SELL" };
+  }
+  if (smc.side !== fractal.direction) {
+    return {
+      pass: false,
+      waitReason: "QS Pro: SMC BUY/SELL + fractal breakout agree chahiye",
+    };
+  }
+  if (!smc.levels) {
+    return { pass: false, waitReason: "QS Pro: SMC levels missing" };
+  }
+  const block = leanDeskEntryBlock({
+    side: smc.side,
+    dailyBias: smc.dailyBias.bias,
+    primary: frames.primary,
+  });
+  if (block) return { pass: false, waitReason: `QS Pro: ${block}` };
+  return { pass: true, waitReason: "" };
+}
+
 export function generatePulseSignal(
   frames: PulseFrames,
   assetId: AssetId = "XAUUSD",
   mode: TradeMode = "scalping",
 ): PulseSignal | null {
-  const fractal = generateFractalSignal({ candles: frames.primary });
-  if (!fractal) return null;
+  const gate = diagnosePulseGate(frames, assetId, mode);
+  if (!gate.pass) return null;
 
+  const fractal = generateFractalSignal({ candles: frames.primary });
   const smc = generateSignal(assetId, mode, frames);
-  if (smc.side !== "BUY" && smc.side !== "SELL") return null;
-  if (smc.side !== fractal.direction) return null;
-  if (!smc.levels) return null;
+  if (!fractal || (smc.side !== "BUY" && smc.side !== "SELL") || !smc.levels) {
+    return null;
+  }
 
   const entry = smc.levels.entry;
   const sl = smc.levels.stopLoss;
@@ -75,7 +110,7 @@ export function generatePulseSignal(
     time: frames.primary[frames.primary.length - 1]?.time ?? smc.timestamp,
     reason: [
       `QS Pro · SMC ${smc.side} + fractal agree · conf ${smc.confidence}%`,
-      `Lean gate (no quality stack) · regime ${regime || "—"} · daily ${smc.dailyBias.bias}`,
+      `Daily ${smc.dailyBias.bias} agree · no 2h spike-chase · regime ${regime || "—"}`,
       `Fast TP1 @ ${RR_TP1}R — bank quick like BLITZ`,
       ...fractal.reason.slice(0, 2),
       ...smc.confluence.slice(0, 3),

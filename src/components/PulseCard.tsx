@@ -184,8 +184,9 @@ export function PulseCard() {
       <p className="action-now-label">QS PRO · PULSE · Gold</p>
       <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
-        Best mix: SMC scalping + fractal agree (lean) · TP1 @ 0.85R · zyada setups,
-        accuracy filter soft nahi — sirf direction agree
+        Best mix: SMC scalping + fractal agree · daily agree · no spike-chase ·
+        TP1 @ 0.85R — zyada setups with soft accuracy filters removed for counter-daily
+        and 2h extension only
       </p>
 
       <ExitAdvisoryBanner advisory={advisory} onDismiss={() => setAdvisory(null)} />

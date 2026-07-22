@@ -13,7 +13,7 @@ import {
 } from "./backtestSnapshot";
 import { fetchMultiTimeframe } from "../services/marketData";
 import { diagnoseSmcGateBlock } from "../strategies/smcGateStatus";
-import { generateFractalLiveSignal } from "../strategies/fractalLive";
+import { generateFractalLiveSignal, diagnoseFractalLiveGate } from "../strategies/fractalLive";
 import { generateCipherBLiveSignal } from "../strategies/cipherBLive";
 import {
   selectUiLatest,
@@ -93,7 +93,6 @@ export async function buildLatestPayload(strategy: CompareStrategy) {
     const packed = { ...frames, assetId: "XAUUSD" as const, mode: "scalping" as const };
 
     if (strategy === "fractal") {
-      // Lean fractal: direction agree only — do not block on SMC quality stack.
       const sig = generateFractalLiveSignal(packed);
       if (sig) {
         live = {
@@ -104,7 +103,7 @@ export async function buildLatestPayload(strategy: CompareStrategy) {
           tp2: sig.tp2,
         };
       } else {
-        waitReason = "Fractal breakout SMC side se agree nahi (lean gate)";
+        waitReason = diagnoseFractalLiveGate(packed).waitReason;
       }
     } else {
       const diag = diagnoseSmcGateBlock(frames, { mode: "scalping", minConf: 75 });

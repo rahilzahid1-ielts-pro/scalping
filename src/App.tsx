@@ -458,7 +458,7 @@ export default function App() {
           ) : deskView === "fractal" ? (
             <StrategyCompareCard
               title="TTRADES FRACTAL · Gold"
-              subtitle="Fractal breakout must agree with SMC side · lean gate · TP1 @ 0.9R"
+              subtitle="Fractal + SMC agree · daily agree · no 2h spike-chase · TP1 @ 0.9R"
               apiPath="/api/fractal/latest"
               cacheKey="fractal"
               moduleLabel="TTrades Fractal"

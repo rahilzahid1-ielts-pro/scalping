@@ -25,6 +25,8 @@ import {
 } from "../src/services/tradePlan";
 import { buildSessionExtras, canAutoLockPlan } from "../src/utils/sessionPlan";
 import { isTooLateToEnter } from "../src/utils/tradeSafety";
+import { isExtendedChase } from "../src/utils/entryFilters";
+import type { Candle } from "../src/types";
 import { logSignalFromLive } from "../src/calibration";
 import {
   resolveOpenSignalsForSymbol,
@@ -89,6 +91,7 @@ function lockPlan(
   live: number,
   htfRegimes: (RegimeTag | null | undefined)[],
   trendConfirmed = false,
+  primaryCandles: Candle[] = [],
 ) {
   const key = planKey(assetId, mode);
   let current = state.plans[key] ?? null;
@@ -171,6 +174,12 @@ function lockPlan(
   }
 
   const currentForLock = state.plans[key] ?? null;
+  const sideOk = signal.side === "BUY" || signal.side === "SELL";
+  const chaseBlocked =
+    mode === "scalping" &&
+    sideOk &&
+    primaryCandles.length > 0 &&
+    isExtendedChase(signal.side, primaryCandles);
   if (
     canAutoLockPlan(mode, signal, currentForLock, assetId) &&
     signal.levels &&
@@ -179,7 +188,8 @@ function lockPlan(
       live,
       signal.levels.entry,
       signal.levels.stopLoss,
-    )
+    ) &&
+    !chaseBlocked
   ) {
     const extras = buildSessionExtras(
       assetId,
@@ -270,6 +280,7 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
     live,
     htfRegimes,
     trendConfirmedNow,
+    frames.primary,
   );
 
   // Daemon plan missing after redeploy but History still has OPEN → resume
