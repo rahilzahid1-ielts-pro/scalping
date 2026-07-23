@@ -72,7 +72,7 @@ export async function syncDemoFromHistory(opts?: {
         note: `Auto ${t.moduleLabel} EXECUTED`,
       });
       if (!take.ok) {
-        if (!/pehle se|Max 3|Max 6|Duplicate/i.test(take.error)) errors.push(take.error);
+        if (!/pehle se|Duplicate/i.test(take.error)) errors.push(take.error);
         skipped += 1;
         continue;
       }

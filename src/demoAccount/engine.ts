@@ -1,11 +1,13 @@
 /**
  * Demo account engine — open / close / price-resolve / history sync.
- * Risk = balance × riskPct%. P&L = riskUsd × realizedR (added to balance on close).
+ * Risk sized from *starting* balance × riskPct (not current balance).
+ * Open trades / low balance never block new setups — test every signal.
  */
 import {
   applyPnlToBalance,
   closeDemoPositionInDb,
   DEMO_ACCOUNT_ID,
+  DEMO_STARTING_BALANCE,
   ensureDemoAccount,
   findDemoBySourceId,
   insertDemoPosition,
@@ -24,7 +26,7 @@ export type TakeTradeInput = {
   module: string;
   sourceId?: string | null;
   note?: string;
-  /** Force risk $ (otherwise riskPct of balance). */
+  /** Force risk $ (otherwise riskPct of starting balance). */
   riskUsd?: number;
 };
 
@@ -63,9 +65,6 @@ export function rFromLevels(
 
 export function takeDemoTrade(input: TakeTradeInput): TakeTradeResult {
   const acct = ensureDemoAccount();
-  if (acct.balance <= 0) {
-    return { ok: false, error: "Demo balance zero — reset account" };
-  }
 
   const risk = riskDistance(input.entry, input.sl);
   if (!(risk > 0)) {
@@ -82,24 +81,16 @@ export function takeDemoTrade(input: TakeTradeInput): TakeTradeResult {
     }
   }
 
-  const opens = listOpenDemoPositions();
-  if (opens.length >= 6) {
-    return {
-      ok: false,
-      error: "Max 6 OPEN demo trades — pehle close / resolve hone do",
-    };
-  }
-
+  // Always size from starting bank ($2000) — never gate on live balance or open count.
+  const bank =
+    acct.startingBalance > 0 ? acct.startingBalance : DEMO_STARTING_BALANCE;
   const riskUsd =
     input.riskUsd != null && input.riskUsd > 0
       ? Math.round(input.riskUsd * 100) / 100
-      : Math.round(((acct.balance * acct.riskPct) / 100) * 100) / 100;
+      : Math.round(((bank * acct.riskPct) / 100) * 100) / 100;
 
-  if (riskUsd <= 0) {
+  if (!(riskUsd > 0)) {
     return { ok: false, error: "Risk $ too small" };
-  }
-  if (riskUsd > acct.balance) {
-    return { ok: false, error: "Risk budget balance se zyada hai" };
   }
 
   const now = Date.now();
@@ -122,7 +113,7 @@ export function takeDemoTrade(input: TakeTradeInput): TakeTradeResult {
     closedAt: null,
     note:
       input.note ||
-      `${input.side} @ ${input.entry} · risk $${riskUsd} (${acct.riskPct}% of $${acct.balance})`,
+      `${input.side} @ ${input.entry} · risk $${riskUsd} (${acct.riskPct}% of start $${bank})`,
   };
 
   try {

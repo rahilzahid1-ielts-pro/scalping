@@ -125,7 +125,8 @@ export function DemoAccountCard() {
           <h2>Demo Account</h2>
           <p className="demo-sub">
             Auto trades (default ON): Intraday · Intra30 · Cipher · QS Pro · Quick Scalp ·
-            Fractal. Main Scalp kabhi nahi. Risk balance se, P&amp;L add/minus.
+            Fractal. Main Scalp kabhi nahi. Har naya setup lete hain — balance / running
+            trades se block nahi. P&amp;L track hota rehta hai.
           </p>
         </div>
         <button
@@ -189,7 +190,7 @@ export function DemoAccountCard() {
                   void post("/api/demo/settings", { autoFollow: e.target.checked })
                 }
               />
-              Auto-follow ON — Intraday · Intra30 · Cipher · QS Pro · Quick Scalp · Fractal (Scalp nahi)
+            Auto-follow ON — Intraday · Intra30 · Cipher · QS Pro · Quick Scalp · Fractal (Scalp nahi). Har setup lo — balance / open count block nahi.
             </label>
             <label className="demo-risk">
               Risk %
