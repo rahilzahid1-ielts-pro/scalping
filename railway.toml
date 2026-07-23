@@ -14,9 +14,9 @@ restartPolicyMaxRetries = 10
 #   ENABLE_ALERT_WORKER=1
 # prodServer auto-starts the alert worker and pushes Telegram notifications.
 #
-# Intra30: KEEP ENABLE_INTRA30_WORKER=0 (best pack still measurement-lean;
-# badge gate ≥55%. Explicit =1 only after you accept live risk).
-# (Default in code is also OFF — requires explicit =1 to start.)
+# Intra30: auto-starts on Railway (same as QS Pro). Set ENABLE_INTRA30_WORKER=0
+# to force OFF. Best pack gates remain (strict M5 + H1/Daily forming + no chase).
+# (Default in code: auto/ON on Railway — was OFF and starved live locks.)
 #
 # IMPORTANT: Railway Volume MUST be mounted at /app/data
 # (created as scalping-volume) so signals.db + push-subscriptions survive redeploys.

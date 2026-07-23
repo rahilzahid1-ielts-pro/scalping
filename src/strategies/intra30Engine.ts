@@ -4,7 +4,7 @@
  *   H1 + Daily same color · 2h chase block · SL $5 / TP1 $3 / TP2 $6
  *   Live: 1 OPEN max · post-resolve cooldown · opposite fade block
  *
- * Worker default OFF (ENABLE_INTRA30_WORKER=1 to enable).
+ * Worker default ON on Railway (ENABLE_INTRA30_WORKER=0 to disable).
  */
 import type { AssetId, Candle } from "../types";
 import {
@@ -141,7 +141,11 @@ function htfAgrees(
   if (h1Color !== m5Color) {
     return `Intra30: H1 ${h1Color} vs M5 ${m5Color} — same color chahiye`;
   }
-  const daily = lastClosedBar(frames.daily ?? []);
+  const dailyBars = frames.daily ?? [];
+  // Forming daily (last bar) tracks *today's* color. lastClosed stayed on yesterday
+  // and blocked all M5 sells while Daily GREEN — main reason live went quiet.
+  const daily =
+    dailyBars.length > 0 ? dailyBars[dailyBars.length - 1] : null;
   if (!daily) return "Intra30: Daily candle chahiye";
   const dColor = candleColor(daily);
   if (dColor === "DOJI") return "Intra30: Daily doji — skip";

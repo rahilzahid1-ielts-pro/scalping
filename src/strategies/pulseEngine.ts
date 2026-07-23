@@ -42,27 +42,45 @@ export interface PulseFrames {
   daily: Candle[];
 }
 
+/** Min SMC confidence for QS Pro when fractal breakout is quiet. */
+const QS_PRO_SMC_FALLBACK_CONF = 75;
+
 export function diagnosePulseGate(
   frames: PulseFrames,
   assetId: AssetId = "XAUUSD",
   mode: TradeMode = "scalping",
 ): { pass: boolean; waitReason: string } {
-  const fractal = generateFractalSignal({ candles: frames.primary });
-  if (!fractal) {
-    return { pass: false, waitReason: "QS Pro: fractal breakout nahi" };
-  }
   const smc = generateSignal(assetId, mode, frames);
   if (smc.side !== "BUY" && smc.side !== "SELL") {
     return { pass: false, waitReason: "QS Pro: SMC WAIT — no BUY/SELL" };
   }
-  if (smc.side !== fractal.direction) {
-    return {
-      pass: false,
-      waitReason: "QS Pro: SMC BUY/SELL + fractal breakout agree chahiye",
-    };
-  }
   if (!smc.levels) {
     return { pass: false, waitReason: "QS Pro: SMC levels missing" };
+  }
+
+  const fractal = generateFractalSignal({ candles: frames.primary });
+  if (fractal) {
+    if (smc.side !== fractal.direction) {
+      return {
+        pass: false,
+        waitReason: "QS Pro: SMC BUY/SELL + fractal breakout agree chahiye",
+      };
+    }
+    const block = leanDeskEntryBlock({
+      side: smc.side,
+      dailyBias: smc.dailyBias.bias,
+      primary: frames.primary,
+    });
+    if (block) return { pass: false, waitReason: `QS Pro: ${block}` };
+    return { pass: true, waitReason: "" };
+  }
+
+  // Fractal quiet — still take strong SMC leans (was stalling all day on "fractal breakout nahi").
+  if (smc.confidence < QS_PRO_SMC_FALLBACK_CONF) {
+    return {
+      pass: false,
+      waitReason: `QS Pro: fractal nahi · SMC conf ${smc.confidence}% < ${QS_PRO_SMC_FALLBACK_CONF}%`,
+    };
   }
   const block = leanDeskEntryBlock({
     side: smc.side,
@@ -83,9 +101,10 @@ export function generatePulseSignal(
 
   const fractal = generateFractalSignal({ candles: frames.primary });
   const smc = generateSignal(assetId, mode, frames);
-  if (!fractal || (smc.side !== "BUY" && smc.side !== "SELL") || !smc.levels) {
+  if ((smc.side !== "BUY" && smc.side !== "SELL") || !smc.levels) {
     return null;
   }
+  if (fractal && smc.side !== fractal.direction) return null;
 
   const entry = smc.levels.entry;
   const sl = smc.levels.stopLoss;
@@ -95,6 +114,9 @@ export function generatePulseSignal(
   const tp1 = smc.side === "BUY" ? entry + risk * RR_TP1 : entry - risk * RR_TP1;
   const tp2 = smc.side === "BUY" ? entry + risk * RR_TP2 : entry - risk * RR_TP2;
   const regime = smc.diagnostics.regime ?? "";
+  const via = fractal
+    ? `Fractal+SMC agree`
+    : `SMC-strong fallback (conf ${smc.confidence}% · no fractal)`;
 
   return {
     strategy: "pulse",
@@ -109,10 +131,10 @@ export function generatePulseSignal(
     dailyBias: smc.dailyBias.bias,
     time: frames.primary[frames.primary.length - 1]?.time ?? smc.timestamp,
     reason: [
-      `QS Pro · SMC ${smc.side} + fractal agree · conf ${smc.confidence}%`,
+      `QS Pro · ${via}`,
       `Daily ${smc.dailyBias.bias} agree · no 2h spike-chase · regime ${regime || "—"}`,
       `Fast TP1 @ ${RR_TP1}R — bank quick like BLITZ`,
-      ...fractal.reason.slice(0, 2),
+      ...(fractal ? fractal.reason.slice(0, 2) : []),
       ...smc.confluence.slice(0, 3),
     ],
   };

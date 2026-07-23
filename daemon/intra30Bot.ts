@@ -4,7 +4,7 @@
  * TP1 $3 / TP2 $6 / SL $3; TP2 runner exits on weak candle.
  *
  * Local:  npm run intra30
- * Prod:   ENABLE_INTRA30_WORKER=1 required (default OFF).
+ * Prod:   ON by default on Railway (ENABLE_INTRA30_WORKER=0 to disable).
  */
 import { ASSETS } from "../src/config/assets";
 import { fetchMultiTimeframe } from "../src/services/marketData";
@@ -288,7 +288,7 @@ export function startIntra30Worker(): void {
   }
   workerRunning = true;
   log(
-    "started — Intra30 best pack (strict M5 + H1/Daily · no chase · 1 OPEN · SL $5) · worker needs ENABLE_INTRA30_WORKER=1",
+    "started — Intra30 best pack (strict M5 + H1/Daily forming · no chase · 1 OPEN · SL $5)",
   );
   void (async () => {
     for (;;) {
@@ -303,10 +303,13 @@ export function startIntra30Worker(): void {
 }
 
 export function shouldAutoStartIntra30Worker(): boolean {
-  const flag = String(process.env.ENABLE_INTRA30_WORKER ?? "0")
+  const flag = String(process.env.ENABLE_INTRA30_WORKER ?? "auto")
     .trim()
     .toLowerCase();
-  return flag === "1" || flag === "true" || flag === "on";
+  if (flag === "0" || flag === "false" || flag === "off") return false;
+  if (flag === "1" || flag === "true" || flag === "on") return true;
+  // Railway / prod: ON by default (set =0 to disable).
+  return Boolean(process.env.RAILWAY_ENVIRONMENT);
 }
 
 async function main() {

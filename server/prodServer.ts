@@ -594,7 +594,7 @@ server.listen(PORT, "0.0.0.0", () => {
         startIntra30Worker();
       } else {
         console.log(
-          "[prodServer] Intra30 worker OFF — set ENABLE_INTRA30_WORKER=1 to enable",
+          "[prodServer] Intra30 worker OFF — set ENABLE_INTRA30_WORKER=1 (or unset =0)",
         );
       }
     },

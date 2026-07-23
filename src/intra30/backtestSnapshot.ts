@@ -19,7 +19,7 @@ export const INTRA30_BACKTEST_SNAPSHOT = {
     runAt: "2026-07-22",
     rules:
       "strict M5 body≥90% wick≤5% + H1/Daily same + no 2h chase + 1 OPEN; TP1$3 TP2$6 SL$5; cooldown 5 / opposite 6",
-    workerDefault: "OFF (ENABLE_INTRA30_WORKER=1 to enable)",
+    workerDefault: "ON on Railway (ENABLE_INTRA30_WORKER=0 to disable)",
     validateMinWr: 55,
   },
 } as const;

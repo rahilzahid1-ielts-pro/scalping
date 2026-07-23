@@ -323,7 +323,8 @@ export function generateSignal(
 
   let side: Side = "WAIT";
   const edge = Math.abs(bullPts - bearPts);
-  const minEdge = mode === "scalping" ? 18 : 22;
+  // Same edge for scalp + intraday so clear trends lock on 15m (was 22 → often WAIT while scalp fired).
+  const minEdge = 18;
 
   if (bullPts > bearPts + minEdge && htfAlignedBull && bullPts >= 45) side = "BUY";
   else if (bearPts > bullPts + minEdge && htfAlignedBear && bearPts >= 45) side = "SELL";
