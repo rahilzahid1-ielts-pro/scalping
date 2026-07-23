@@ -195,6 +195,8 @@ function calibrationApiPlugin(): Plugin {
               const { buildHistoryPayload } = await import("./src/history/apiHistory");
               const payload = await buildHistoryPayload({
                 date: u.searchParams.get("date"),
+                from: u.searchParams.get("from"),
+                to: u.searchParams.get("to"),
                 module: u.searchParams.get("module"),
               });
               res.setHeader("Content-Type", "application/json");

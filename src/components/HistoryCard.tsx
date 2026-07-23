@@ -26,6 +26,10 @@ interface HistoryTrade {
   outcome: string;
   outcomeLabel: string;
   realizedR: number | null;
+  slMoney: number;
+  tp1Money: number;
+  tp2Money: number | null;
+  pnlMoney: number | null;
   at: number;
   atKarachi: string;
   lockedAt: number;
@@ -54,6 +58,8 @@ interface ModuleStats {
 interface HistoryPayload {
   ok: boolean;
   date: string;
+  from?: string;
+  to?: string;
   timezone: string;
   moduleFilter: string;
   trades: HistoryTrade[];
@@ -73,6 +79,18 @@ function karachiTodayInput(): string {
 
 function px(n: number): string {
   return Number.isFinite(n) ? n.toFixed(2) : "—";
+}
+
+function moneyCell(n: number | null | undefined, signed = true): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  if (!signed) return `$${Math.abs(n).toFixed(2)}`;
+  const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+  return `${sign}$${Math.abs(n).toFixed(2)}`;
+}
+
+function moneyClass(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n) || n === 0) return "";
+  return n > 0 ? "side-buy" : "side-sell";
 }
 
 function outcomeClass(outcome: string): string {
@@ -114,6 +132,10 @@ function historyCsv(trades: HistoryTrade[]): string {
     "SL",
     "TP1",
     "TP2",
+    "SL $",
+    "TP1 $",
+    "TP2 $",
+    "P&L $",
     "Result",
     "R",
     "Resolved at (PKT)",
@@ -130,6 +152,10 @@ function historyCsv(trades: HistoryTrade[]): string {
     t.sl,
     t.tp1,
     t.tp2,
+    t.slMoney != null ? -Math.abs(t.slMoney) : "",
+    t.tp1Money,
+    t.tp2Money,
+    t.pnlMoney,
     t.outcomeLabel,
     t.realizedR,
     t.resolvedKarachi,
@@ -151,7 +177,9 @@ const MODULES: { id: ModuleId; label: string }[] = [
 ];
 
 export function HistoryCard() {
-  const [date, setDate] = useState(karachiTodayInput);
+  const today = karachiTodayInput();
+  const [from, setFrom] = useState(today);
+  const [to, setTo] = useState(today);
   const [module, setModule] = useState<ModuleId>("all");
   const [execution, setExecution] = useState<ExecutionFilter>("all");
   const [result, setResult] = useState<ResultFilter>("all");
@@ -160,11 +188,20 @@ export function HistoryCard() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
 
+  const setFromSafe = (value: string) => {
+    setFrom(value);
+    if (value && to && value > to) setTo(value);
+  };
+  const setToSafe = (value: string) => {
+    setTo(value);
+    if (value && from && value < from) setFrom(value);
+  };
+
   useEffect(() => {
     let cancelled = false;
     const load = () => {
       setLoading(true);
-      const q = new URLSearchParams({ date, module });
+      const q = new URLSearchParams({ from, to, module });
       void fetch(`/api/history?${q}`)
         .then(async (r) => {
           const j = (await r.json()) as HistoryPayload;
@@ -192,7 +229,7 @@ export function HistoryCard() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [date, module]);
+  }, [from, to, module]);
 
   const totalsLine = useMemo(() => {
     const t = data?.totals;
@@ -212,10 +249,10 @@ export function HistoryCard() {
     });
   }, [data, execution, result]);
 
-  const downloadDay = async () => {
+  const downloadRange = async () => {
     setDownloading(true);
     try {
-      const q = new URLSearchParams({ date, module: "all" });
+      const q = new URLSearchParams({ from, to, module: "all" });
       const response = await fetch(`/api/history?${q}`);
       const payload = (await response.json()) as HistoryPayload;
       if (!response.ok || payload.ok === false) {
@@ -227,7 +264,8 @@ export function HistoryCard() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `trade-history-${date}.csv`;
+      const stamp = from === to ? from : `${from}_to_${to}`;
+      anchor.download = `trade-history-${stamp}.csv`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -249,8 +287,22 @@ export function HistoryCard() {
 
       <div className="history-filters">
         <label className="history-field">
-          <span>Date</span>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <span>From</span>
+          <input
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFromSafe(e.target.value)}
+          />
+        </label>
+        <label className="history-field">
+          <span>To</span>
+          <input
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setToSafe(e.target.value)}
+          />
         </label>
         <div className="history-modules" role="tablist" aria-label="Module filter">
           {MODULES.map((m) => (
@@ -291,18 +343,22 @@ export function HistoryCard() {
         <button
           type="button"
           className="refresh-btn history-today"
-          onClick={() => setDate(karachiTodayInput())}
+          onClick={() => {
+            const d = karachiTodayInput();
+            setFrom(d);
+            setTo(d);
+          }}
         >
           Today
         </button>
         <button
           type="button"
           className="refresh-btn history-download"
-          onClick={() => void downloadDay()}
+          onClick={() => void downloadRange()}
           disabled={downloading}
-          title="Selected date ki tamam modules history CSV mein download karein"
+          title="Selected date range ki tamam modules history CSV mein download karein"
         >
-          {downloading ? "Downloading…" : "Download day CSV"}
+          {downloading ? "Downloading…" : "Download CSV"}
         </button>
       </div>
 
@@ -312,7 +368,7 @@ export function HistoryCard() {
       {data && (
         <>
           <div className="history-summary">
-            <strong>{data.date}</strong>
+            <strong>{data.from && data.to ? (data.from === data.to ? data.from : `${data.from} → ${data.to}`) : data.date}</strong>
             <span>{totalsLine}</span>
             {visibleTrades.length !== data.trades.length && (
               <span>
@@ -338,7 +394,7 @@ export function HistoryCard() {
           {visibleTrades.length === 0 ? (
             <p className="muted">
               {data.trades.length === 0
-                ? "Is din koi trade nahi — lock dikhega as NOT EXECUTED; jab price entry pe aaye to EXECUTED time ke sath."
+                ? "Is range me koi trade nahi — lock dikhega as NOT EXECUTED; jab price entry pe aaye to EXECUTED time ke sath."
                 : "Selected filters ke liye koi trade nahi."}
             </p>
           ) : (
@@ -353,6 +409,9 @@ export function HistoryCard() {
                     <th>Entry</th>
                     <th>SL</th>
                     <th>TP1</th>
+                    <th>SL $</th>
+                    <th>TP1 $</th>
+                    <th>P&amp;L $</th>
                     <th>Result</th>
                     <th>R</th>
                     <th>Description</th>
@@ -379,6 +438,15 @@ export function HistoryCard() {
                       <td>{px(t.entry)}</td>
                       <td>{px(t.sl)}</td>
                       <td>{px(t.tp1)}</td>
+                      <td className="side-sell" title="Risk to stop (per oz)">
+                        {moneyCell(t.slMoney != null ? -Math.abs(t.slMoney) : null)}
+                      </td>
+                      <td className="side-buy" title="Reward to TP1 (per oz)">
+                        {moneyCell(t.tp1Money)}
+                      </td>
+                      <td className={moneyClass(t.pnlMoney)} title="Realized P&L when closed">
+                        {moneyCell(t.pnlMoney)}
+                      </td>
                       <td>
                         <span className={outcomeClass(t.outcome)}>{t.outcomeLabel}</span>
                       </td>

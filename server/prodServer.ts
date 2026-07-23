@@ -355,6 +355,8 @@ const server = createServer(async (req, res) => {
         200,
         await buildHistoryPayload({
           date: u.searchParams.get("date"),
+          from: u.searchParams.get("from"),
+          to: u.searchParams.get("to"),
           module: u.searchParams.get("module"),
         }),
       );
