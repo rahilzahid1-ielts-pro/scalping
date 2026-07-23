@@ -217,6 +217,55 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
+        if (req.url?.startsWith("/api/demo/")) {
+          try {
+            const u = new URL(req.url, "http://localhost");
+            const pathOnly = u.pathname;
+            const demo = await import("./src/demoAccount/api");
+            const send = (code: number, body: unknown) => {
+              res.statusCode = code;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(body));
+            };
+            if (pathOnly === "/api/demo/account" && (req.method === "GET" || !req.method)) {
+              send(200, await demo.buildDemoAccountPayload());
+              return;
+            }
+            if (pathOnly === "/api/demo/take" && req.method === "POST") {
+              const raw = await readBody(req);
+              const out = await demo.handleDemoTake(JSON.parse(raw || "{}"));
+              send(out.ok ? 200 : 400, out);
+              return;
+            }
+            if (pathOnly === "/api/demo/close" && req.method === "POST") {
+              const raw = await readBody(req);
+              const out = await demo.handleDemoClose(JSON.parse(raw || "{}"));
+              send(out.ok ? 200 : 400, out);
+              return;
+            }
+            if (pathOnly === "/api/demo/reset" && req.method === "POST") {
+              send(200, await demo.handleDemoReset());
+              return;
+            }
+            if (pathOnly === "/api/demo/settings" && req.method === "POST") {
+              const raw = await readBody(req);
+              send(200, await demo.handleDemoSettings(JSON.parse(raw || "{}")));
+              return;
+            }
+            send(404, { ok: false, error: "unknown demo route" });
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "demo api error",
+              }),
+            );
+          }
+          return;
+        }
+
         if (req.url?.startsWith("/api/cipherbclone/") || req.url?.startsWith("/api/fractal/")) {
           try {
             const url = req.url.split("?")[0];

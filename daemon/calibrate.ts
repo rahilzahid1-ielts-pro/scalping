@@ -1,6 +1,12 @@
 /**
- * CLI: npm run calibrate -- [--days=30]
- * Prints TP1 win rate (primary) + avg full-plan R by confidence bucket / side / mode / regime.
+ * CLI: npm run calibrate -- [--days=30] [--module=main]
+ *
+ * Modules (isolated live tables in data/signals.db):
+ *   main | scalp | intraday | quick_scalp | pro | qs_pro |
+ *   ttrades_fractal | cipher_b | intra30
+ *
+ * Prints TP1 win rate (primary) + avg full-plan R by confidence bucket / side / regime.
+ * Gates unchanged: ≥14d / n≥50 / regimes / calendar days (see types.ts).
  */
 import {
   MIN_CALENDAR_DAYS_FOR_CALIBRATION,
@@ -8,11 +14,7 @@ import {
   MIN_REGIMES_FOR_CALIBRATION,
   MIN_SAMPLES_FOR_CALIBRATION,
 } from "../src/calibration/types";
-import {
-  SIGNAL_DB_PATH,
-  ensureDbMigrated,
-  listAllSignals,
-} from "../src/calibration/db";
+import { ensureDbMigrated } from "../src/calibration/db";
 import {
   calibrationDisplayGateOk,
   distinctCalendarDays,
@@ -20,6 +22,11 @@ import {
   resolvedTp1Samples,
 } from "../src/calibration/recalibrate";
 import { printStandardCalibrationTables } from "../src/calibration/report";
+import {
+  CALIBRATE_MODULE_HELP,
+  loadModuleSignals,
+  parseCalibrateModule,
+} from "../src/calibration/moduleSources";
 
 function parseDays(argv: string[]): number {
   const arg = argv.find((a) => a.startsWith("--days="));
@@ -29,10 +36,27 @@ function parseDays(argv: string[]): number {
 }
 
 function main() {
-  const days = parseDays(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes("--help") || argv.includes("-h")) {
+    console.log(`Usage: npm run calibrate -- [--days=30] [--module=<id>]
+${CALIBRATE_MODULE_HELP}`);
+    return;
+  }
+
+  const days = parseDays(argv);
+  let moduleId;
+  try {
+    moduleId = parseCalibrateModule(argv);
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : e);
+    process.exitCode = 1;
+    return;
+  }
+
   const migration = ensureDbMigrated();
+  const loaded = loadModuleSignals(moduleId);
   const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-  const all = listAllSignals();
+  const all = loaded.signals;
   const signals = all.filter((s) => s.timestamp >= cutoff);
   const resolved = resolvedTp1Samples(signals);
 
@@ -44,8 +68,6 @@ function main() {
   const flipDetermined = flipSaved + flipCutWin;
   const savedPct = flipDetermined > 0 ? (flipSaved / flipDetermined) * 100 : null;
 
-  // Tier-1 effectiveness: TP1win% on plans WITH a mid-plan liquidity-sweep warning
-  // vs plans with NONE. Predictive iff swept win rate is clearly worse.
   const tp1WinRate = (arr: typeof resolved): number | null => {
     const w = arr.filter((s) => s.outcomeTp1 === "WIN").length;
     return arr.length > 0 ? (w / arr.length) * 100 : null;
@@ -61,8 +83,6 @@ function main() {
       ? `${(sweptWr - noSweepWr >= 0 ? "+" : "")}${(sweptWr - noSweepWr).toFixed(1)}pts`
       : "n/a";
 
-  // Scalping trend-confirmation early trigger (scalping-only rows). Avg trend
-  // duration + win rate of confirmed-trend scalping trades vs the rest.
   const scalpResolved = resolved.filter((s) => s.mode === "scalping");
   const tcResolved = scalpResolved.filter((s) => s.trendConfirmedAt != null);
   const ntResolved = scalpResolved.filter((s) => s.trendConfirmedAt == null);
@@ -83,10 +103,15 @@ function main() {
     (s) => s.mode === "scalping" && s.trendConfirmedAt != null,
   ).length;
 
+  const isMainFamily =
+    moduleId === "main" || moduleId === "scalp" || moduleId === "intraday";
+
   console.log(`
 SMC Calibration Report (LIVE)
 ─────────────────────────────
-Store   : ${SIGNAL_DB_PATH}
+Module  : ${moduleId}
+Store   : ${loaded.storeLabel}
+Table rows (all-time live): ${loaded.tableRowCount}
 Migration: imported=${migration.imported} skipped=${migration.skipped}${migration.alreadyMigrated ? " (already migrated)" : ""}
 Window  : last ${days} days
 Total rows in window: ${signals.length}
@@ -103,11 +128,15 @@ Tier-1 liquidity sweep (mid-plan warning): ${sweptTotal} plans flagged
   TP1win% with sweep   : ${fmtWr(sweptWr)} (n=${swept.length})
   TP1win% no sweep     : ${fmtWr(noSweepWr)} (n=${noSweep.length})
   → predictive delta   : ${wrDelta} ${sweptWr != null && noSweepWr != null ? (sweptWr < noSweepWr - 5 ? "(sweep worse → warning predictive)" : "(similar → penalty may be noise)") : ""}
-Trend-confirmation (scalping-only): ${trendConfirmedTotal} plans trend-confirmed
+${
+  isMainFamily
+    ? `Trend-confirmation (scalping-only): ${trendConfirmedTotal} plans trend-confirmed
   Avg trend duration   : ${avgTrendDur == null ? "n/a" : `${avgTrendDur.toFixed(1)} bars`} (n=${trendDurs.length} completed runs)
   TP1win% confirmed    : ${fmtWr(tcWr)} (n=${tcResolved.length})
   TP1win% other scalps : ${fmtWr(ntWr)} (n=${ntResolved.length})
-  → trend-window edge  : ${tcWrDelta}
+  → trend-window edge  : ${tcWrDelta}`
+    : `Trend-confirmation : n/a (module table — main scalping fields only)`
+}
 Regimes in window     : ${distinctRegimes(resolved).join(", ") || "(none)"}
 Calendar days (TP1)   : ${distinctCalendarDays(resolved).length}
 Display recal gate    : ${calibrationDisplayGateOk(all) ? "OPEN (≥14d data)" : `CLOSED (need ≥${MIN_DAYS_BEFORE_DISPLAY_RECAL}d resolved history)`}
@@ -124,6 +153,7 @@ Bucket unlock needs   : n≥${MIN_SAMPLES_FOR_CALIBRATION}, regimes≥${MIN_REGI
   • UNTRUSTED    = TP1win% is >15 points worse than claimed mid
   • Display win% stays raw until ≥${MIN_DAYS_BEFORE_DISPLAY_RECAL}d + n≥${MIN_SAMPLES_FOR_CALIBRATION}
     + ≥${MIN_REGIMES_FOR_CALIBRATION} regimes + ≥${MIN_CALENDAR_DAYS_FOR_CALIBRATION} calendar days in the bucket.
+  • Module tables without a confidence column use conf parsed from reason text (else 0).
 `);
 }
 

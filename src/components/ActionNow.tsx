@@ -14,6 +14,9 @@ interface Props {
   onEnablePush: () => void;
   onTestPush?: () => void;
   pushBusy?: boolean;
+  onTakeDemo?: () => void;
+  demoBusy?: boolean;
+  demoMsg?: string | null;
 }
 
 const PUSH_LABEL: Record<PushState, string> = {
@@ -34,6 +37,9 @@ export function ActionNow({
   onEnablePush,
   onTestPush,
   pushBusy,
+  onTakeDemo,
+  demoBusy,
+  demoMsg,
 }: Props) {
   const asset = ASSETS[assetId];
   const d = asset.decimals;
@@ -141,6 +147,27 @@ export function ActionNow({
       {now.action === "TRADE_ACTIVE" && (
         <div className="alert-banner">🔒 ACTIVE TRADE — PLAN CHANGE BLOCKED</div>
       )}
+
+      {onTakeDemo &&
+        (now.side === "BUY" || now.side === "SELL") &&
+        now.entry != null &&
+        now.stopLoss != null &&
+        now.takeProfit != null &&
+        (now.action === "ENTER_NOW" ||
+          now.action === "TRADE_ACTIVE" ||
+          now.action === "WAIT_ENTRY") && (
+          <div className="demo-take-wrap">
+            <button
+              type="button"
+              className="demo-take-btn"
+              disabled={!!demoBusy}
+              onClick={onTakeDemo}
+            >
+              {demoBusy ? "Opening…" : "💰 Demo pe trade lo"}
+            </button>
+            {demoMsg && <p className="demo-take-msg">{demoMsg}</p>}
+          </div>
+        )}
 
       {now.action === "WAIT_ENTRY" && now.distanceToEntry != null && (
         <div className="distance-bar">

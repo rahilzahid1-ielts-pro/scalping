@@ -11,6 +11,7 @@ import { ProCard } from "./components/ProCard";
 import { Intra30Card } from "./components/Intra30Card";
 import { PulseCard } from "./components/PulseCard";
 import { HistoryCard } from "./components/HistoryCard";
+import { DemoAccountCard } from "./components/DemoAccountCard";
 import { StrategyCompareCard } from "./components/StrategyCompareCard";
 import { DetailsAccordion } from "./components/DetailsAccordion";
 import { BiasCard } from "./components/BiasCard";
@@ -44,7 +45,10 @@ export default function App() {
     | "cipher_b"
     | "fractal"
     | "history"
+    | "demo"
   >("main");
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoMsg, setDemoMsg] = useState<string | null>(null);
   const [signal, setSignal] = useState<LiveSignal | null>(null);
   /** Live engine lean while a locked plan is active (second box). */
   const [watchSignal, setWatchSignal] = useState<LiveSignal | null>(null);
@@ -86,7 +90,7 @@ export default function App() {
       setError(null);
       setLiquidityWarn(false);
       const livePx = quoteRef.current?.price;
-      const [frames, serverPlan] = await Promise.all([
+      const [frames, server] = await Promise.all([
         fetchMultiTimeframe(assetId, mode, livePx),
         fetchCurrentPlan(mode, assetId),
       ]);
@@ -94,10 +98,13 @@ export default function App() {
       const q = quoteRef.current?.price;
       if (q != null) next.price = roundPrice(q, asset.decimals);
 
-      // Keep paint-cache plan if server briefly returns null (worker restart / redeploy).
-      let nextPlan = serverPlan;
+      // Server SoT: when worker is up and plan is null, clear local ghost locks
+      // (Incognito vs normal mismatch was paint-cache keeping a dead BUY after SL/redeploy).
+      // Only keep paint-cache briefly when worker is down (redeploy gap).
+      let nextPlan = server.plan;
       if (
         !nextPlan &&
+        !server.workerRunning &&
         planRef.current &&
         planRef.current.mode === mode &&
         planRef.current.assetId === assetId &&
@@ -275,6 +282,51 @@ export default function App() {
     }
   };
 
+  const takeDemoTrade = async () => {
+    if (!nowAction || (nowAction.side !== "BUY" && nowAction.side !== "SELL")) {
+      setDemoMsg("Pehle BUY/SELL setup chahiye");
+      return;
+    }
+    if (nowAction.entry == null || nowAction.stopLoss == null || nowAction.takeProfit == null) {
+      setDemoMsg("Entry / SL / TP missing");
+      return;
+    }
+    setDemoBusy(true);
+    setDemoMsg(null);
+    try {
+      const res = await fetch("/api/demo/take", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          side: nowAction.side,
+          entry: nowAction.entry,
+          sl: nowAction.stopLoss,
+          tp1: nowAction.takeProfit,
+          tp2: nowAction.takeProfit2 ?? null,
+          module: mode === "intraday" ? "intraday" : "scalp",
+          note: `Manual ${mode} ${nowAction.side} from desk`,
+        }),
+      });
+      const j = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        account?: { balance: number };
+        position?: { riskUsd: number };
+      };
+      if (!j.ok) {
+        setDemoMsg(j.error || "Demo take failed");
+        return;
+      }
+      setDemoMsg(
+        `Demo OPEN · risk $${j.position?.riskUsd?.toFixed(2) ?? "?"} · bal $${j.account?.balance.toFixed(2) ?? "?"}`,
+      );
+    } catch (e) {
+      setDemoMsg(e instanceof Error ? e.message : "Demo take failed");
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
   const requestNewPlan = () => {
     const current = planForThisMode;
     if (current?.status === "IN_TRADE_HINT") {
@@ -371,6 +423,13 @@ export default function App() {
           </button>
           <button
             type="button"
+            className={deskView === "demo" ? "active" : ""}
+            onClick={() => setDeskView("demo")}
+          >
+            Demo $
+          </button>
+          <button
+            type="button"
             className={deskView === "main" && mode === "scalping" ? "active" : ""}
             onClick={() => {
               setDeskView("main");
@@ -461,6 +520,8 @@ export default function App() {
           )}
           {deskView === "history" ? (
             <HistoryCard />
+          ) : deskView === "demo" ? (
+            <DemoAccountCard />
           ) : deskView === "quick_scalp" ? (
             <QuickScalpCard />
           ) : deskView === "pro" ? (
@@ -498,6 +559,9 @@ export default function App() {
                   onEnablePush={() => void enablePushNotifications()}
                   onTestPush={() => void testPushNotification()}
                   pushBusy={pushBusy}
+                  onTakeDemo={() => void takeDemoTrade()}
+                  demoBusy={demoBusy}
+                  demoMsg={demoMsg}
                 />
               )}
               {deskView === "main" && showWatch && watchSignal && (

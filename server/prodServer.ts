@@ -361,6 +361,47 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path.startsWith("/api/demo/")) {
+      try {
+        const demo = await import("../src/demoAccount/api");
+        if (path === "/api/demo/account" && req.method === "GET") {
+          sendJson(res, 200, await demo.buildDemoAccountPayload());
+          return;
+        }
+        if (path === "/api/demo/take" && req.method === "POST") {
+          const raw = (await readBody(req)).toString("utf8");
+          const body = JSON.parse(raw || "{}");
+          const out = await demo.handleDemoTake(body);
+          sendJson(res, out.ok ? 200 : 400, out);
+          return;
+        }
+        if (path === "/api/demo/close" && req.method === "POST") {
+          const raw = (await readBody(req)).toString("utf8");
+          const body = JSON.parse(raw || "{}");
+          const out = await demo.handleDemoClose(body);
+          sendJson(res, out.ok ? 200 : 400, out);
+          return;
+        }
+        if (path === "/api/demo/reset" && req.method === "POST") {
+          sendJson(res, 200, await demo.handleDemoReset());
+          return;
+        }
+        if (path === "/api/demo/settings" && req.method === "POST") {
+          const raw = (await readBody(req)).toString("utf8");
+          const body = JSON.parse(raw || "{}");
+          sendJson(res, 200, await demo.handleDemoSettings(body));
+          return;
+        }
+        sendJson(res, 404, { ok: false, error: "unknown demo route" });
+      } catch (e) {
+        sendJson(res, 500, {
+          ok: false,
+          error: e instanceof Error ? e.message : "demo api error",
+        });
+      }
+      return;
+    }
+
     if (path === "/api/cipherbclone/latest" && req.method === "GET") {
       const { buildLatestPayload } = await import("../src/strategyCompare/apiLatest");
       sendJson(res, 200, await buildLatestPayload("cipher_b_clone"));

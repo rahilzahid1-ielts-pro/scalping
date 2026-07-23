@@ -10,17 +10,26 @@ export type CurrentPlanResponse = {
   error?: string;
 };
 
+export type CurrentPlanResult = {
+  plan: FrozenPlan | null;
+  /** True when alertBot answered and reports the worker is up (authoritative empty = no lock). */
+  workerRunning: boolean;
+};
+
 /** Read authoritative locked plan from alertBot (server SoT). */
 export async function fetchCurrentPlan(
   mode: TradeMode,
   assetId: AssetId = "XAUUSD",
-): Promise<FrozenPlan | null> {
+): Promise<CurrentPlanResult> {
   const q = new URLSearchParams({ mode, assetId });
   const res = await fetch(`/api/plan/current?${q}`);
   if (!res.ok) throw new Error(`plan/current HTTP ${res.status}`);
   const data = (await res.json()) as CurrentPlanResponse;
   if (!data.ok) throw new Error(data.error || "plan/current failed");
-  return data.plan ?? null;
+  return {
+    plan: data.plan ?? null,
+    workerRunning: data.workerRunning === true,
+  };
 }
 
 /** Clear server lock for this mode (UI New plan). */
