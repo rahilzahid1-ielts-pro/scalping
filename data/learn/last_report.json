@@ -1,0 +1,167 @@
+{
+  "trainedAt": "2026-07-24T23:01:40.757Z",
+  "source": "backtest-m5",
+  "file": "data/XAU_5m_data.csv",
+  "days": 365,
+  "spread": 0.25,
+  "sampleN": 2591,
+  "winN": 1972,
+  "lossN": 619,
+  "metrics": {
+    "trainN": 1944,
+    "testN": 647,
+    "accuracy": 0.7758887171561051,
+    "precisionSl": 0.5,
+    "recallSl": 0.07586206896551724,
+    "baselineSlRate": 0.23890389810883828
+  },
+  "byModule": {
+    "qs_pro": {
+      "w": 621,
+      "l": 225
+    },
+    "quick_scalp": {
+      "w": 759,
+      "l": 171
+    },
+    "intra30": {
+      "w": 130,
+      "l": 91
+    },
+    "scalp": {
+      "w": 12,
+      "l": 9
+    },
+    "intraday": {
+      "w": 4,
+      "l": 2
+    },
+    "fractal": {
+      "w": 113,
+      "l": 23
+    },
+    "cipher_b": {
+      "w": 333,
+      "l": 98
+    }
+  },
+  "slCauses": [
+    {
+      "id": "same_print_stack",
+      "label": "Same-print lean stack (≤$8, 90m, other module)",
+      "n": 246,
+      "pctOfLosses": 39.7,
+      "examples": [
+        "Intra30 BUY @ 2797.67 (2025-01-31 10:35 PKT~)",
+        "Intra30 BUY @ 2871.21 (2025-02-06 09:30 PKT~)",
+        "Quick Scalp BUY @ 2870.6 (2025-02-06 09:55 PKT~)"
+      ],
+      "fix": "Lean-family correlation cooldown"
+    },
+    {
+      "id": "post_tp_same_side",
+      "label": "Re-fire same side within 90m after a TP",
+      "n": 245,
+      "pctOfLosses": 39.6,
+      "examples": [
+        "Intra30 BUY @ 2797.67 (2025-01-31 10:35 PKT~)",
+        "Intra30 BUY @ 2871.21 (2025-02-06 09:30 PKT~)",
+        "Quick Scalp BUY @ 2867.66 (2025-02-07 17:05 PKT~)"
+      ],
+      "fix": "Post-TP bounce pause"
+    },
+    {
+      "id": "whipsaw_fast",
+      "label": "Whipsaw — resolved ≤5 minutes",
+      "n": 165,
+      "pctOfLosses": 26.7,
+      "examples": [
+        "Intra30 BUY @ 2991.79 (2025-03-14 20:50 PKT~)",
+        "QS Pro BUY @ 3034.83 (2025-03-18 20:30 PKT~)",
+        "Quick Scalp BUY @ 3142.41 (2025-04-01 13:45 PKT~)"
+      ],
+      "fix": "Opposite-block / min hold / skip noise re-entries"
+    },
+    {
+      "id": "night_counter_buy",
+      "label": "Late / night BUY (20–02 PKT)",
+      "n": 112,
+      "pctOfLosses": 18.1,
+      "examples": [
+        "Quick Scalp BUY @ 2867.71 (2025-02-05 20:00 PKT~)",
+        "QS Pro BUY @ 2939.82 (2025-02-22 01:10 PKT~)",
+        "QS Pro BUY @ 2948.87 (2025-02-24 21:10 PKT~)"
+      ],
+      "fix": "Sell-lean day → block counter BUY (esp. Scalp)"
+    },
+    {
+      "id": "asymmetric_rr",
+      "label": "Bad RR (TP1 < 0.7 × SL $)",
+      "n": 90,
+      "pctOfLosses": 14.5,
+      "examples": [
+        "Intra30 BUY @ 2797.67 (2025-01-31 10:35 PKT~)",
+        "Intra30 BUY @ 2871.21 (2025-02-06 09:30 PKT~)",
+        "Intra30 BUY @ 2930.14 (2025-02-14 10:05 PKT~)"
+      ],
+      "fix": "Skip setups where reward << risk"
+    },
+    {
+      "id": "fat_sl",
+      "label": "Fat SL (>$12 risk)",
+      "n": 27,
+      "pctOfLosses": 4.4,
+      "examples": [
+        "QS Pro BUY @ 3153.49 (2025-04-03 08:05 PKT~)",
+        "Quick Scalp BUY @ 3396.69 (2025-06-05 19:10 PKT~)",
+        "QS Pro BUY @ 3393.5 (2025-06-05 19:40 PKT~)"
+      ],
+      "fix": "Demote / skip Quick Scalp & wide Scalp; prefer $5–$9 risk desks"
+    },
+    {
+      "id": "asia_bounce_sell",
+      "label": "Asia mid-morning SELL (08–12 PKT)",
+      "n": 17,
+      "pctOfLosses": 2.7,
+      "examples": [
+        "Intra30 SELL @ 3280.37 (2025-04-28 11:00 PKT~)",
+        "QS Pro SELL @ 3183.48 (2025-05-15 08:45 PKT~)",
+        "Quick Scalp SELL @ 3183.48 (2025-05-15 08:45 PKT~)"
+      ],
+      "fix": "After morning dump, pause stacked SELLs into bounce"
+    },
+    {
+      "id": "scalp_module",
+      "label": "Scalp module fill",
+      "n": 9,
+      "pctOfLosses": 1.5,
+      "examples": [
+        "Scalp SELL @ 4017.11 (2026-07-21 05:25 PKT~)",
+        "Scalp BUY @ 4061.05 (2026-07-21 16:01 PKT~)",
+        "Scalp BUY @ 4127.51 (2026-07-22 09:26 PKT~)"
+      ],
+      "fix": "Keep Scalp demoted from size / demo"
+    }
+  ],
+  "thresholds": {
+    "blockP": 0.62,
+    "preferBlockP": 0.72
+  },
+  "labelsPath": "C:\\scalping\\data\\learn\\labeled_backtest.jsonl",
+  "modelPath": "C:\\scalping\\data\\learn\\sl_model.json",
+  "timeframes": {
+    "note": "Live scalping modules use this pack; HTF resampled from M5 in backtest",
+    "scalping": {
+      "primary": "M5",
+      "confirmation": "M15",
+      "bias": "H1",
+      "daily": "D1"
+    },
+    "intraday": {
+      "primary": "M15",
+      "confirmation": "H1",
+      "bias": "H4",
+      "daily": "D1"
+    }
+  }
+}

@@ -1,0 +1,51 @@
+---
+description: Positive-day desk — prefer keep firing, cut losers, demo day stop/protect (results > silence)
+globs: src/regime/**/*.ts,daemon/**/*.ts,src/demoAccount/**/*.ts,src/utils/leanDeskCooldown.ts
+alwaysApply: true
+---
+
+# Positive-day desk (winning formula)
+
+Goal: **green account days with real fills** — not a silent desk that avoids trades.
+
+Do **not** remove `src/regime/dayModuleRules.ts` or `positiveDayDesk.ts` without an explicit user request.
+
+## Prefer (keep firing)
+
+- **QS Pro + Cipher B** prefer-base
+- Prefer: 2 SL → soft throttle (still fires); 3 SL → hard pause
+- Prefer post-TP pause **45m** (others 90m)
+- Winning prefer day → demo risk ×1.25
+
+## Cut losers (not silence everything)
+
+- Demote Scalp always; Quick Scalp until proven green
+- Fractal: live OK, **no demo follow** (same-print double)
+- Lean family correlation cooldown
+- Sell-lean day: block Scalp BUY
+
+## Demo equity rails
+
+- Day stop **−3R** → no new auto-follows
+- Day protect **+3R** → only prefer modules (0.75×)
+- Day lock **+5R** → bank the green, stop new follows
+
+## Learn / ML overlay
+
+- Live CSV: `npm run learn -- --dir=D:/download`
+- **OHLC backtest labels (20y M5):** `npm run learn:bt -- --file=data/XAU_5m_data.csv --days=365 --merge-csv=D:/download`
+- Artifact: `data/learn/sl_model.json` + `labeled_backtest.jsonl`
+- Runtime: `gateLearnedLock` inside `gateNewLock`
+- Backtest HTF = resampled from M5 (same as prod parity) — do not mix separate TF CSVs into one walk
+
+## Timeframes before lock (prod)
+
+- **Scalping family** (Scalp, QS Pro, Cipher, Fractal, Quick Scalp, Intra30): **M5 entry** + M15 confirm + H1 bias + D1
+- **Intraday / Pro:** **M15 entry** + H1 confirm + H4 bias + D1
+
+## Do not
+
+- Force zero trades as “risk management”
+- Put Scalp back on demo auto-follow
+- Replace rules with opaque ML only — keep autopsy rules + learned overlay
+- Invent signals to force fills on quiet days

@@ -1,0 +1,681 @@
+{
+  "version": 1,
+  "trainedAt": "2026-07-24T23:01:40.757Z",
+  "sampleN": 2591,
+  "winN": 1972,
+  "lossN": 619,
+  "featureNames": [
+    "bias",
+    "side_sell",
+    "hour_sin",
+    "hour_cos",
+    "session_asia",
+    "session_mid",
+    "session_eve",
+    "session_night",
+    "sl_tight",
+    "sl_mid",
+    "sl_fat",
+    "rr_lt_0_7",
+    "rr_ok",
+    "rr_gt_1_2",
+    "mod_scalp",
+    "mod_intraday",
+    "mod_quick_scalp",
+    "mod_qs_pro",
+    "mod_pro",
+    "mod_intra30",
+    "mod_cipher_b",
+    "mod_fractal",
+    "stack_same_side_90m",
+    "after_tp_same_side_90m"
+  ],
+  "weights": [
+    0.19671721574936873,
+    0.08367762469270308,
+    0.009822071877346721,
+    -0.41273634246445673,
+    0.1976899001145491,
+    -0.34042372515503244,
+    0.45054537570672604,
+    -0.6061106025473029,
+    0.21391340495902947,
+    -0.6084888403551951,
+    0.09627638351510555,
+    0.21391340495902947,
+    -0.5122124568400893,
+    0,
+    0,
+    0,
+    -0.7741493842092966,
+    0.26193692736920776,
+    0,
+    0.21391340495902947,
+    0,
+    0,
+    0.08477141212451825,
+    -0.807391079466946
+  ],
+  "metrics": {
+    "trainN": 1944,
+    "testN": 647,
+    "accuracy": 0.7758887171561051,
+    "precisionSl": 0.5,
+    "recallSl": 0.07586206896551724,
+    "baselineSlRate": 0.23890389810883828
+  },
+  "slCauses": [
+    {
+      "id": "same_print_stack",
+      "label": "Same-print lean stack (≤$8, 90m, other module)",
+      "n": 246,
+      "pctOfLosses": 39.7,
+      "examples": [
+        "Intra30 BUY @ 2797.67 (2025-01-31 10:35 PKT~)",
+        "Intra30 BUY @ 2871.21 (2025-02-06 09:30 PKT~)",
+        "Quick Scalp BUY @ 2870.6 (2025-02-06 09:55 PKT~)"
+      ],
+      "fix": "Lean-family correlation cooldown"
+    },
+    {
+      "id": "post_tp_same_side",
+      "label": "Re-fire same side within 90m after a TP",
+      "n": 245,
+      "pctOfLosses": 39.6,
+      "examples": [
+        "Intra30 BUY @ 2797.67 (2025-01-31 10:35 PKT~)",
+        "Intra30 BUY @ 2871.21 (2025-02-06 09:30 PKT~)",
+        "Quick Scalp BUY @ 2867.66 (2025-02-07 17:05 PKT~)"
+      ],
+      "fix": "Post-TP bounce pause"
+    },
+    {
+      "id": "whipsaw_fast",
+      "label": "Whipsaw — resolved ≤5 minutes",
+      "n": 165,
+      "pctOfLosses": 26.7,
+      "examples": [
+        "Intra30 BUY @ 2991.79 (2025-03-14 20:50 PKT~)",
+        "QS Pro BUY @ 3034.83 (2025-03-18 20:30 PKT~)",
+        "Quick Scalp BUY @ 3142.41 (2025-04-01 13:45 PKT~)"
+      ],
+      "fix": "Opposite-block / min hold / skip noise re-entries"
+    },
+    {
+      "id": "night_counter_buy",
+      "label": "Late / night BUY (20–02 PKT)",
+      "n": 112,
+      "pctOfLosses": 18.1,
+      "examples": [
+        "Quick Scalp BUY @ 2867.71 (2025-02-05 20:00 PKT~)",
+        "QS Pro BUY @ 2939.82 (2025-02-22 01:10 PKT~)",
+        "QS Pro BUY @ 2948.87 (2025-02-24 21:10 PKT~)"
+      ],
+      "fix": "Sell-lean day → block counter BUY (esp. Scalp)"
+    },
+    {
+      "id": "asymmetric_rr",
+      "label": "Bad RR (TP1 < 0.7 × SL $)",
+      "n": 90,
+      "pctOfLosses": 14.5,
+      "examples": [
+        "Intra30 BUY @ 2797.67 (2025-01-31 10:35 PKT~)",
+        "Intra30 BUY @ 2871.21 (2025-02-06 09:30 PKT~)",
+        "Intra30 BUY @ 2930.14 (2025-02-14 10:05 PKT~)"
+      ],
+      "fix": "Skip setups where reward << risk"
+    },
+    {
+      "id": "fat_sl",
+      "label": "Fat SL (>$12 risk)",
+      "n": 27,
+      "pctOfLosses": 4.4,
+      "examples": [
+        "QS Pro BUY @ 3153.49 (2025-04-03 08:05 PKT~)",
+        "Quick Scalp BUY @ 3396.69 (2025-06-05 19:10 PKT~)",
+        "QS Pro BUY @ 3393.5 (2025-06-05 19:40 PKT~)"
+      ],
+      "fix": "Demote / skip Quick Scalp & wide Scalp; prefer $5–$9 risk desks"
+    },
+    {
+      "id": "asia_bounce_sell",
+      "label": "Asia mid-morning SELL (08–12 PKT)",
+      "n": 17,
+      "pctOfLosses": 2.7,
+      "examples": [
+        "Intra30 SELL @ 3280.37 (2025-04-28 11:00 PKT~)",
+        "QS Pro SELL @ 3183.48 (2025-05-15 08:45 PKT~)",
+        "Quick Scalp SELL @ 3183.48 (2025-05-15 08:45 PKT~)"
+      ],
+      "fix": "After morning dump, pause stacked SELLs into bounce"
+    },
+    {
+      "id": "scalp_module",
+      "label": "Scalp module fill",
+      "n": 9,
+      "pctOfLosses": 1.5,
+      "examples": [
+        "Scalp SELL @ 4017.11 (2026-07-21 05:25 PKT~)",
+        "Scalp BUY @ 4061.05 (2026-07-21 16:01 PKT~)",
+        "Scalp BUY @ 4127.51 (2026-07-22 09:26 PKT~)"
+      ],
+      "fix": "Keep Scalp demoted from size / demo"
+    }
+  ],
+  "moduleHourSlRate": {
+    "qs_pro|6": {
+      "n": 55,
+      "sl": 20,
+      "rate": 0.36363636363636365
+    },
+    "quick_scalp|6": {
+      "n": 60,
+      "sl": 13,
+      "rate": 0.21666666666666667
+    },
+    "qs_pro|8": {
+      "n": 43,
+      "sl": 15,
+      "rate": 0.3488372093023256
+    },
+    "quick_scalp|8": {
+      "n": 51,
+      "sl": 12,
+      "rate": 0.23529411764705882
+    },
+    "qs_pro|10": {
+      "n": 42,
+      "sl": 15,
+      "rate": 0.35714285714285715
+    },
+    "quick_scalp|10": {
+      "n": 39,
+      "sl": 3,
+      "rate": 0.07692307692307693
+    },
+    "intra30|10": {
+      "n": 11,
+      "sl": 5,
+      "rate": 0.45454545454545453
+    },
+    "qs_pro|14": {
+      "n": 38,
+      "sl": 8,
+      "rate": 0.21052631578947367
+    },
+    "quick_scalp|14": {
+      "n": 48,
+      "sl": 4,
+      "rate": 0.08333333333333333
+    },
+    "quick_scalp|19": {
+      "n": 48,
+      "sl": 11,
+      "rate": 0.22916666666666666
+    },
+    "qs_pro|20": {
+      "n": 39,
+      "sl": 14,
+      "rate": 0.358974358974359
+    },
+    "quick_scalp|21": {
+      "n": 41,
+      "sl": 4,
+      "rate": 0.0975609756097561
+    },
+    "qs_pro|22": {
+      "n": 36,
+      "sl": 8,
+      "rate": 0.2222222222222222
+    },
+    "quick_scalp|0": {
+      "n": 43,
+      "sl": 11,
+      "rate": 0.2558139534883721
+    },
+    "qs_pro|0": {
+      "n": 42,
+      "sl": 15,
+      "rate": 0.35714285714285715
+    },
+    "intra30|17": {
+      "n": 14,
+      "sl": 4,
+      "rate": 0.2857142857142857
+    },
+    "qs_pro|3": {
+      "n": 37,
+      "sl": 6,
+      "rate": 0.16216216216216217
+    },
+    "quick_scalp|7": {
+      "n": 30,
+      "sl": 10,
+      "rate": 0.3333333333333333
+    },
+    "quick_scalp|9": {
+      "n": 42,
+      "sl": 9,
+      "rate": 0.21428571428571427
+    },
+    "quick_scalp|16": {
+      "n": 47,
+      "sl": 7,
+      "rate": 0.14893617021276595
+    },
+    "qs_pro|1": {
+      "n": 29,
+      "sl": 8,
+      "rate": 0.27586206896551724
+    },
+    "quick_scalp|3": {
+      "n": 38,
+      "sl": 5,
+      "rate": 0.13157894736842105
+    },
+    "qs_pro|7": {
+      "n": 28,
+      "sl": 6,
+      "rate": 0.21428571428571427
+    },
+    "qs_pro|9": {
+      "n": 38,
+      "sl": 10,
+      "rate": 0.2631578947368421
+    },
+    "quick_scalp|11": {
+      "n": 33,
+      "sl": 9,
+      "rate": 0.2727272727272727
+    },
+    "qs_pro|12": {
+      "n": 33,
+      "sl": 11,
+      "rate": 0.3333333333333333
+    },
+    "quick_scalp|13": {
+      "n": 32,
+      "sl": 4,
+      "rate": 0.125
+    },
+    "quick_scalp|15": {
+      "n": 30,
+      "sl": 3,
+      "rate": 0.1
+    },
+    "qs_pro|16": {
+      "n": 30,
+      "sl": 6,
+      "rate": 0.2
+    },
+    "quick_scalp|17": {
+      "n": 33,
+      "sl": 5,
+      "rate": 0.15151515151515152
+    },
+    "quick_scalp|20": {
+      "n": 41,
+      "sl": 8,
+      "rate": 0.1951219512195122
+    },
+    "qs_pro|21": {
+      "n": 41,
+      "sl": 10,
+      "rate": 0.24390243902439024
+    },
+    "quick_scalp|22": {
+      "n": 40,
+      "sl": 3,
+      "rate": 0.075
+    },
+    "qs_pro|23": {
+      "n": 33,
+      "sl": 8,
+      "rate": 0.24242424242424243
+    },
+    "quick_scalp|4": {
+      "n": 29,
+      "sl": 7,
+      "rate": 0.2413793103448276
+    },
+    "intra30|9": {
+      "n": 6,
+      "sl": 2,
+      "rate": 0.3333333333333333
+    },
+    "qs_pro|18": {
+      "n": 38,
+      "sl": 12,
+      "rate": 0.3157894736842105
+    },
+    "quick_scalp|12": {
+      "n": 43,
+      "sl": 9,
+      "rate": 0.20930232558139536
+    },
+    "qs_pro|15": {
+      "n": 31,
+      "sl": 1,
+      "rate": 0.03225806451612903
+    },
+    "qs_pro|17": {
+      "n": 46,
+      "sl": 14,
+      "rate": 0.30434782608695654
+    },
+    "quick_scalp|18": {
+      "n": 45,
+      "sl": 12,
+      "rate": 0.26666666666666666
+    },
+    "qs_pro|19": {
+      "n": 35,
+      "sl": 10,
+      "rate": 0.2857142857142857
+    },
+    "intra30|0": {
+      "n": 8,
+      "sl": 1,
+      "rate": 0.125
+    },
+    "quick_scalp|1": {
+      "n": 36,
+      "sl": 7,
+      "rate": 0.19444444444444445
+    },
+    "qs_pro|2": {
+      "n": 32,
+      "sl": 10,
+      "rate": 0.3125
+    },
+    "qs_pro|13": {
+      "n": 36,
+      "sl": 8,
+      "rate": 0.2222222222222222
+    },
+    "qs_pro|11": {
+      "n": 30,
+      "sl": 7,
+      "rate": 0.23333333333333334
+    },
+    "intra30|18": {
+      "n": 13,
+      "sl": 5,
+      "rate": 0.38461538461538464
+    },
+    "intra30|20": {
+      "n": 15,
+      "sl": 5,
+      "rate": 0.3333333333333333
+    },
+    "quick_scalp|2": {
+      "n": 39,
+      "sl": 8,
+      "rate": 0.20512820512820512
+    },
+    "intra30|23": {
+      "n": 11,
+      "sl": 7,
+      "rate": 0.6363636363636364
+    },
+    "intra30|1": {
+      "n": 12,
+      "sl": 2,
+      "rate": 0.16666666666666666
+    },
+    "quick_scalp|23": {
+      "n": 37,
+      "sl": 5,
+      "rate": 0.13513513513513514
+    },
+    "intra30|11": {
+      "n": 7,
+      "sl": 3,
+      "rate": 0.42857142857142855
+    },
+    "intra30|3": {
+      "n": 5,
+      "sl": 3,
+      "rate": 0.6
+    },
+    "qs_pro|4": {
+      "n": 28,
+      "sl": 3,
+      "rate": 0.10714285714285714
+    },
+    "intra30|14": {
+      "n": 11,
+      "sl": 7,
+      "rate": 0.6363636363636364
+    },
+    "intra30|6": {
+      "n": 14,
+      "sl": 9,
+      "rate": 0.6428571428571429
+    },
+    "intra30|7": {
+      "n": 11,
+      "sl": 4,
+      "rate": 0.36363636363636365
+    },
+    "intra30|21": {
+      "n": 10,
+      "sl": 7,
+      "rate": 0.7
+    },
+    "intra30|19": {
+      "n": 10,
+      "sl": 3,
+      "rate": 0.3
+    },
+    "quick_scalp|5": {
+      "n": 5,
+      "sl": 2,
+      "rate": 0.4
+    },
+    "qs_pro|5": {
+      "n": 6,
+      "sl": 0,
+      "rate": 0
+    },
+    "intra30|5": {
+      "n": 3,
+      "sl": 1,
+      "rate": 0.3333333333333333
+    },
+    "intra30|13": {
+      "n": 12,
+      "sl": 5,
+      "rate": 0.4166666666666667
+    },
+    "intra30|16": {
+      "n": 11,
+      "sl": 4,
+      "rate": 0.36363636363636365
+    },
+    "intra30|15": {
+      "n": 9,
+      "sl": 2,
+      "rate": 0.2222222222222222
+    },
+    "intra30|8": {
+      "n": 4,
+      "sl": 0,
+      "rate": 0
+    },
+    "intra30|22": {
+      "n": 6,
+      "sl": 2,
+      "rate": 0.3333333333333333
+    },
+    "intra30|2": {
+      "n": 10,
+      "sl": 5,
+      "rate": 0.5
+    },
+    "intra30|4": {
+      "n": 3,
+      "sl": 1,
+      "rate": 0.3333333333333333
+    },
+    "intra30|12": {
+      "n": 5,
+      "sl": 4,
+      "rate": 0.8
+    },
+    "scalp|5": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "intraday|14": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "scalp|16": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "intraday|17": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "scalp|19": {
+      "n": 3,
+      "sl": 0,
+      "rate": 0
+    },
+    "fractal|1": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "intraday|3": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "intraday|4": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "intraday|5": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "scalp|7": {
+      "n": 2,
+      "sl": 1,
+      "rate": 0.5
+    },
+    "intraday|7": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "fractal|8": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "scalp|9": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "scalp|11": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "scalp|17": {
+      "n": 4,
+      "sl": 1,
+      "rate": 0.25
+    },
+    "scalp|1": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "cipher_b|3": {
+      "n": 426,
+      "sl": 97,
+      "rate": 0.22769953051643194
+    },
+    "scalp|4": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "scalp|10": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "cipher_b|10": {
+      "n": 2,
+      "sl": 1,
+      "rate": 0.5
+    },
+    "scalp|13": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "cipher_b|15": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "scalp|15": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "cipher_b|19": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "cipher_b|22": {
+      "n": 1,
+      "sl": 0,
+      "rate": 0
+    },
+    "scalp|8": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "scalp|18": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "scalp|20": {
+      "n": 1,
+      "sl": 1,
+      "rate": 1
+    },
+    "fractal|3": {
+      "n": 62,
+      "sl": 13,
+      "rate": 0.20967741935483872
+    },
+    "fractal|4": {
+      "n": 72,
+      "sl": 9,
+      "rate": 0.125
+    }
+  },
+  "thresholds": {
+    "blockP": 0.62,
+    "preferBlockP": 0.72
+  }
+}

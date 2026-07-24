@@ -26,6 +26,7 @@ import {
 import { buildSessionExtras, canAutoLockPlan } from "../src/utils/sessionPlan";
 import { isTooLateToEnter } from "../src/utils/tradeSafety";
 import { isExtendedChase } from "../src/utils/entryFilters";
+import { gateNewLock, noteModuleTp } from "../src/regime/dayModuleRules";
 import type { Candle } from "../src/types";
 import { logSignalFromLive } from "../src/calibration";
 import {
@@ -83,7 +84,7 @@ function log(...args: unknown[]) {
   console.log(`[alertBot ${new Date().toLocaleTimeString()}]`, ...args);
 }
 
-function lockPlan(
+async function lockPlan(
   state: DaemonState,
   assetId: AssetId,
   mode: TradeMode,
@@ -191,6 +192,18 @@ function lockPlan(
     ) &&
     !chaseBlocked
   ) {
+    const regimeMod = mode === "intraday" ? "intraday" : "scalp";
+    if (signal.side === "BUY" || signal.side === "SELL") {
+      const gate = await gateNewLock(regimeMod, signal.side, {
+        entry: signal.levels.entry,
+        sl: signal.levels.stopLoss,
+        tp1: signal.levels.takeProfit1,
+      });
+      if (!gate.ok) {
+        log("skip regime lock", mode, gate.reason);
+        return state.plans[key] ?? null;
+      }
+    }
     const extras = buildSessionExtras(
       assetId,
       mode,
@@ -272,7 +285,7 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
     }
   }
 
-  let plan = lockPlan(
+  let plan = await lockPlan(
     state,
     assetId,
     mode,
@@ -439,6 +452,19 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
     const fresh = generateSignal(assetId, mode, frames);
     fresh.price = roundPrice(live, asset.decimals);
     if (canAutoLockPlan(mode, fresh, null, assetId)) {
+      const regimeMod = mode === "intraday" ? "intraday" : "scalp";
+      if (fresh.side === "BUY" || fresh.side === "SELL") {
+        const gate = await gateNewLock(regimeMod, fresh.side, {
+          entry: fresh.levels!.entry,
+          sl: fresh.levels!.stopLoss,
+          tp1: fresh.levels!.takeProfit1,
+        });
+        if (!gate.ok) {
+          log("skip regime re-lock", mode, gate.reason);
+          now = computeNowAction(signal, null, live, asset, quote);
+          return { signal, plan: null, now, quote };
+        }
+      }
       const extras = buildSessionExtras(
         assetId,
         mode,

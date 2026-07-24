@@ -77,6 +77,8 @@ export async function buildDemoAccountPayload() {
       ...sync,
       priceClosed: priceClosed.length,
     },
+    regime: sync.regime ?? null,
+    dayBudget: sync.dayBudget ?? null,
   };
 }
 

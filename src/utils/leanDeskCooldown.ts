@@ -1,8 +1,8 @@
 /**
- * In-process cooldown so QS Pro + Fractal do not both lock the same
- * spike-top chase (22 Jul: identical entry/SL, double −1R).
+ * In-process cooldown so lean-family desks do not stack the same
+ * spike / bounce print (QS Pro + Fractal + Cipher + Quick Scalp).
  */
-type LeanSource = "qs_pro" | "fractal";
+export type LeanSource = "qs_pro" | "fractal" | "cipher_b" | "quick_scalp";
 
 type LeanStamp = {
   source: LeanSource;
@@ -24,7 +24,7 @@ export function noteLeanDeskLock(
   lastLean = { source, direction, entry, at: Date.now() };
 }
 
-/** Skip if the other lean desk just locked same direction near this entry. */
+/** Skip if another lean desk just locked same direction near this entry. */
 export function shouldSkipCorrelatedLeanLock(
   source: LeanSource,
   direction: "BUY" | "SELL",

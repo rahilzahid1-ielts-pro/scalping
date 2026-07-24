@@ -29,6 +29,7 @@ import {
   noteLeanDeskLock,
   shouldSkipCorrelatedLeanLock,
 } from "../src/utils/leanDeskCooldown";
+import { gateNewLock, noteModuleTp } from "../src/regime/dayModuleRules";
 
 const TICK_MS = Number(process.env.PULSE_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
@@ -147,6 +148,9 @@ async function tick(): Promise<void> {
         );
         log("resolved", openTrade.direction, hit);
         // TP1 closes the active lock for new entries; TP2 may upgrade later.
+        if (hit === "TP1_HIT" || hit === "TP2_HIT") {
+          noteModuleTp("qs_pro", openTrade.direction);
+        }
         openTrade = null;
       }
     }
@@ -163,10 +167,23 @@ async function tick(): Promise<void> {
   }
   if (!sig) return;
   if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
+  const gate = await gateNewLock("qs_pro", sig.direction, {
+    entry: sig.entry,
+    sl: sig.sl,
+    tp1: sig.tp1,
+  });
+  if (!gate.ok) {
+    log("skip regime:", gate.reason);
+    return;
+  }
+  if (gate.cooldownMs > 0 && Date.now() - lastAlertAt < gate.cooldownMs) {
+    log("skip regime cooldown", Math.round(gate.cooldownMs / 60_000), "m");
+    return;
+  }
   if (
     shouldSkipCorrelatedLeanLock("qs_pro", sig.direction, sig.entry)
   ) {
-    log("skip correlated lean (Fractal already locked nearby)");
+    log("skip correlated lean (another lean desk locked nearby)");
     return;
   }
   if (

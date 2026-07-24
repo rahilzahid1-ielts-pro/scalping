@@ -29,9 +29,28 @@ import {
   noteLeanDeskLock,
   shouldSkipCorrelatedLeanLock,
 } from "../utils/leanDeskCooldown";
+import {
+  gateNewLock,
+  noteModuleTp,
+  type RegimeModule,
+} from "../regime/dayModuleRules";
 
 const ASSET = "XAUUSD" as const;
 const COOLDOWN_MS = 60 * 60 * 1000;
+
+function strategyToRegime(strategy: CompareStrategy): RegimeModule {
+  if (strategy === "cipher_b_clone") return "cipher_b";
+  if (strategy === "fractal") return "fractal";
+  return "fractal";
+}
+
+function strategyToLean(
+  strategy: CompareStrategy,
+): "cipher_b" | "fractal" | null {
+  if (strategy === "cipher_b_clone") return "cipher_b";
+  if (strategy === "fractal") return "fractal";
+  return null;
+}
 
 export interface CompareBotConfig {
   strategy: CompareStrategy;
@@ -127,6 +146,9 @@ export function createCompareBot(cfg: CompareBotConfig) {
             Date.now(),
           );
           log("resolved", openTrade.direction, hit);
+          if (hit === "TP1_HIT") {
+            noteModuleTp(strategyToRegime(cfg.strategy), openTrade.direction);
+          }
           openTrade = null;
         }
       }
@@ -143,11 +165,28 @@ export function createCompareBot(cfg: CompareBotConfig) {
     }
     if (!sig) return;
     if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
+
+    const regimeMod = strategyToRegime(cfg.strategy);
+    const gate = await gateNewLock(regimeMod, sig.direction, {
+      entry: sig.entry,
+      sl: sig.sl,
+      tp1: sig.tp1,
+    });
+    if (!gate.ok) {
+      log("skip regime:", gate.reason);
+      return;
+    }
+    if (gate.cooldownMs > 0 && Date.now() - lastAlertAt < gate.cooldownMs) {
+      log("skip regime cooldown", Math.round(gate.cooldownMs / 60_000), "m");
+      return;
+    }
+
+    const leanSrc = strategyToLean(cfg.strategy);
     if (
-      cfg.strategy === "fractal" &&
-      shouldSkipCorrelatedLeanLock("fractal", sig.direction, sig.entry)
+      leanSrc &&
+      shouldSkipCorrelatedLeanLock(leanSrc, sig.direction, sig.entry)
     ) {
-      log("skip correlated lean (QS Pro already locked nearby)");
+      log("skip correlated lean (another lean desk locked nearby)");
       return;
     }
     if (
@@ -178,8 +217,8 @@ export function createCompareBot(cfg: CompareBotConfig) {
     insertStrategyRow(db, row);
     openTrade = row;
     lastAlertAt = Date.now();
-    if (cfg.strategy === "fractal") {
-      noteLeanDeskLock("fractal", sig.direction, sig.entry);
+    if (leanSrc) {
+      noteLeanDeskLock(leanSrc, sig.direction, sig.entry);
     }
 
     const body = [

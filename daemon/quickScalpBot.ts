@@ -21,6 +21,11 @@ import {
   pendingEntryState,
 } from "../src/history/entryTouch";
 import { entryTolerance } from "../src/utils/tradeSafety";
+import {
+  noteLeanDeskLock,
+  shouldSkipCorrelatedLeanLock,
+} from "../src/utils/leanDeskCooldown";
+import { gateNewLock, noteModuleTp } from "../src/regime/dayModuleRules";
 
 const TICK_MS = Number(process.env.QUICK_SCALP_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
@@ -97,6 +102,9 @@ async function tick(): Promise<void> {
         const r = hit === "TP1_HIT" ? tp1R : -1;
         updateQuickScalpOutcome(db, openTrade.id, hit, r, Date.now());
         log("resolved", openTrade.direction, hit);
+        if (hit === "TP1_HIT") {
+          noteModuleTp("quick_scalp", openTrade.direction);
+        }
         openTrade = null;
       }
     }
@@ -113,6 +121,25 @@ async function tick(): Promise<void> {
   }
   if (!sig) return;
   if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
+  const gate = await gateNewLock("quick_scalp", sig.direction, {
+    entry: sig.entry,
+    sl: sig.sl,
+    tp1: sig.tp1,
+  });
+  if (!gate.ok) {
+    log("skip regime:", gate.reason);
+    return;
+  }
+  if (gate.cooldownMs > 0 && Date.now() - lastAlertAt < gate.cooldownMs) {
+    log("skip regime cooldown", Math.round(gate.cooldownMs / 60_000), "m");
+    return;
+  }
+  if (
+    shouldSkipCorrelatedLeanLock("quick_scalp", sig.direction, sig.entry)
+  ) {
+    log("skip correlated lean (another lean desk locked nearby)");
+    return;
+  }
   if (
     !isFreshPendingEntryViable(
       sig.direction,
@@ -130,6 +157,7 @@ async function tick(): Promise<void> {
   insertQuickScalpRow(db, row);
   openTrade = row;
   lastAlertAt = Date.now();
+  noteLeanDeskLock("quick_scalp", sig.direction, sig.entry);
 
   const body = [
     `${sig.direction} BLITZ @ ${sig.entry.toFixed(d)}`,

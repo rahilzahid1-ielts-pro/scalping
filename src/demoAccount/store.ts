@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { shouldDemoFollowModule } from "../regime/dayModuleRules";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 export const DATA_DIR = join(ROOT, "data");
@@ -13,22 +14,23 @@ export const LIVE_DB_PATH = join(DATA_DIR, "signals.db");
 
 export const DEMO_STARTING_BALANCE = 2000;
 export const DEMO_DEFAULT_RISK_PCT = 1;
-/** Auto-mirror EXECUTED trades (allowlisted modules only — never Scalp). */
+/** Auto-mirror EXECUTED trades (day-regime allowlist — never Scalp). */
 export const DEMO_DEFAULT_AUTO_FOLLOW = true;
 export const DEMO_ACCOUNT_ID = "demo-main";
 
-/** Modules that auto-follow into the demo account when autoFollow is ON. */
+/** Candidate modules for demo follow (final gate = day regime tier). */
 export const DEMO_AUTO_FOLLOW_MODULES = new Set([
   "intraday",
   "intra30",
   "cipher_b",
   "qs_pro",
   "quick_scalp",
-  "fractal",
 ]);
 
 export function isDemoAutoFollowModule(module: string): boolean {
-  return DEMO_AUTO_FOLLOW_MODULES.has(String(module || "").toLowerCase());
+  const m = String(module || "").toLowerCase();
+  if (!DEMO_AUTO_FOLLOW_MODULES.has(m)) return false;
+  return shouldDemoFollowModule(m);
 }
 
 export type DemoPositionStatus = "OPEN" | "CLOSED";

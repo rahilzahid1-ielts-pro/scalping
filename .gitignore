@@ -3,5 +3,8 @@ dist
 .DS_Store
 *.local
 .env
-data/
+data/**
+!data/learn/
+!data/learn/sl_model.json
+!data/learn/last_report.json
 daemon/state.json

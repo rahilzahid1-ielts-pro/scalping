@@ -38,6 +38,7 @@ import {
   pendingEntryState,
 } from "../src/history/entryTouch";
 import { entryTolerance } from "../src/utils/tradeSafety";
+import { gateNewLock, noteModuleTp } from "../src/regime/dayModuleRules";
 
 const TICK_MS = Number(process.env.INTRA30_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
@@ -163,6 +164,9 @@ function manageOpenTrade(
       );
       log("resolved", row.direction, outcome, "@", row.entry);
       noteResolve(row.direction);
+      if (outcome === "TP1_HIT" || outcome === "TP2_HIT") {
+        noteModuleTp("intra30", row.direction);
+      }
       tp1ReachedById.delete(row.id);
       return null;
     }
@@ -220,6 +224,19 @@ async function tick(): Promise<void> {
     return;
   }
   if (Date.now() - lastAlertAt < COOLDOWN_MS) return;
+  const gate = await gateNewLock("intra30", sig.direction, {
+    entry: sig.entry,
+    sl: sig.sl,
+    tp1: sig.tp1,
+  });
+  if (!gate.ok) {
+    log("skip regime:", gate.reason);
+    return;
+  }
+  if (gate.cooldownMs > 0 && Date.now() - lastAlertAt < gate.cooldownMs) {
+    log("skip regime cooldown", Math.round(gate.cooldownMs / 60_000), "m");
+    return;
+  }
   const resolveBlock = blockedByResolveCooldown(sig.direction);
   if (resolveBlock) {
     log("skip", resolveBlock);
