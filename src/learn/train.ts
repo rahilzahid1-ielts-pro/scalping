@@ -55,8 +55,9 @@ export function trainLogisticSlModel(
 
   const trainLoss = trainIdx.filter((i) => y[i] === 1).length;
   const trainWin = trainIdx.length - trainLoss;
-  const wSl = trainLoss > 0 ? trainIdx.length / (2 * trainLoss) : 1;
-  const wWin = trainWin > 0 ? trainIdx.length / (2 * trainWin) : 1;
+  // Mild balance — heavy SL weight collapses holdout into “always SL”
+  const wSl = trainLoss > 0 ? Math.min(1.6, trainIdx.length / (2.2 * trainLoss)) : 1;
+  const wWin = trainWin > 0 ? Math.min(1.2, trainIdx.length / (2.2 * trainWin)) : 1;
 
   const weights = new Array(names.length).fill(0);
   weights[0] = Math.log((trainLoss + 1) / (trainWin + 1)); // prior
@@ -130,8 +131,8 @@ export function trainLogisticSlModel(
     moduleHourSlRate,
     thresholds: {
       // Prefer keep firing — only block when model is fairly sure
-      blockP: 0.62,
-      preferBlockP: 0.72,
+      blockP: 0.55,
+      preferBlockP: 0.68,
     },
   };
 }

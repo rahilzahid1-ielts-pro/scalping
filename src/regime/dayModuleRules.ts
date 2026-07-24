@@ -76,8 +76,10 @@ const ALL_MODULES: RegimeModule[] = [
   "fractal",
 ];
 
-/** Daily drivers — keep trading (results > silence). */
-const PREFER_BASE = new Set<RegimeModule>(["qs_pro", "cipher_b"]);
+/** Daily drivers — keep trading (results > silence).
+ *  365d no-Scalp backtest rank: Fractal/QS/Cipher/Pro strong; Intra30/Intraday weak.
+ *  Fractal stays out of prefer (same-print with QS Pro). QS stays demoted (fat SL). */
+const PREFER_BASE = new Set<RegimeModule>(["qs_pro", "cipher_b", "pro"]);
 
 /** Noise / fat SL desks — demoted unless env override. */
 const DEMOTE_BASE = new Set<RegimeModule>(["scalp", "quick_scalp"]);
@@ -100,6 +102,7 @@ const DEMO_CANDIDATES = new Set<RegimeModule>([
   "cipher_b",
   "qs_pro",
   "quick_scalp",
+  "pro",
 ]);
 
 const MIN_SAMPLE = 2;
@@ -527,7 +530,7 @@ export function shouldDemoFollowModule(
 ): boolean {
   const module = normalizeRegimeModule(moduleRaw);
   if (!module) return false;
-  if (module === "scalp" || module === "pro" || module === "fractal") {
+  if (module === "scalp" || module === "fractal") {
     return false;
   }
   if (!DEMO_CANDIDATES.has(module)) return false;

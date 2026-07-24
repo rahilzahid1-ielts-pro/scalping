@@ -25,6 +25,7 @@ export const DEMO_AUTO_FOLLOW_MODULES = new Set([
   "cipher_b",
   "qs_pro",
   "quick_scalp",
+  "pro",
 ]);
 
 export function isDemoAutoFollowModule(module: string): boolean {

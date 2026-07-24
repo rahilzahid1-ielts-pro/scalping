@@ -5,7 +5,7 @@
  *
  * HTF is resampled from M5 (prod parity) — separate 15m/1h CSV files are not mixed in.
  */
-import { existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import {
   loadHistoricalFile,
@@ -13,6 +13,13 @@ import {
   windowStartIndex,
 } from "../src/backtest/loadData";
 import { framesAtIndex, precomputeHtfs } from "../src/backtest/frames";
+import { runWalkForward } from "../src/backtest/engine";
+import {
+  closeBacktestDb,
+  getBacktestDbPath,
+  listBacktestSignals,
+  openBacktestDb,
+} from "../src/backtest/store";
 import { runCompareStrategyBacktest } from "../src/strategyCompare/backtest";
 import {
   getBacktestStrategyDb,
@@ -25,6 +32,8 @@ import {
   getBacktestQuickScalpDb,
   listQuickScalpRows,
 } from "../src/quickScalp/store";
+import { runProBacktest } from "../src/pro/backtest";
+import { getBacktestProDb, listProRows } from "../src/pro/store";
 import {
   generateIntra30Signal,
   isWeakCandle,
@@ -57,6 +66,17 @@ import {
 import { loadLearnRowsFromDir } from "../src/learn/csvImport";
 
 const DEFAULT_FILE = "data/XAU_5m_data.csv";
+
+/** All desks except Scalp (noise / fat-SL spam). */
+const TRAIN_MODULES = [
+  "intraday",
+  "pro",
+  "cipher_b",
+  "fractal",
+  "qs_pro",
+  "quick_scalp",
+  "intra30",
+] as const;
 
 function argValue(argv: string[], name: string): string | undefined {
   const hit = argv.find((a) => a.startsWith(`${name}=`));
@@ -166,6 +186,82 @@ function collectQuickScalp(): LearnRow[] {
       realizedR: r.realizedR,
     });
   }
+  return out;
+}
+
+function collectPro(): LearnRow[] {
+  const db = getBacktestProDb(false);
+  const out: LearnRow[] = [];
+  for (const r of listProRows(db)) {
+    if (r.outcome !== "TP1_HIT" && r.outcome !== "SL_HIT") continue;
+    pushResolved(out, {
+      id: r.id,
+      module: "pro",
+      moduleLabel: "Pro",
+      side: r.direction,
+      entry: r.entry,
+      sl: r.sl,
+      tp1: r.tp1,
+      executedAt: r.executedAt ?? r.timestamp,
+      resolvedAt: r.resolvedAt,
+      outcome: r.outcome,
+      realizedR: r.realizedR,
+    });
+  }
+  return out;
+}
+
+function resetMainBtDb() {
+  closeBacktestDb();
+  const dbPath = getBacktestDbPath();
+  for (const p of [dbPath, dbPath + "-wal", dbPath + "-shm"]) {
+    if (existsSync(p)) {
+      try {
+        unlinkSync(p);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return openBacktestDb(true);
+}
+
+/** Intraday session-lock path only (Scalp mode never run). */
+function collectIntraday(
+  candles: Candle[],
+  days: number,
+  spread: number,
+): LearnRow[] {
+  const winStart = windowStartIndex(candles, days);
+  const db = resetMainBtDb();
+  runWalkForward(db, candles, {
+    assetId: "XAUUSD",
+    modes: ["intraday"],
+    spread,
+    windowStartIdx: winStart,
+  });
+  closeBacktestDb();
+
+  const out: LearnRow[] = [];
+  for (const s of listBacktestSignals(openBacktestDb(false))) {
+    if (s.mode !== "intraday") continue;
+    if (s.zoneTouchedAt == null) continue;
+    if (s.outcomeTp1 !== "WIN" && s.outcomeTp1 !== "LOSS") continue;
+    pushResolved(out, {
+      id: s.id,
+      module: "intraday",
+      moduleLabel: "Intraday",
+      side: s.side,
+      entry: s.entry,
+      sl: s.sl,
+      tp1: s.tp1,
+      executedAt: s.zoneTouchedAt,
+      resolvedAt: s.resolvedAt,
+      outcome: s.outcomeTp1 === "WIN" ? "TP1_HIT" : "SL_HIT",
+      realizedR: s.realizedR,
+    });
+  }
+  closeBacktestDb();
   return out;
 }
 
@@ -340,7 +436,7 @@ function runIntra30Collect(
 function main() {
   const argv = process.argv.slice(2);
   const file = argValue(argv, "--file") ?? DEFAULT_FILE;
-  const days = Number(argValue(argv, "--days") ?? 730);
+  const days = Number(argValue(argv, "--days") ?? 365);
   const spread = Number(argValue(argv, "--spread") ?? 0.25);
   const mergeLiveCsv = argValue(argv, "--merge-csv"); // e.g. D:/download
 
@@ -366,10 +462,36 @@ function main() {
     `Window last ${days}d · ${candles.length} bars · start idx ${winStart} · spread=${spread}`,
   );
   console.log(
-    "TF pack (scalping modules): primary M5 · confirm M15 · bias H1 · daily D1 (all resampled from M5)\n",
+    `Train modules (NO Scalp): ${TRAIN_MODULES.join(", ")}`,
+  );
+  console.log(
+    "TF: scalping-family M5/M15/H1/D1 · Intraday/Pro M15/H1/H4/D1 (HTF from M5)\n",
   );
 
   const labeled: LearnRow[] = [];
+
+  {
+    const t = Date.now();
+    console.log("Backtest intraday (session-lock, no Scalp)…");
+    const rows = collectIntraday(candles, days, spread);
+    labeled.push(...rows);
+    const w = rows.filter((r) => r.outcome !== "SL_HIT").length;
+    const l = rows.filter((r) => r.outcome === "SL_HIT").length;
+    console.log(
+      `  → ${rows.length} labels (${w}W/${l}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`,
+    );
+  }
+
+  {
+    const t = Date.now();
+    console.log("Backtest pro…");
+    const stats = runProBacktest({ candles, days, spread, symbol: "XAUUSD" });
+    const rows = collectPro();
+    labeled.push(...rows);
+    console.log(
+      `  → ${stats.resolved} resolved (${stats.wins}W/${stats.losses}L) · ${rows.length} labels · ${((Date.now() - t) / 1000).toFixed(1)}s`,
+    );
+  }
 
   for (const strategy of ["cipher_b_clone", "fractal"] as const) {
     const t = Date.now();
@@ -422,30 +544,36 @@ function main() {
   }
 
   if (mergeLiveCsv && existsSync(mergeLiveCsv)) {
-    const live = loadLearnRowsFromDir(mergeLiveCsv);
-    console.log(`Merging ${live.length} live CSV EXECUTED rows from ${mergeLiveCsv}`);
+    const live = loadLearnRowsFromDir(mergeLiveCsv).filter(
+      (r) => r.module !== "scalp",
+    );
+    console.log(
+      `Merging ${live.length} live CSV EXECUTED rows (Scalp excluded) from ${mergeLiveCsv}`,
+    );
     labeled.push(...live);
   }
 
-  labeled.sort((a, b) => a.executedAt - b.executedAt);
+  // Hard exclude Scalp from training set
+  const clean = labeled.filter((r) => r.module !== "scalp");
+  clean.sort((a, b) => a.executedAt - b.executedAt);
   if (!existsSync(LEARN_DIR)) mkdirSync(LEARN_DIR, { recursive: true });
   const labelsPath = join(LEARN_DIR, "labeled_backtest.jsonl");
   writeFileSync(
     labelsPath,
-    labeled.map((r) => JSON.stringify(r)).join("\n") + "\n",
+    clean.map((r) => JSON.stringify(r)).join("\n") + "\n",
   );
 
-  console.log(`\nTotal labeled rows: ${labeled.length}`);
-  if (labeled.length < 8) {
+  console.log(`\nTotal labeled rows (no Scalp): ${clean.length}`);
+  if (clean.length < 8) {
     console.error("Not enough labels to train.");
     process.exit(1);
   }
 
-  const model = trainLogisticSlModel(labeled);
+  const model = trainLogisticSlModel(clean);
   saveModel(model);
 
   const byMod: Record<string, { w: number; l: number }> = {};
-  for (const r of labeled) {
+  for (const r of clean) {
     byMod[r.module] ??= { w: 0, l: 0 };
     if (r.outcome === "SL_HIT") byMod[r.module].l += 1;
     else byMod[r.module].w += 1;
@@ -453,10 +581,12 @@ function main() {
 
   const report = {
     trainedAt: model.trainedAt,
-    source: "backtest-m5",
+    source: "backtest-m5-no-scalp",
     file,
     days,
     spread,
+    exclude: ["scalp"],
+    trainModules: [...TRAIN_MODULES],
     sampleN: model.sampleN,
     winN: model.winN,
     lossN: model.lossN,
@@ -467,14 +597,14 @@ function main() {
     labelsPath,
     modelPath: MODEL_PATH,
     timeframes: {
-      note: "Live scalping modules use this pack; HTF resampled from M5 in backtest",
-      scalping: {
+      note: "HTF resampled from M5 in backtest (prod parity)",
+      scalpingFamily: {
         primary: "M5",
         confirmation: "M15",
         bias: "H1",
         daily: "D1",
       },
-      intraday: {
+      intradayPro: {
         primary: "M15",
         confirmation: "H1",
         bias: "H4",
@@ -485,7 +615,7 @@ function main() {
   saveReport(report);
 
   console.log(`
-======== LEARN FROM BACKTEST ========
+======== LEARN ALL MODULES (NO SCALP) ========
 Samples     : ${model.sampleN}  (${model.winN}W / ${model.lossN}L)
 Holdout acc : ${(model.metrics.accuracy * 100).toFixed(1)}%
 SL precision: ${(model.metrics.precisionSl * 100).toFixed(1)}%
