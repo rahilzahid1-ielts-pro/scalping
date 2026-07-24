@@ -433,6 +433,87 @@ function runIntra30Collect(
   return out;
 }
 
+/** One pass: all desks except Scalp on the given candle window. */
+export function collectNoScalpLabels(
+  candles: Candle[],
+  days: number,
+  spread: number,
+  log: (...args: unknown[]) => void = console.log,
+): LearnRow[] {
+  const labeled: LearnRow[] = [];
+
+  {
+    const t = Date.now();
+    log("  Backtest intraday…");
+    const rows = collectIntraday(candles, days, spread);
+    labeled.push(...rows);
+    const w = rows.filter((r) => r.outcome !== "SL_HIT").length;
+    const l = rows.filter((r) => r.outcome === "SL_HIT").length;
+    log(`    → ${rows.length} (${w}W/${l}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`);
+  }
+
+  {
+    const t = Date.now();
+    log("  Backtest pro…");
+    const stats = runProBacktest({ candles, days, spread, symbol: "XAUUSD" });
+    const rows = collectPro();
+    labeled.push(...rows);
+    log(
+      `    → ${rows.length} (${stats.wins}W/${stats.losses}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`,
+    );
+  }
+
+  for (const strategy of ["cipher_b_clone", "fractal"] as const) {
+    const t = Date.now();
+    log(`  Backtest ${strategy}…`);
+    const stats = runCompareStrategyBacktest({
+      candles,
+      strategy,
+      days,
+      spread,
+    });
+    const rows = collectCompare(strategy);
+    labeled.push(...rows);
+    log(
+      `    → ${rows.length} (${stats.wins}W/${stats.losses}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`,
+    );
+  }
+
+  {
+    const t = Date.now();
+    log("  Backtest qs_pro…");
+    const stats = runPulseBacktest({ candles, days, spread });
+    const rows = collectPulse();
+    labeled.push(...rows);
+    log(
+      `    → ${rows.length} (${stats.wins}W/${stats.losses}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`,
+    );
+  }
+
+  {
+    const t = Date.now();
+    log("  Backtest quick_scalp…");
+    const stats = runQuickScalpBacktest({ candles, days, spread });
+    const rows = collectQuickScalp();
+    labeled.push(...rows);
+    log(
+      `    → ${rows.length} (${stats.wins}W/${stats.losses}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`,
+    );
+  }
+
+  {
+    const t = Date.now();
+    log("  Backtest intra30…");
+    const rows = runIntra30Collect(candles, days, spread);
+    labeled.push(...rows);
+    const w = rows.filter((r) => r.outcome !== "SL_HIT").length;
+    const l = rows.filter((r) => r.outcome === "SL_HIT").length;
+    log(`    → ${rows.length} (${w}W/${l}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`);
+  }
+
+  return labeled.filter((r) => r.module !== "scalp");
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const file = argValue(argv, "--file") ?? DEFAULT_FILE;
@@ -468,80 +549,7 @@ function main() {
     "TF: scalping-family M5/M15/H1/D1 · Intraday/Pro M15/H1/H4/D1 (HTF from M5)\n",
   );
 
-  const labeled: LearnRow[] = [];
-
-  {
-    const t = Date.now();
-    console.log("Backtest intraday (session-lock, no Scalp)…");
-    const rows = collectIntraday(candles, days, spread);
-    labeled.push(...rows);
-    const w = rows.filter((r) => r.outcome !== "SL_HIT").length;
-    const l = rows.filter((r) => r.outcome === "SL_HIT").length;
-    console.log(
-      `  → ${rows.length} labels (${w}W/${l}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`,
-    );
-  }
-
-  {
-    const t = Date.now();
-    console.log("Backtest pro…");
-    const stats = runProBacktest({ candles, days, spread, symbol: "XAUUSD" });
-    const rows = collectPro();
-    labeled.push(...rows);
-    console.log(
-      `  → ${stats.resolved} resolved (${stats.wins}W/${stats.losses}L) · ${rows.length} labels · ${((Date.now() - t) / 1000).toFixed(1)}s`,
-    );
-  }
-
-  for (const strategy of ["cipher_b_clone", "fractal"] as const) {
-    const t = Date.now();
-    console.log(`Backtest ${strategy}…`);
-    const stats = runCompareStrategyBacktest({
-      candles,
-      strategy,
-      days,
-      spread,
-    });
-    const rows = collectCompare(strategy);
-    labeled.push(...rows);
-    console.log(
-      `  → ${stats.resolved} resolved (${stats.wins}W/${stats.losses}L) · ${rows.length} labels · ${((Date.now() - t) / 1000).toFixed(1)}s`,
-    );
-  }
-
-  {
-    const t = Date.now();
-    console.log("Backtest qs_pro (pulse)…");
-    const stats = runPulseBacktest({ candles, days, spread });
-    const rows = collectPulse();
-    labeled.push(...rows);
-    console.log(
-      `  → ${stats.resolved} resolved (${stats.wins}W/${stats.losses}L) · ${rows.length} labels · ${((Date.now() - t) / 1000).toFixed(1)}s`,
-    );
-  }
-
-  {
-    const t = Date.now();
-    console.log("Backtest quick_scalp…");
-    const stats = runQuickScalpBacktest({ candles, days, spread });
-    const rows = collectQuickScalp();
-    labeled.push(...rows);
-    console.log(
-      `  → ${stats.resolved} resolved (${stats.wins}W/${stats.losses}L) · ${rows.length} labels · ${((Date.now() - t) / 1000).toFixed(1)}s`,
-    );
-  }
-
-  {
-    const t = Date.now();
-    console.log("Backtest intra30…");
-    const rows = runIntra30Collect(candles, days, spread);
-    labeled.push(...rows);
-    const w = rows.filter((r) => r.outcome !== "SL_HIT").length;
-    const l = rows.filter((r) => r.outcome === "SL_HIT").length;
-    console.log(
-      `  → ${rows.length} labels (${w}W/${l}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`,
-    );
-  }
+  const labeled = collectNoScalpLabels(candles, days, spread);
 
   if (mergeLiveCsv && existsSync(mergeLiveCsv)) {
     const live = loadLearnRowsFromDir(mergeLiveCsv).filter(
@@ -639,4 +647,10 @@ Report      : ${REPORT_PATH}
   }
 }
 
-main();
+const isDirect =
+  typeof process !== "undefined" &&
+  process.argv[1] &&
+  process.argv[1].replace(/\\/g, "/").endsWith("learnFromBacktest.ts");
+if (isDirect) {
+  main();
+}
