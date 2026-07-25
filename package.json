@@ -24,6 +24,8 @@
     "learn:20y": "tsx scripts/learnFrom20y.ts",
     "learn:retrain": "tsx scripts/retrainFromLabels.ts",
     "learn:check-cf": "tsx scripts/checkCipherFractal.ts",
+    "learn:weekly": "tsx scripts/learnWeekly.ts",
+    "learn:weekly-bot": "tsx daemon/weeklyLearnBot.ts",
     "gen-vapid": "node scripts/gen-vapid.mjs",
     "gen-icons": "node scripts/gen-icons.mjs"
   },

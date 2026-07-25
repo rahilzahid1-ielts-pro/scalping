@@ -22,6 +22,13 @@ restartPolicyMaxRetries = 10
 # (created as scalping-volume) so signals.db + push-subscriptions survive redeploys.
 # Without it, every deploy wipes locks and the UI jumps back to WAITING.
 #
+# Weekly learn (Sunday ~22:00 PKT): merges live EXECUTED + labeled_20y.jsonl →
+# retrain model/playbook if sanity passes. Auto-ON on Railway.
+#   ENABLE_WEEKLY_LEARN=0 to disable
+#   LEARN_WEEKLY_LIVE_DAYS=90
+# Put data/learn/labeled_20y.jsonl on the volume once (after local learn:20y)
+# so weekly has a strong base; otherwise it waits until enough live fills.
+#
 # Closed-app phone alerts also need:
 #   WEB_PUSH_VAPID_PUBLIC_KEY=...
 #   WEB_PUSH_VAPID_PRIVATE_KEY=...

@@ -643,4 +643,18 @@ server.listen(PORT, "0.0.0.0", () => {
   ).catch((e) => {
     console.error("[prodServer] Failed to start Fractal worker:", e);
   });
+
+  void import("../daemon/weeklyLearnBot").then(
+    ({ startWeeklyLearnWorker, shouldAutoStartWeeklyLearnWorker }) => {
+      if (shouldAutoStartWeeklyLearnWorker()) {
+        startWeeklyLearnWorker();
+      } else {
+        console.log(
+          "[prodServer] Weekly learn OFF — set ENABLE_WEEKLY_LEARN=1 (or auto on Railway)",
+        );
+      }
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Failed to start weekly learn worker:", e);
+  });
 });

@@ -9,4 +9,6 @@ data/**
 !data/learn/last_report.json
 !data/learn/scenario_playbook.json
 !data/learn/by_year_report.json
+!data/learn/last_weekly_run.json
+!data/learn/sl_model.prev.json
 daemon/state.json

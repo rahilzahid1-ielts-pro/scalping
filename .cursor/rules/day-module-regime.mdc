@@ -42,10 +42,11 @@ Do **not** remove `src/regime/dayModuleRules.ts` or `positiveDayDesk.ts` without
 
 - Live CSV: `npm run learn -- --dir=D:/download`
 - **OHLC backtest labels (20y M5):** `npm run learn:bt -- --file=data/XAU_5m_data.csv --days=365 --merge-csv=D:/download`
+- **Weekly auto:** `npm run learn:weekly` / Railway worker (`ENABLE_WEEKLY_LEARN=auto`) — Sunday ~22:00 PKT, merge live + `labeled_20y.jsonl`, sanity-gated overwrite
 - Artifact: `data/learn/sl_model.json` + `labeled_backtest.jsonl`
 - Runtime: `gateLearnedLock` inside `gateNewLock`
 - Backtest HTF = resampled from M5 (same as prod parity) — do not mix separate TF CSVs into one walk
-
+- Do **not** add daily full-ML overwrite cron (overfit); weekly merge is the cadence
 ## Timeframes before lock (prod)
 
 - **Scalping family** (Scalp, QS Pro, Cipher, Fractal, Quick Scalp, Intra30): **M5 entry** + M15 confirm + H1 bias + D1
