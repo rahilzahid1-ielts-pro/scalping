@@ -100,12 +100,11 @@ export function getBacktestProDb(reset = false): Database.Database {
     }
     backtestDb = null;
   }
-  if (reset && existsSync(BACKTEST_DB_PATH)) {
-    const tmp = openDb(BACKTEST_DB_PATH, 0x50524f42);
-    tmp.exec("DROP TABLE IF EXISTS pro_signals");
-    tmp.close();
-  }
+  // Ensure schema then clear rows — avoid DROP while shared DB is open.
   backtestDb = openDb(BACKTEST_DB_PATH, 0x50524f42);
+  if (reset) {
+    backtestDb.exec("DELETE FROM pro_signals");
+  }
   return backtestDb;
 }
 

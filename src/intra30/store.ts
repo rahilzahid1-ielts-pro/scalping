@@ -116,12 +116,11 @@ export function getBacktestIntra30Db(reset = false): Database.Database {
     }
     backtestDb = null;
   }
-  if (reset && existsSync(BACKTEST_DB_PATH)) {
-    const tmp = openDb(BACKTEST_DB_PATH, 0x49333042);
-    tmp.exec("DROP TABLE IF EXISTS intra30_signals");
-    tmp.close();
-  }
+  // Ensure schema then clear rows — avoid DROP while shared DB is open.
   backtestDb = openDb(BACKTEST_DB_PATH, 0x49333042);
+  if (reset) {
+    backtestDb.exec("DELETE FROM intra30_signals");
+  }
   return backtestDb;
 }
 

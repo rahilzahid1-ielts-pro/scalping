@@ -1,0 +1,353 @@
+{
+  "generatedAt": "2026-07-25T00:11:11.515Z",
+  "from": 2023,
+  "to": 2025,
+  "sampleN": 6863,
+  "rule": "avoid = SL rate ≥40% (n≥25); throttle ≥30%; else allow. Combine with lean cooldown / post-TP pause.",
+  "scenarios": [
+    {
+      "key": "module_side:intraday|SELL",
+      "n": 156,
+      "sl": 83,
+      "rate": 53.2,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:intraday|asia_am",
+      "n": 246,
+      "sl": 118,
+      "rate": 48,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:intraday|mid",
+      "n": 76,
+      "sl": 36,
+      "rate": 47.4,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:intraday|eve",
+      "n": 51,
+      "sl": 24,
+      "rate": 47.1,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module:intraday",
+      "n": 415,
+      "sl": 187,
+      "rate": 45.1,
+      "action": "avoid",
+      "tip": "Size smaller / day-boost only when green"
+    },
+    {
+      "key": "module_session:intra30|asia_am",
+      "n": 108,
+      "sl": 46,
+      "rate": 42.6,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:intra30|eve",
+      "n": 112,
+      "sl": 46,
+      "rate": 41.1,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:intra30|SELL",
+      "n": 205,
+      "sl": 84,
+      "rate": 41,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module:intra30",
+      "n": 461,
+      "sl": 187,
+      "rate": 40.6,
+      "action": "avoid",
+      "tip": "Size smaller / day-boost only when green"
+    },
+    {
+      "key": "module_session:intra30|night",
+      "n": 149,
+      "sl": 60,
+      "rate": 40.3,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:intraday|BUY",
+      "n": 259,
+      "sl": 104,
+      "rate": 40.2,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:intra30|BUY",
+      "n": 256,
+      "sl": 103,
+      "rate": 40.2,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "bad_rr",
+      "n": 484,
+      "sl": 190,
+      "rate": 39.3,
+      "action": "throttle",
+      "tip": "Skip reward << risk"
+    },
+    {
+      "key": "module_session:intra30|mid",
+      "n": 92,
+      "sl": 35,
+      "rate": 38,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "side:SELL",
+      "n": 1596,
+      "sl": 592,
+      "rate": 37.1,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:qs_pro|SELL",
+      "n": 604,
+      "sl": 221,
+      "rate": 36.6,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:qs_pro|asia_am",
+      "n": 669,
+      "sl": 234,
+      "rate": 35,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "session:asia_am",
+      "n": 2051,
+      "sl": 699,
+      "rate": 34.1,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:quick_scalp|SELL",
+      "n": 284,
+      "sl": 94,
+      "rate": 33.1,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:pro|asia_am",
+      "n": 428,
+      "sl": 140,
+      "rate": 32.7,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:qs_pro|mid",
+      "n": 526,
+      "sl": 167,
+      "rate": 31.7,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:pro|SELL",
+      "n": 347,
+      "sl": 110,
+      "rate": 31.7,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module:qs_pro",
+      "n": 2359,
+      "sl": 739,
+      "rate": 31.3,
+      "action": "throttle",
+      "tip": "Prefer when not stacked / post-TP"
+    },
+    {
+      "key": "module_session:qs_pro|eve",
+      "n": 502,
+      "sl": 157,
+      "rate": 31.3,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:pro|mid",
+      "n": 315,
+      "sl": 98,
+      "rate": 31.1,
+      "action": "throttle",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:qs_pro|BUY",
+      "n": 1755,
+      "sl": 518,
+      "rate": 29.5,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "session:mid",
+      "n": 1482,
+      "sl": 435,
+      "rate": 29.4,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "session:eve",
+      "n": 1435,
+      "sl": 412,
+      "rate": 28.7,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "fat_sl",
+      "n": 337,
+      "sl": 95,
+      "rate": 28.2,
+      "action": "allow",
+      "tip": "Skip / demote — fat risk"
+    },
+    {
+      "key": "module_session:qs_pro|night",
+      "n": 662,
+      "sl": 181,
+      "rate": 27.3,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module:pro",
+      "n": 1508,
+      "sl": 404,
+      "rate": 26.8,
+      "action": "allow",
+      "tip": "Prefer when not stacked / post-TP"
+    },
+    {
+      "key": "module_session:quick_scalp|asia_am",
+      "n": 600,
+      "sl": 161,
+      "rate": 26.8,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "side:BUY",
+      "n": 5267,
+      "sl": 1407,
+      "rate": 26.7,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:pro|BUY",
+      "n": 1161,
+      "sl": 294,
+      "rate": 25.3,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:quick_scalp|eve",
+      "n": 453,
+      "sl": 109,
+      "rate": 24.1,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:pro|eve",
+      "n": 317,
+      "sl": 76,
+      "rate": 24,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "session:night",
+      "n": 1895,
+      "sl": 453,
+      "rate": 23.9,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module:quick_scalp",
+      "n": 2120,
+      "sl": 482,
+      "rate": 22.7,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:intraday|night",
+      "n": 42,
+      "sl": 9,
+      "rate": 21.4,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:quick_scalp|BUY",
+      "n": 1836,
+      "sl": 388,
+      "rate": 21.1,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:quick_scalp|mid",
+      "n": 473,
+      "sl": 99,
+      "rate": 20.9,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:pro|night",
+      "n": 448,
+      "sl": 90,
+      "rate": 20.1,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:quick_scalp|night",
+      "n": 594,
+      "sl": 113,
+      "rate": 19,
+      "action": "allow",
+      "tip": "Use lean cooldown + post-TP pause"
+    }
+  ]
+}

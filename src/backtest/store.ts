@@ -227,10 +227,10 @@ export function openBacktestDb(reset = false): Database.Database {
     db.pragma("journal_mode = WAL");
     db.pragma("busy_timeout = 5000");
     db.pragma("application_id = 0x4254434B"); // 'BTCK'
-    if (reset) {
-      db.exec("DROP TABLE IF EXISTS signals");
-    }
     db.exec(SCHEMA);
+    if (reset) {
+      db.exec("DELETE FROM signals");
+    }
     dbInstance = db;
     return db;
   } catch (e) {

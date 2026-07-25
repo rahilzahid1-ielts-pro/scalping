@@ -103,12 +103,13 @@ export function getBacktestPulseDb(reset = false): Database.Database {
     }
     backtestDb = null;
   }
-  if (reset && existsSync(BACKTEST_DB_PATH)) {
-    const tmp = openDb(BACKTEST_DB_PATH, 0x50554c54);
-    tmp.exec("DROP TABLE IF EXISTS pulse_signals");
-    tmp.close();
-  }
+  // Always ensure schema first — never DROP while other desks hold
+  // backtest-results.db open (learn:20y / learn:bt chain). DROP+recreate
+  // can race and leave INSERT with "no such table: pulse_signals".
   backtestDb = openDb(BACKTEST_DB_PATH, 0x50554c54);
+  if (reset) {
+    backtestDb.exec("DELETE FROM pulse_signals");
+  }
   return backtestDb;
 }
 

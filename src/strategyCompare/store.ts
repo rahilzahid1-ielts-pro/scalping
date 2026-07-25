@@ -128,14 +128,11 @@ export function getBacktestStrategyDb(reset = false): Database.Database {
     }
     backtestDb = null;
   }
-  if (reset && existsSync(BACKTEST_DB_PATH)) {
-    const tmp = openDb(BACKTEST_DB_PATH, 0x53545242);
-    // Only drop shared compare table — never main signals or quick_scalp_signals.
-    tmp.exec("DROP TABLE IF EXISTS strategy_signals");
-    tmp.exec("DROP VIEW IF EXISTS strategy_signals_with_quick_scalp");
-    tmp.close();
-  }
+  // Ensure schema then clear rows — avoid DROP while shared DB is open.
   backtestDb = openDb(BACKTEST_DB_PATH, 0x53545242);
+  if (reset) {
+    backtestDb.exec("DELETE FROM strategy_signals");
+  }
   return backtestDb;
 }
 

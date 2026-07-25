@@ -99,13 +99,11 @@ export function getBacktestQuickScalpDb(reset = false): Database.Database {
     }
     backtestDb = null;
   }
-  if (reset && existsSync(BACKTEST_DB_PATH)) {
-    // Only drop our isolated table — never the main backtest `signals` table.
-    const tmp = openDb(BACKTEST_DB_PATH, 0x51534342);
-    tmp.exec("DROP TABLE IF EXISTS quick_scalp_signals");
-    tmp.close();
-  }
+  // Ensure schema then clear rows — avoid DROP while shared DB is open.
   backtestDb = openDb(BACKTEST_DB_PATH, 0x51534342);
+  if (reset) {
+    backtestDb.exec("DELETE FROM quick_scalp_signals");
+  }
   return backtestDb;
 }
 
