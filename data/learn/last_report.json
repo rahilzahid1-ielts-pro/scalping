@@ -1,51 +1,1023 @@
 {
-  "trainedAt": "2026-07-25T07:05:18.551Z",
+  "trainedAt": "2026-07-25T14:35:31.095Z",
   "source": "backtest-m5-20y-chunks",
   "file": "data/XAU_5m_data.csv",
-  "from": 2023,
+  "from": 2005,
   "to": 2025,
   "spread": 0.25,
   "exclude": [
     "scalp"
   ],
-  "sampleN": 10228,
+  "sampleN": 68105,
   "overall": {
-    "n": 10228,
-    "w": 7236,
-    "l": 2992,
-    "wr": 70.7,
+    "n": 68105,
+    "w": 47751,
+    "l": 20354,
+    "wr": 70.1,
     "byMod": {
-      "pro": {
-        "w": 1255,
-        "l": 475
-      },
-      "qs_pro": {
-        "w": 1828,
-        "l": 819
-      },
-      "quick_scalp": {
-        "w": 2174,
-        "l": 706
+      "intraday": {
+        "w": 2381,
+        "l": 1648
       },
       "intra30": {
-        "w": 373,
-        "l": 262
+        "w": 2568,
+        "l": 2692
+      },
+      "quick_scalp": {
+        "w": 14055,
+        "l": 4482
+      },
+      "qs_pro": {
+        "w": 12131,
+        "l": 5227
+      },
+      "pro": {
+        "w": 7777,
+        "l": 3142
       },
       "cipher_b": {
-        "w": 973,
-        "l": 372
-      },
-      "intraday": {
-        "w": 303,
-        "l": 251
+        "w": 6399,
+        "l": 2388
       },
       "fractal": {
-        "w": 330,
-        "l": 107
+        "w": 2440,
+        "l": 775
       }
     }
   },
   "byYear": {
+    "2005": {
+      "n": 2344,
+      "w": 1615,
+      "l": 729,
+      "wr": 68.9,
+      "byMod": {
+        "intraday": {
+          "w": 138,
+          "l": 41
+        },
+        "intra30": {
+          "w": 31,
+          "l": 159
+        },
+        "quick_scalp": {
+          "w": 471,
+          "l": 157
+        },
+        "qs_pro": {
+          "w": 397,
+          "l": 162
+        },
+        "pro": {
+          "w": 272,
+          "l": 91
+        },
+        "cipher_b": {
+          "w": 241,
+          "l": 92
+        },
+        "fractal": {
+          "w": 65,
+          "l": 27
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 59
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 27.7
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 21.9
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 16.7
+        }
+      ]
+    },
+    "2006": {
+      "n": 2912,
+      "w": 2155,
+      "l": 757,
+      "wr": 74,
+      "byMod": {
+        "cipher_b": {
+          "w": 295,
+          "l": 68
+        },
+        "pro": {
+          "w": 365,
+          "l": 109
+        },
+        "quick_scalp": {
+          "w": 591,
+          "l": 124
+        },
+        "qs_pro": {
+          "w": 481,
+          "l": 155
+        },
+        "intra30": {
+          "w": 207,
+          "l": 222
+        },
+        "intraday": {
+          "w": 126,
+          "l": 62
+        },
+        "fractal": {
+          "w": 90,
+          "l": 17
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 56.3
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 35.7
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 30.1
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 16.4
+        }
+      ]
+    },
+    "2007": {
+      "n": 3149,
+      "w": 2171,
+      "l": 978,
+      "wr": 68.9,
+      "byMod": {
+        "pro": {
+          "w": 348,
+          "l": 154
+        },
+        "qs_pro": {
+          "w": 557,
+          "l": 240
+        },
+        "quick_scalp": {
+          "w": 652,
+          "l": 216
+        },
+        "intra30": {
+          "w": 86,
+          "l": 143
+        },
+        "cipher_b": {
+          "w": 302,
+          "l": 117
+        },
+        "intraday": {
+          "w": 132,
+          "l": 74
+        },
+        "fractal": {
+          "w": 94,
+          "l": 34
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 64.2
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 30.3
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 18.4
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 14.9
+        }
+      ]
+    },
+    "2008": {
+      "n": 3376,
+      "w": 2609,
+      "l": 767,
+      "wr": 77.3,
+      "byMod": {
+        "pro": {
+          "w": 441,
+          "l": 117
+        },
+        "intra30": {
+          "w": 218,
+          "l": 191
+        },
+        "cipher_b": {
+          "w": 350,
+          "l": 58
+        },
+        "qs_pro": {
+          "w": 627,
+          "l": 179
+        },
+        "quick_scalp": {
+          "w": 732,
+          "l": 132
+        },
+        "intraday": {
+          "w": 138,
+          "l": 69
+        },
+        "fractal": {
+          "w": 103,
+          "l": 21
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 61.3
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 44.5
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 25.8
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 11.3
+        }
+      ]
+    },
+    "2009": {
+      "n": 3176,
+      "w": 2276,
+      "l": 900,
+      "wr": 71.7,
+      "byMod": {
+        "pro": {
+          "w": 343,
+          "l": 135
+        },
+        "intraday": {
+          "w": 117,
+          "l": 82
+        },
+        "intra30": {
+          "w": 155,
+          "l": 159
+        },
+        "qs_pro": {
+          "w": 587,
+          "l": 216
+        },
+        "quick_scalp": {
+          "w": 680,
+          "l": 189
+        },
+        "cipher_b": {
+          "w": 288,
+          "l": 97
+        },
+        "fractal": {
+          "w": 106,
+          "l": 22
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 62.8
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 34.2
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 18
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 15.6
+        }
+      ]
+    },
+    "2010": {
+      "n": 3293,
+      "w": 2307,
+      "l": 986,
+      "wr": 70.1,
+      "byMod": {
+        "qs_pro": {
+          "w": 570,
+          "l": 258
+        },
+        "intraday": {
+          "w": 117,
+          "l": 78
+        },
+        "pro": {
+          "w": 389,
+          "l": 148
+        },
+        "quick_scalp": {
+          "w": 669,
+          "l": 223
+        },
+        "cipher_b": {
+          "w": 320,
+          "l": 124
+        },
+        "intra30": {
+          "w": 119,
+          "l": 119
+        },
+        "fractal": {
+          "w": 123,
+          "l": 36
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 66.4
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 34.5
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 16.3
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 12.4
+        }
+      ]
+    },
+    "2011": {
+      "n": 3492,
+      "w": 2558,
+      "l": 934,
+      "wr": 73.3,
+      "byMod": {
+        "pro": {
+          "w": 430,
+          "l": 141
+        },
+        "quick_scalp": {
+          "w": 741,
+          "l": 203
+        },
+        "qs_pro": {
+          "w": 614,
+          "l": 251
+        },
+        "intraday": {
+          "w": 114,
+          "l": 76
+        },
+        "cipher_b": {
+          "w": 343,
+          "l": 110
+        },
+        "intra30": {
+          "w": 178,
+          "l": 132
+        },
+        "fractal": {
+          "w": 138,
+          "l": 21
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 67.2
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 40.8
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 14.3
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 13.5
+        }
+      ]
+    },
+    "2012": {
+      "n": 3313,
+      "w": 2344,
+      "l": 969,
+      "wr": 70.8,
+      "byMod": {
+        "intra30": {
+          "w": 107,
+          "l": 116
+        },
+        "pro": {
+          "w": 356,
+          "l": 167
+        },
+        "intraday": {
+          "w": 113,
+          "l": 78
+        },
+        "qs_pro": {
+          "w": 645,
+          "l": 232
+        },
+        "quick_scalp": {
+          "w": 691,
+          "l": 218
+        },
+        "cipher_b": {
+          "w": 308,
+          "l": 119
+        },
+        "fractal": {
+          "w": 124,
+          "l": 39
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 68.5
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 28.9
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 12.1
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 11.6
+        }
+      ]
+    },
+    "2013": {
+      "n": 3234,
+      "w": 2284,
+      "l": 950,
+      "wr": 70.6,
+      "byMod": {
+        "intra30": {
+          "w": 118,
+          "l": 123
+        },
+        "intraday": {
+          "w": 105,
+          "l": 91
+        },
+        "qs_pro": {
+          "w": 596,
+          "l": 271
+        },
+        "quick_scalp": {
+          "w": 672,
+          "l": 218
+        },
+        "cipher_b": {
+          "w": 303,
+          "l": 85
+        },
+        "fractal": {
+          "w": 142,
+          "l": 35
+        },
+        "pro": {
+          "w": 348,
+          "l": 127
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 64
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 33.2
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 13.3
+        },
+        {
+          "id": "asia_bounce_sell",
+          "pct": 10.6
+        }
+      ]
+    },
+    "2014": {
+      "n": 3263,
+      "w": 2151,
+      "l": 1112,
+      "wr": 65.9,
+      "byMod": {
+        "intra30": {
+          "w": 113,
+          "l": 144
+        },
+        "quick_scalp": {
+          "w": 627,
+          "l": 259
+        },
+        "qs_pro": {
+          "w": 562,
+          "l": 291
+        },
+        "fractal": {
+          "w": 125,
+          "l": 55
+        },
+        "cipher_b": {
+          "w": 274,
+          "l": 128
+        },
+        "pro": {
+          "w": 348,
+          "l": 155
+        },
+        "intraday": {
+          "w": 102,
+          "l": 80
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 66.7
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 25.8
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 13.2
+        },
+        {
+          "id": "asia_bounce_sell",
+          "pct": 12.8
+        }
+      ]
+    },
+    "2015": {
+      "n": 3323,
+      "w": 2328,
+      "l": 995,
+      "wr": 70.1,
+      "byMod": {
+        "qs_pro": {
+          "w": 606,
+          "l": 257
+        },
+        "quick_scalp": {
+          "w": 687,
+          "l": 218
+        },
+        "cipher_b": {
+          "w": 313,
+          "l": 109
+        },
+        "fractal": {
+          "w": 148,
+          "l": 41
+        },
+        "intra30": {
+          "w": 100,
+          "l": 118
+        },
+        "pro": {
+          "w": 350,
+          "l": 162
+        },
+        "intraday": {
+          "w": 124,
+          "l": 90
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 67.3
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 33.4
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 12.2
+        },
+        {
+          "id": "asia_bounce_sell",
+          "pct": 10.9
+        }
+      ]
+    },
+    "2016": {
+      "n": 3293,
+      "w": 2336,
+      "l": 957,
+      "wr": 70.9,
+      "byMod": {
+        "intraday": {
+          "w": 107,
+          "l": 91
+        },
+        "intra30": {
+          "w": 115,
+          "l": 119
+        },
+        "quick_scalp": {
+          "w": 684,
+          "l": 200
+        },
+        "qs_pro": {
+          "w": 616,
+          "l": 248
+        },
+        "fractal": {
+          "w": 122,
+          "l": 46
+        },
+        "cipher_b": {
+          "w": 296,
+          "l": 104
+        },
+        "pro": {
+          "w": 396,
+          "l": 149
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 66.4
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 30.4
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 13.9
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 12.6
+        }
+      ]
+    },
+    "2017": {
+      "n": 3007,
+      "w": 1953,
+      "l": 1054,
+      "wr": 64.9,
+      "byMod": {
+        "qs_pro": {
+          "w": 510,
+          "l": 279
+        },
+        "quick_scalp": {
+          "w": 585,
+          "l": 237
+        },
+        "cipher_b": {
+          "w": 255,
+          "l": 133
+        },
+        "intraday": {
+          "w": 101,
+          "l": 77
+        },
+        "intra30": {
+          "w": 83,
+          "l": 107
+        },
+        "fractal": {
+          "w": 116,
+          "l": 44
+        },
+        "pro": {
+          "w": 303,
+          "l": 177
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 67.5
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 27.8
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 12.2
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 10.3
+        }
+      ]
+    },
+    "2018": {
+      "n": 3226,
+      "w": 2087,
+      "l": 1139,
+      "wr": 64.7,
+      "byMod": {
+        "cipher_b": {
+          "w": 280,
+          "l": 152
+        },
+        "quick_scalp": {
+          "w": 627,
+          "l": 260
+        },
+        "pro": {
+          "w": 323,
+          "l": 187
+        },
+        "qs_pro": {
+          "w": 550,
+          "l": 291
+        },
+        "fractal": {
+          "w": 107,
+          "l": 52
+        },
+        "intraday": {
+          "w": 109,
+          "l": 74
+        },
+        "intra30": {
+          "w": 91,
+          "l": 123
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 66.8
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 25.5
+        },
+        {
+          "id": "asia_bounce_sell",
+          "pct": 11.5
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 11.2
+        }
+      ]
+    },
+    "2019": {
+      "n": 3216,
+      "w": 2077,
+      "l": 1139,
+      "wr": 64.6,
+      "byMod": {
+        "quick_scalp": {
+          "w": 622,
+          "l": 280
+        },
+        "pro": {
+          "w": 330,
+          "l": 173
+        },
+        "qs_pro": {
+          "w": 537,
+          "l": 299
+        },
+        "fractal": {
+          "w": 117,
+          "l": 49
+        },
+        "cipher_b": {
+          "w": 268,
+          "l": 149
+        },
+        "intraday": {
+          "w": 106,
+          "l": 69
+        },
+        "intra30": {
+          "w": 97,
+          "l": 120
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 68.2
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 27.2
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 13.7
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 10.8
+        }
+      ]
+    },
+    "2020": {
+      "n": 3484,
+      "w": 2575,
+      "l": 909,
+      "wr": 73.9,
+      "byMod": {
+        "pro": {
+          "w": 440,
+          "l": 150
+        },
+        "quick_scalp": {
+          "w": 758,
+          "l": 177
+        },
+        "intraday": {
+          "w": 103,
+          "l": 91
+        },
+        "intra30": {
+          "w": 121,
+          "l": 113
+        },
+        "qs_pro": {
+          "w": 666,
+          "l": 215
+        },
+        "cipher_b": {
+          "w": 342,
+          "l": 121
+        },
+        "fractal": {
+          "w": 145,
+          "l": 42
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 67
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 40.5
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 15.3
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 12.8
+        }
+      ]
+    },
+    "2021": {
+      "n": 3328,
+      "w": 2270,
+      "l": 1058,
+      "wr": 68.2,
+      "byMod": {
+        "quick_scalp": {
+          "w": 685,
+          "l": 235
+        },
+        "pro": {
+          "w": 330,
+          "l": 171
+        },
+        "cipher_b": {
+          "w": 320,
+          "l": 121
+        },
+        "qs_pro": {
+          "w": 582,
+          "l": 286
+        },
+        "intra30": {
+          "w": 129,
+          "l": 109
+        },
+        "fractal": {
+          "w": 117,
+          "l": 47
+        },
+        "intraday": {
+          "w": 107,
+          "l": 89
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 67.8
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 32.1
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 10.4
+        },
+        {
+          "id": "asia_bounce_sell",
+          "pct": 10.2
+        }
+      ]
+    },
+    "2022": {
+      "n": 3448,
+      "w": 2419,
+      "l": 1029,
+      "wr": 70.2,
+      "byMod": {
+        "intraday": {
+          "w": 119,
+          "l": 85
+        },
+        "cipher_b": {
+          "w": 328,
+          "l": 129
+        },
+        "fractal": {
+          "w": 128,
+          "l": 40
+        },
+        "qs_pro": {
+          "w": 600,
+          "l": 278
+        },
+        "quick_scalp": {
+          "w": 707,
+          "l": 230
+        },
+        "pro": {
+          "w": 410,
+          "l": 154
+        },
+        "intra30": {
+          "w": 127,
+          "l": 113
+        }
+      },
+      "topCauses": [
+        {
+          "id": "same_print_stack",
+          "pct": 68.9
+        },
+        {
+          "id": "post_tp_same_side",
+          "pct": 33.2
+        },
+        {
+          "id": "asymmetric_rr",
+          "pct": 11.4
+        },
+        {
+          "id": "night_counter_buy",
+          "pct": 9.2
+        }
+      ]
+    },
     "2023": {
       "n": 3402,
       "w": 2312,
@@ -210,97 +1182,97 @@
     }
   },
   "metrics": {
-    "trainN": 7671,
-    "testN": 2557,
-    "accuracy": 0.3562768869769261,
-    "precisionSl": 0.25962910128388017,
-    "recallSl": 0.8598425196850393,
-    "baselineSlRate": 0.29253030895580756
+    "trainN": 51079,
+    "testN": 17026,
+    "accuracy": 0.30829319863737814,
+    "precisionSl": 0.29981456002871326,
+    "recallSl": 0.985837922895358,
+    "baselineSlRate": 0.298862051244402
   },
   "slCauses": [
     {
       "id": "same_print_stack",
       "label": "Same-print lean stack (≤$8, 90m, other module)",
-      "n": 1952,
-      "pctOfLosses": 65.2,
+      "n": 13357,
+      "pctOfLosses": 65.6,
       "examples": [
-        "Quick Scalp BUY @ 1837.29 (2023-01-03 22:10 PKT~)",
-        "Cipher B BUY @ 1857.17 (2023-01-04 23:35 PKT~)",
-        "Intra30 BUY @ 1855.07 (2023-01-05 09:35 PKT~)"
+        "Quick Scalp SELL @ 426.27 (2005-01-04 17:00 PKT~)",
+        "Cipher B SELL @ 426.27 (2005-01-04 18:00 PKT~)",
+        "Fractal SELL @ 426.27 (2005-01-04 18:05 PKT~)"
       ],
       "fix": "Lean-family correlation cooldown"
     },
     {
       "id": "post_tp_same_side",
       "label": "Re-fire same side within 90m after a TP",
-      "n": 973,
-      "pctOfLosses": 32.5,
+      "n": 6560,
+      "pctOfLosses": 32.2,
       "examples": [
-        "Quick Scalp BUY @ 1837.29 (2023-01-03 22:10 PKT~)",
-        "Pro BUY @ 1859.15 (2023-01-04 17:55 PKT~)",
-        "Cipher B BUY @ 1857.17 (2023-01-04 23:35 PKT~)"
+        "Quick Scalp SELL @ 426.27 (2005-01-04 17:00 PKT~)",
+        "Cipher B SELL @ 425.37 (2005-01-05 07:10 PKT~)",
+        "Quick Scalp SELL @ 425.4 (2005-01-05 16:35 PKT~)"
       ],
       "fix": "Post-TP bounce pause"
     },
     {
-      "id": "night_counter_buy",
-      "label": "Late / night BUY (20–02 PKT)",
-      "n": 383,
-      "pctOfLosses": 12.8,
-      "examples": [
-        "Quick Scalp BUY @ 1837.29 (2023-01-03 22:10 PKT~)",
-        "Cipher B BUY @ 1857.17 (2023-01-04 23:35 PKT~)",
-        "Fractal BUY @ 1875.27 (2023-01-09 23:45 PKT~)"
-      ],
-      "fix": "Sell-lean day → block counter BUY (esp. Scalp)"
-    },
-    {
       "id": "asymmetric_rr",
       "label": "Bad RR (TP1 < 0.7 × SL $)",
-      "n": 266,
-      "pctOfLosses": 8.9,
+      "n": 2750,
+      "pctOfLosses": 13.5,
       "examples": [
-        "Intra30 BUY @ 1855.07 (2023-01-05 09:35 PKT~)",
-        "Intra30 SELL @ 1868.04 (2023-01-07 02:30 PKT~)",
-        "Intra30 BUY @ 1926.41 (2023-01-16 10:45 PKT~)"
+        "Intra30 BUY @ 429.55 (2005-01-04 02:05 PKT~)",
+        "Intra30 SELL @ 426.05 (2005-01-04 23:55 PKT~)",
+        "Intra30 SELL @ 417.75 (2005-01-07 22:50 PKT~)"
       ],
       "fix": "Skip setups where reward << risk"
     },
     {
+      "id": "night_counter_buy",
+      "label": "Late / night BUY (20–02 PKT)",
+      "n": 2464,
+      "pctOfLosses": 12.1,
+      "examples": [
+        "Intra30 BUY @ 421.45 (2005-01-11 21:00 PKT~)",
+        "Intra30 BUY @ 423.25 (2005-01-25 22:10 PKT~)",
+        "Intra30 BUY @ 422.25 (2005-01-31 20:40 PKT~)"
+      ],
+      "fix": "Sell-lean day → block counter BUY (esp. Scalp)"
+    },
+    {
       "id": "asia_bounce_sell",
       "label": "Asia mid-morning SELL (08–12 PKT)",
-      "n": 155,
-      "pctOfLosses": 5.2,
+      "n": 1527,
+      "pctOfLosses": 7.5,
       "examples": [
-        "QS Pro SELL @ 1874.54 (2023-02-09 08:00 PKT~)",
-        "Quick Scalp SELL @ 1874.54 (2023-02-09 08:00 PKT~)",
-        "QS Pro SELL @ 1836.26 (2023-02-22 11:10 PKT~)"
+        "QS Pro SELL @ 425.74 (2005-01-05 08:50 PKT~)",
+        "Quick Scalp SELL @ 425.3 (2005-01-05 09:30 PKT~)",
+        "QS Pro SELL @ 421.17 (2005-01-17 08:15 PKT~)"
       ],
       "fix": "After morning dump, pause stacked SELLs into bounce"
     },
     {
-      "id": "fat_sl",
-      "label": "Fat SL (>$12 risk)",
-      "n": 100,
-      "pctOfLosses": 3.3,
-      "examples": [
-        "Intraday BUY @ 1930.75 (2023-01-20 06:05 PKT~)",
-        "QS Pro BUY @ 2002.81 (2023-03-20 14:55 PKT~)",
-        "Quick Scalp BUY @ 2019.14 (2023-04-04 22:35 PKT~)"
-      ],
-      "fix": "Demote / skip Quick Scalp & wide Scalp; prefer $5–$9 risk desks"
-    },
-    {
       "id": "whipsaw_fast",
       "label": "Whipsaw — resolved ≤5 minutes",
-      "n": 51,
-      "pctOfLosses": 1.7,
+      "n": 191,
+      "pctOfLosses": 0.9,
       "examples": [
-        "Intra30 SELL @ 1957.39 (2023-03-23 02:05 PKT~)",
-        "Quick Scalp BUY @ 2143.59 (2024-03-06 21:55 PKT~)",
-        "Intra30 BUY @ 2332.28 (2024-04-29 09:00 PKT~)"
+        "Pro SELL @ 423.8 (2005-03-24 09:10 PKT~)",
+        "Pro SELL @ 426.7 (2005-04-01 20:25 PKT~)",
+        "QS Pro BUY @ 548.5 (2006-02-08 20:55 PKT~)"
       ],
       "fix": "Opposite-block / min hold / skip noise re-entries"
+    },
+    {
+      "id": "fat_sl",
+      "label": "Fat SL (>$12 risk)",
+      "n": 155,
+      "pctOfLosses": 0.8,
+      "examples": [
+        "QS Pro BUY @ 985.24 (2008-03-05 22:45 PKT~)",
+        "Pro BUY @ 911.45 (2008-10-08 21:40 PKT~)",
+        "QS Pro BUY @ 925 (2008-10-10 14:30 PKT~)"
+      ],
+      "fix": "Demote / skip Quick Scalp & wide Scalp; prefer $5–$9 risk desks"
     },
     {
       "id": "scalp_module",
@@ -315,159 +1287,139 @@
     {
       "id": "trend_aligned",
       "label": "Trend-aligned side (BUY in up / SELL in down)",
-      "n": 5141,
-      "pctOfWins": 71,
+      "n": 34601,
+      "pctOfWins": 72.5,
       "examples": [
-        "Pro BUY @ 1821.69 (2023-01-03 06:10 PKT~)",
-        "QS Pro BUY @ 1824.2 (2023-01-03 06:25 PKT~)",
-        "Quick Scalp BUY @ 1830.09 (2023-01-03 07:55 PKT~)"
+        "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
+        "Quick Scalp SELL @ 429.47 (2005-01-04 04:50 PKT~)",
+        "Cipher B SELL @ 429.1 (2005-01-04 06:50 PKT~)"
       ],
       "tip": "Prefer modules when side matches M5 trend"
     },
     {
       "id": "clean_rr",
       "label": "Clean RR (TP1 ≥ 0.85 × SL $)",
-      "n": 4996,
-      "pctOfWins": 69,
+      "n": 32856,
+      "pctOfWins": 68.8,
       "examples": [
-        "Pro BUY @ 1821.69 (2023-01-03 06:10 PKT~)",
-        "QS Pro BUY @ 1824.2 (2023-01-03 06:25 PKT~)",
-        "QS Pro BUY @ 1827.65 (2023-01-03 08:25 PKT~)"
+        "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
+        "Quick Scalp SELL @ 429.47 (2005-01-04 04:50 PKT~)",
+        "QS Pro SELL @ 429.47 (2005-01-04 06:05 PKT~)"
       ],
       "tip": "Favor setups with reward ≈ risk or better"
     },
     {
-      "id": "mid_sl",
-      "label": "Mid SL band ($6–$12)",
-      "n": 3390,
-      "pctOfWins": 46.8,
-      "examples": [
-        "Quick Scalp BUY @ 1830.09 (2023-01-03 07:55 PKT~)",
-        "Pro BUY @ 1829.03 (2023-01-03 16:10 PKT~)",
-        "Pro BUY @ 1833.19 (2023-01-03 22:25 PKT~)"
-      ],
-      "tip": "Prefer $6–$12 risk desks over fat/tight extremes"
-    },
-    {
       "id": "no_stack",
       "label": "No same-print lean stack in prior 90m",
-      "n": 2430,
-      "pctOfWins": 33.6,
+      "n": 15048,
+      "pctOfWins": 31.5,
       "examples": [
-        "Pro BUY @ 1821.69 (2023-01-03 06:10 PKT~)",
-        "Cipher B BUY @ 1841.14 (2023-01-03 11:35 PKT~)",
-        "Pro BUY @ 1829.03 (2023-01-03 16:10 PKT~)"
+        "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
+        "Quick Scalp SELL @ 429.47 (2005-01-04 04:50 PKT~)",
+        "Quick Scalp SELL @ 429.1 (2005-01-04 08:35 PKT~)"
       ],
       "tip": "Keep lean-family cooldown — solo prints win more"
     },
     {
       "id": "low_vol",
       "label": "Low volatility regime",
-      "n": 2189,
-      "pctOfWins": 30.3,
+      "n": 14346,
+      "pctOfWins": 30,
       "examples": [
-        "QS Pro BUY @ 1841.14 (2023-01-03 11:40 PKT~)",
-        "Quick Scalp BUY @ 1841.31 (2023-01-03 11:55 PKT~)",
-        "Pro BUY @ 1836.89 (2023-01-04 04:25 PKT~)"
+        "QS Pro SELL @ 429.1 (2005-01-04 08:40 PKT~)",
+        "Cipher B SELL @ 428.97 (2005-01-04 13:15 PKT~)",
+        "Pro SELL @ 428.1 (2005-01-04 19:10 PKT~)"
       ],
       "tip": "Size up slightly in low-ATR windows for lean desks"
     },
     {
       "id": "asia_qs_family",
       "label": "Asia AM + QS Pro / Quick Scalp / Fractal",
-      "n": 1158,
-      "pctOfWins": 16,
+      "n": 6829,
+      "pctOfWins": 14.3,
       "examples": [
-        "QS Pro BUY @ 1824.2 (2023-01-03 06:25 PKT~)",
-        "Quick Scalp BUY @ 1830.09 (2023-01-03 07:55 PKT~)",
-        "QS Pro BUY @ 1827.65 (2023-01-03 08:25 PKT~)"
+        "Quick Scalp SELL @ 429.47 (2005-01-04 04:50 PKT~)",
+        "QS Pro SELL @ 429.47 (2005-01-04 06:05 PKT~)",
+        "Quick Scalp SELL @ 429.1 (2005-01-04 08:35 PKT~)"
       ],
       "tip": "Lean scalping family strong in Asia morning"
     },
     {
+      "id": "mid_sl",
+      "label": "Mid SL band ($6–$12)",
+      "n": 4805,
+      "pctOfWins": 10.1,
+      "examples": [
+        "Pro BUY @ 502.9 (2005-12-23 01:20 PKT~)",
+        "Pro BUY @ 559.95 (2006-03-25 01:05 PKT~)",
+        "Intraday BUY @ 559.95 (2006-03-27 07:00 PKT~)"
+      ],
+      "tip": "Prefer $6–$12 risk desks over fat/tight extremes"
+    },
+    {
       "id": "mid_pro_cipher",
       "label": "Mid session + Pro / Cipher B",
-      "n": 472,
-      "pctOfWins": 6.5,
+      "n": 3033,
+      "pctOfWins": 6.4,
       "examples": [
-        "Cipher B BUY @ 1841.14 (2023-01-03 11:35 PKT~)",
-        "Pro BUY @ 1838.24 (2023-01-03 13:10 PKT~)",
-        "Cipher B BUY @ 1841.08 (2023-01-03 13:55 PKT~)"
+        "Pro SELL @ 429.05 (2005-01-04 12:40 PKT~)",
+        "Cipher B SELL @ 428.97 (2005-01-04 13:15 PKT~)",
+        "Cipher B SELL @ 428.97 (2005-01-04 15:25 PKT~)"
       ],
       "tip": "Prefer Pro / Cipher into London–NY mid"
     }
   ],
   "moduleMarketBest": [
     {
+      "key": "module_vol:fractal|high",
+      "module": "fractal",
+      "vol": "high",
+      "n": 913,
+      "w": 788,
+      "l": 125,
+      "wr": 86.3,
+      "verdict": "strong"
+    },
+    {
       "key": "module_session_trend:fractal|night|up",
       "module": "fractal",
       "session": "night",
       "trend": "up",
-      "n": 71,
-      "w": 63,
-      "l": 8,
-      "wr": 88.7,
-      "verdict": "strong"
-    },
-    {
-      "key": "module_vol:fractal|high",
-      "module": "fractal",
-      "vol": "high",
-      "n": 123,
-      "w": 107,
-      "l": 16,
-      "wr": 87,
-      "verdict": "strong"
-    },
-    {
-      "key": "module_session_trend:pro|night|up",
-      "module": "pro",
-      "session": "night",
-      "trend": "up",
-      "n": 298,
-      "w": 258,
-      "l": 40,
-      "wr": 86.6,
-      "verdict": "strong"
-    },
-    {
-      "key": "module_session:fractal|night",
-      "module": "fractal",
-      "session": "night",
-      "n": 122,
-      "w": 105,
-      "l": 17,
-      "wr": 86.1,
+      "n": 453,
+      "w": 387,
+      "l": 66,
+      "wr": 85.4,
       "verdict": "strong"
     },
     {
       "key": "module_vol:quick_scalp|high",
       "module": "quick_scalp",
       "vol": "high",
-      "n": 951,
-      "w": 800,
-      "l": 151,
-      "wr": 84.1,
+      "n": 6192,
+      "w": 5148,
+      "l": 1044,
+      "wr": 83.1,
       "verdict": "strong"
     },
     {
-      "key": "module_vol:cipher_b|high",
-      "module": "cipher_b",
-      "vol": "high",
-      "n": 447,
-      "w": 370,
-      "l": 77,
-      "wr": 82.8,
+      "key": "module_session_trend:fractal|night|down",
+      "module": "fractal",
+      "session": "night",
+      "trend": "down",
+      "n": 338,
+      "w": 281,
+      "l": 57,
+      "wr": 83.1,
       "verdict": "strong"
     },
     {
-      "key": "module_vol:pro|high",
-      "module": "pro",
-      "vol": "high",
-      "n": 600,
-      "w": 492,
-      "l": 108,
-      "wr": 82,
+      "key": "module_session:fractal|night",
+      "module": "fractal",
+      "session": "night",
+      "n": 956,
+      "w": 788,
+      "l": 168,
+      "wr": 82.4,
       "verdict": "strong"
     },
     {
@@ -475,10 +1427,85 @@
       "module": "quick_scalp",
       "session": "night",
       "trend": "up",
-      "n": 525,
-      "w": 429,
-      "l": 96,
+      "n": 2721,
+      "w": 2223,
+      "l": 498,
       "wr": 81.7,
+      "verdict": "strong"
+    },
+    {
+      "key": "module_session_trend:pro|night|up",
+      "module": "pro",
+      "session": "night",
+      "trend": "up",
+      "n": 1650,
+      "w": 1345,
+      "l": 305,
+      "wr": 81.5,
+      "verdict": "strong"
+    },
+    {
+      "key": "module_vol:cipher_b|high",
+      "module": "cipher_b",
+      "vol": "high",
+      "n": 2924,
+      "w": 2372,
+      "l": 552,
+      "wr": 81.1,
+      "verdict": "strong"
+    },
+    {
+      "key": "module_session_trend:fractal|eve|up",
+      "module": "fractal",
+      "session": "eve",
+      "trend": "up",
+      "n": 327,
+      "w": 265,
+      "l": 62,
+      "wr": 81,
+      "verdict": "strong"
+    },
+    {
+      "key": "module_session_trend:quick_scalp|eve|up",
+      "module": "quick_scalp",
+      "session": "eve",
+      "trend": "up",
+      "n": 2002,
+      "w": 1612,
+      "l": 390,
+      "wr": 80.5,
+      "verdict": "strong"
+    },
+    {
+      "key": "module_vol:pro|high",
+      "module": "pro",
+      "vol": "high",
+      "n": 3956,
+      "w": 3164,
+      "l": 792,
+      "wr": 80,
+      "verdict": "strong"
+    },
+    {
+      "key": "module_session_trend:quick_scalp|eve|down",
+      "module": "quick_scalp",
+      "session": "eve",
+      "trend": "down",
+      "n": 1268,
+      "w": 1014,
+      "l": 254,
+      "wr": 80,
+      "verdict": "strong"
+    },
+    {
+      "key": "module_session_trend:quick_scalp|mid|down",
+      "module": "quick_scalp",
+      "session": "mid",
+      "trend": "down",
+      "n": 1074,
+      "w": 856,
+      "l": 218,
+      "wr": 79.7,
       "verdict": "strong"
     },
     {
@@ -486,107 +1513,148 @@
       "module": "quick_scalp",
       "session": "mid",
       "trend": "up",
-      "n": 345,
-      "w": 280,
-      "l": 65,
-      "wr": 81.2,
+      "n": 1907,
+      "w": 1514,
+      "l": 393,
+      "wr": 79.4,
       "verdict": "strong"
     },
     {
-      "key": "module_session_trend:pro|eve|up",
-      "module": "pro",
-      "session": "eve",
+      "key": "module_trend:fractal|up",
+      "module": "fractal",
       "trend": "up",
-      "n": 217,
-      "w": 176,
-      "l": 41,
-      "wr": 81.1,
-      "verdict": "strong"
-    },
-    {
-      "key": "module_session:quick_scalp|night",
-      "module": "quick_scalp",
-      "session": "night",
-      "n": 828,
-      "w": 667,
-      "l": 161,
-      "wr": 80.6,
-      "verdict": "strong"
-    },
-    {
-      "key": "module_trend:pro|up",
-      "module": "pro",
-      "trend": "up",
-      "n": 955,
-      "w": 766,
-      "l": 189,
-      "wr": 80.2,
-      "verdict": "strong"
-    },
-    {
-      "key": "module_session_trend:cipher_b|night|up",
-      "module": "cipher_b",
-      "session": "night",
-      "trend": "up",
-      "n": 282,
-      "w": 226,
-      "l": 56,
-      "wr": 80.1,
-      "verdict": "strong"
-    },
-    {
-      "key": "module_session_trend:quick_scalp|night|down",
-      "module": "quick_scalp",
-      "session": "night",
-      "trend": "down",
-      "n": 156,
-      "w": 125,
-      "l": 31,
-      "wr": 80.1,
-      "verdict": "strong"
-    },
-    {
-      "key": "module_session:pro|night",
-      "module": "pro",
-      "session": "night",
-      "n": 509,
-      "w": 407,
-      "l": 102,
-      "wr": 80,
+      "n": 1402,
+      "w": 1113,
+      "l": 289,
+      "wr": 79.4,
       "verdict": "strong"
     }
   ],
   "moduleMarketWorst": [
     {
-      "key": "module_session_trend:intraday|asia_am|down",
-      "module": "intraday",
+      "key": "module_session_trend:intra30|night|flat",
+      "module": "intra30",
+      "session": "night",
+      "trend": "flat",
+      "n": 416,
+      "w": 153,
+      "l": 263,
+      "wr": 36.8,
+      "verdict": "avoid"
+    },
+    {
+      "key": "module_session_trend:intra30|night|up",
+      "module": "intra30",
+      "session": "night",
+      "trend": "up",
+      "n": 693,
+      "w": 298,
+      "l": 395,
+      "wr": 43,
+      "verdict": "avoid"
+    },
+    {
+      "key": "module_session:intra30|night",
+      "module": "intra30",
+      "session": "night",
+      "n": 1774,
+      "w": 764,
+      "l": 1010,
+      "wr": 43.1,
+      "verdict": "avoid"
+    },
+    {
+      "key": "module_session_trend:intra30|eve|flat",
+      "module": "intra30",
+      "session": "eve",
+      "trend": "flat",
+      "n": 300,
+      "w": 135,
+      "l": 165,
+      "wr": 45,
+      "verdict": "avoid"
+    },
+    {
+      "key": "module_session_trend:intra30|asia_am|up",
+      "module": "intra30",
       "session": "asia_am",
-      "trend": "down",
-      "n": 80,
-      "w": 35,
-      "l": 45,
-      "wr": 43.8,
+      "trend": "up",
+      "n": 444,
+      "w": 203,
+      "l": 241,
+      "wr": 45.7,
       "verdict": "avoid"
     },
     {
-      "key": "module_session_trend:intraday|mid|down",
-      "module": "intraday",
-      "session": "mid",
+      "key": "module_session_trend:intra30|night|down",
+      "module": "intra30",
+      "session": "night",
       "trend": "down",
-      "n": 41,
-      "w": 19,
-      "l": 22,
-      "wr": 46.3,
+      "n": 665,
+      "w": 313,
+      "l": 352,
+      "wr": 47.1,
       "verdict": "avoid"
     },
     {
-      "key": "module_side:intraday|SELL",
-      "module": "intraday",
-      "side": "SELL",
-      "n": 222,
-      "w": 105,
-      "l": 117,
+      "key": "module_trend:intra30|up",
+      "module": "intra30",
+      "trend": "up",
+      "n": 1882,
+      "w": 891,
+      "l": 991,
       "wr": 47.3,
+      "verdict": "avoid"
+    },
+    {
+      "key": "module_trend:intra30|flat",
+      "module": "intra30",
+      "trend": "flat",
+      "n": 1526,
+      "w": 725,
+      "l": 801,
+      "wr": 47.5,
+      "verdict": "avoid"
+    },
+    {
+      "key": "module_session:intra30|asia_am",
+      "module": "intra30",
+      "session": "asia_am",
+      "n": 1331,
+      "w": 633,
+      "l": 698,
+      "wr": 47.6,
+      "verdict": "avoid"
+    },
+    {
+      "key": "module_session_trend:intraday|night|flat",
+      "module": "intraday",
+      "session": "night",
+      "trend": "flat",
+      "n": 42,
+      "w": 20,
+      "l": 22,
+      "wr": 47.6,
+      "verdict": "avoid"
+    },
+    {
+      "key": "module_side:intra30|BUY",
+      "module": "intra30",
+      "side": "BUY",
+      "n": 2655,
+      "w": 1274,
+      "l": 1381,
+      "wr": 48,
+      "verdict": "avoid"
+    },
+    {
+      "key": "module_vol:intra30|high",
+      "module": "intra30",
+      "vol": "high",
+      "n": 1988,
+      "w": 957,
+      "l": 1031,
+      "wr": 48.1,
       "verdict": "avoid"
     },
     {
@@ -594,305 +1662,212 @@
       "module": "intra30",
       "session": "asia_am",
       "trend": "down",
-      "n": 46,
-      "w": 23,
-      "l": 23,
-      "wr": 50,
+      "n": 416,
+      "w": 200,
+      "l": 216,
+      "wr": 48.1,
       "verdict": "avoid"
     },
     {
-      "key": "module_vol:intraday|low",
-      "module": "intraday",
-      "vol": "low",
-      "n": 243,
-      "w": 123,
-      "l": 120,
-      "wr": 50.6,
+      "key": "module_vol:intra30|mid",
+      "module": "intra30",
+      "vol": "mid",
+      "n": 1896,
+      "w": 920,
+      "l": 976,
+      "wr": 48.5,
       "verdict": "avoid"
     },
     {
-      "key": "module_trend:intraday|down",
-      "module": "intraday",
-      "trend": "down",
-      "n": 183,
-      "w": 93,
-      "l": 90,
-      "wr": 50.8,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_session:intraday|asia_am",
-      "module": "intraday",
+      "key": "module_session_trend:intra30|asia_am|flat",
+      "module": "intra30",
       "session": "asia_am",
-      "n": 318,
-      "w": 166,
-      "l": 152,
-      "wr": 52.2,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_session_trend:intraday|asia_am|up",
-      "module": "intraday",
-      "session": "asia_am",
-      "trend": "up",
-      "n": 91,
-      "w": 49,
-      "l": 42,
-      "wr": 53.8,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_session_trend:pro|mid|flat",
-      "module": "pro",
-      "session": "mid",
       "trend": "flat",
-      "n": 91,
-      "w": 49,
-      "l": 42,
-      "wr": 53.8,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_trend:intraday|flat",
-      "module": "intraday",
-      "trend": "flat",
-      "n": 198,
-      "w": 107,
-      "l": 91,
-      "wr": 54,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_session:intraday|mid",
-      "module": "intraday",
-      "session": "mid",
-      "n": 100,
-      "w": 54,
-      "l": 46,
-      "wr": 54,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_session_trend:intra30|eve|up",
-      "module": "intra30",
-      "session": "eve",
-      "trend": "up",
-      "n": 48,
-      "w": 26,
-      "l": 22,
-      "wr": 54.2,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_session_trend:intra30|night|flat",
-      "module": "intra30",
-      "session": "night",
-      "trend": "flat",
-      "n": 55,
-      "w": 30,
-      "l": 25,
-      "wr": 54.5,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_session:intraday|eve",
-      "module": "intraday",
-      "session": "eve",
-      "n": 73,
-      "w": 40,
-      "l": 33,
-      "wr": 54.8,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_vol:intra30|high",
-      "module": "intra30",
-      "vol": "high",
-      "n": 209,
-      "w": 116,
-      "l": 93,
-      "wr": 55.5,
+      "n": 471,
+      "w": 230,
+      "l": 241,
+      "wr": 48.8,
       "verdict": "avoid"
     }
   ],
   "playbookTop": [
     {
-      "key": "module_session_side:intraday|eve|SELL",
-      "n": 26,
-      "sl": 16,
-      "wr": 38.5,
-      "rate": 61.5,
+      "key": "module_session_side:intra30|night|SELL",
+      "n": 849,
+      "sl": 487,
+      "wr": 42.6,
+      "rate": 57.4,
       "action": "avoid",
       "tip": "Use lean cooldown + post-TP pause"
     },
     {
-      "key": "module_session_side:intraday|asia_am|SELL",
-      "n": 130,
-      "sl": 74,
+      "key": "module_session:intra30|night",
+      "n": 1774,
+      "sl": 1010,
       "wr": 43.1,
       "rate": 56.9,
       "action": "avoid",
       "tip": "Use lean cooldown + post-TP pause"
     },
     {
-      "key": "module_side:intraday|SELL",
-      "n": 222,
-      "sl": 117,
-      "wr": 47.3,
-      "rate": 52.7,
+      "key": "module_session_side:intra30|night|BUY",
+      "n": 925,
+      "sl": 523,
+      "wr": 43.5,
+      "rate": 56.5,
       "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
+      "tip": "Block late counter BUY on weak desks"
     },
     {
-      "key": "module_trend:intraday|down",
-      "n": 183,
-      "sl": 90,
-      "wr": 50.8,
-      "rate": 49.2,
-      "action": "avoid",
-      "tip": "Respect M5 trend alignment"
-    },
-    {
-      "key": "module_session_side:intra30|asia_am|BUY",
-      "n": 93,
-      "sl": 45,
-      "wr": 51.6,
-      "rate": 48.4,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_session:intraday|asia_am",
-      "n": 318,
-      "sl": 152,
-      "wr": 52.2,
-      "rate": 47.8,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_session_side:intraday|mid|BUY",
-      "n": 58,
-      "sl": 27,
-      "wr": 53.4,
-      "rate": 46.6,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_trend:intraday|flat",
-      "n": 198,
-      "sl": 91,
-      "wr": 54,
-      "rate": 46,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_session:intraday|mid",
-      "n": 100,
-      "sl": 46,
-      "wr": 54,
-      "rate": 46,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_session_side:intra30|night|SELL",
-      "n": 97,
-      "sl": 44,
-      "wr": 54.6,
-      "rate": 45.4,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module:intraday",
-      "n": 554,
-      "sl": 251,
-      "wr": 54.7,
-      "rate": 45.3,
-      "action": "avoid",
-      "tip": "Size smaller / day-boost only when green"
-    },
-    {
-      "key": "module_session:intraday|eve",
-      "n": 73,
-      "sl": 33,
-      "wr": 54.8,
-      "rate": 45.2,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_session_side:intraday|mid|SELL",
-      "n": 42,
-      "sl": 19,
-      "wr": 54.8,
-      "rate": 45.2,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_session_side:pro|asia_am|SELL",
-      "n": 113,
-      "sl": 51,
-      "wr": 54.9,
-      "rate": 45.1,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_session_side:fractal|eve|SELL",
-      "n": 27,
-      "sl": 12,
-      "wr": 55.6,
-      "rate": 44.4,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_session_side:intra30|eve|BUY",
-      "n": 66,
-      "sl": 29,
-      "wr": 56.1,
-      "rate": 43.9,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_session:intra30|asia_am",
-      "n": 165,
-      "sl": 72,
-      "wr": 56.4,
-      "rate": 43.6,
-      "action": "avoid",
-      "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "module_trend:pro|flat",
-      "n": 428,
-      "sl": 185,
-      "wr": 56.8,
-      "rate": 43.2,
+      "key": "module_session_side:intra30|asia_am|SELL",
+      "n": 634,
+      "sl": 338,
+      "wr": 46.7,
+      "rate": 53.3,
       "action": "avoid",
       "tip": "Use lean cooldown + post-TP pause"
     },
     {
       "key": "module_trend:intra30|up",
-      "n": 213,
-      "sl": 92,
-      "wr": 56.8,
-      "rate": 43.2,
+      "n": 1882,
+      "sl": 991,
+      "wr": 47.3,
+      "rate": 52.7,
+      "action": "avoid",
+      "tip": "Respect M5 trend alignment"
+    },
+    {
+      "key": "module_trend:intra30|flat",
+      "n": 1526,
+      "sl": 801,
+      "wr": 47.5,
+      "rate": 52.5,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session:intra30|asia_am",
+      "n": 1331,
+      "sl": 698,
+      "wr": 47.6,
+      "rate": 52.4,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_side:intra30|BUY",
+      "n": 2655,
+      "sl": 1381,
+      "wr": 48,
+      "rate": 52,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session_side:intra30|asia_am|BUY",
+      "n": 697,
+      "sl": 360,
+      "wr": 48.4,
+      "rate": 51.6,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module:intra30",
+      "n": 5260,
+      "sl": 2692,
+      "wr": 48.8,
+      "rate": 51.2,
+      "action": "avoid",
+      "tip": "Size smaller / day-boost only when green"
+    },
+    {
+      "key": "module_side:intra30|SELL",
+      "n": 2605,
+      "sl": 1311,
+      "wr": 49.7,
+      "rate": 50.3,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session_side:intra30|eve|BUY",
+      "n": 551,
+      "sl": 277,
+      "wr": 49.7,
+      "rate": 50.3,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "bad_rr",
+      "n": 5485,
+      "sl": 2750,
+      "wr": 49.9,
+      "rate": 50.1,
+      "action": "avoid",
+      "tip": "Skip reward << risk"
+    },
+    {
+      "key": "module_trend:intra30|down",
+      "n": 1852,
+      "sl": 900,
+      "wr": 51.4,
+      "rate": 48.6,
       "action": "avoid",
       "tip": "Respect M5 trend alignment"
     },
     {
       "key": "module_session:intra30|eve",
-      "n": 146,
-      "sl": 61,
-      "wr": 58.2,
-      "rate": 41.8,
+      "n": 1180,
+      "sl": 563,
+      "wr": 52.3,
+      "rate": 47.7,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session_side:intraday|asia_am|SELL",
+      "n": 1126,
+      "sl": 522,
+      "wr": 53.6,
+      "rate": 46.4,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session_side:intra30|mid|BUY",
+      "n": 482,
+      "sl": 221,
+      "wr": 54.1,
+      "rate": 45.9,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_session_side:intra30|eve|SELL",
+      "n": 629,
+      "sl": 286,
+      "wr": 54.5,
+      "rate": 45.5,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_trend:pro|flat",
+      "n": 2489,
+      "sl": 1108,
+      "wr": 55.5,
+      "rate": 44.5,
+      "action": "avoid",
+      "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "module_trend:intraday|flat",
+      "n": 1279,
+      "sl": 567,
+      "wr": 55.7,
+      "rate": 44.3,
       "action": "avoid",
       "tip": "Use lean cooldown + post-TP pause"
     }
