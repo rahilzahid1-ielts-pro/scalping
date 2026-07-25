@@ -24,6 +24,8 @@ import {
   pendingEntryState,
 } from "../src/history/entryTouch";
 import { entryTolerance } from "../src/utils/tradeSafety";
+import { isFridayCloseOrWeekend } from "../src/utils/marketHours";
+import { gateNewLock } from "../src/regime/dayModuleRules";
 
 const TICK_MS = Number(process.env.PRO_TICK_MS) || 60_000;
 const ASSET = "XAUUSD" as const;
@@ -104,6 +106,12 @@ async function tick(): Promise<void> {
 
   if (openTrade) return;
 
+  const weekend = isFridayCloseOrWeekend();
+  if (weekend.blocked) {
+    log("skip new lock:", weekend.reason);
+    return;
+  }
+
   let sig;
   try {
     sig = generateProSignal(ASSET, frames, "intraday");
@@ -123,6 +131,16 @@ async function tick(): Promise<void> {
       entryTolerance(ASSETS[ASSET], "intraday", last.close),
     )
   ) {
+    return;
+  }
+
+  const gate = await gateNewLock("pro", sig.direction, {
+    entry: sig.entry,
+    sl: sig.sl,
+    tp1: sig.tp1,
+  });
+  if (!gate.ok) {
+    log("regime/learn gate:", gate.reason);
     return;
   }
 

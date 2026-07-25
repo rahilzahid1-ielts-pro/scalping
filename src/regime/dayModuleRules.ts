@@ -2,10 +2,12 @@
  * Day-adaptive module regime — soft “jo aaj jeet raha usko zyada”.
  *
  * Positive-day desk (not silent desk):
- * - Prefer (QS Pro + Cipher) keep firing — 2 SL = throttle, 3 SL = pause
+ * - Prefer (QS Pro + Cipher + Pro) keep firing — 2 SL = throttle, 3 SL = pause
+ * - Day WR confidence: ≥70% → more trades; <60% (n≥3) → no new locks
  * - Shorter post-TP pause on prefer (45m) so winners still print
  * - Demote Scalp / Quick Scalp (fat SL killers)
  * - Demo size scales by tier; day stop / profit-protect in positiveDayDesk
+ * - Friday 20:00 PKT → Mon open: no new locks
  */
 import {
   buildHistoryPayload,
@@ -14,6 +16,7 @@ import {
   type HistoryTrade,
 } from "../history/apiHistory";
 import { gateLearnedLock } from "../learn/runtime";
+import { isFridayCloseOrWeekend } from "../utils/marketHours";
 
 export type RegimeModule = HistoryModuleId;
 
@@ -48,6 +51,10 @@ export interface ModuleRegime {
   cooldownMs: number;
   /** Demo risk multiplier (1 = full riskPct). */
   riskMult: number;
+  /** Today's win rate % (null until min sample). Same as confidence. */
+  winRate: number | null;
+  /** Day confidence from WR — drives boost / block. */
+  confidencePct: number | null;
 }
 
 export interface DayRegimeSnapshot {
@@ -108,6 +115,12 @@ const DEMO_CANDIDATES = new Set<RegimeModule>([
 const MIN_SAMPLE = 2;
 const TWO_SL_SOFT = 2;
 const THREE_SL_HARD = 3;
+/** Need this many EXECUTED fills before WR confidence can block/boost. */
+const CONF_MIN_SAMPLE = 3;
+/** Below this WR% → no new locks today for that module. */
+const CONF_BLOCK_BELOW = 60;
+/** At/above this WR% → prefer boost (more trades / higher risk). */
+const CONF_BOOST_AT = 70;
 const POST_TP_PAUSE_MS = 90 * 60 * 1000;
 const POST_TP_PREFER_MS = 45 * 60 * 1000;
 const THROTTLE_COOLDOWN_MS = 2 * 60 * 60 * 1000;
@@ -328,7 +341,53 @@ export function evaluateDayRegimeFromScores(
       allowNewLock = true;
     }
 
-    const riskMult = riskMultForTier(tier, module, score);
+    let riskMult = riskMultForTier(tier, module, score);
+
+    // --- Day WR confidence (per module) ---
+    let winRate: number | null = null;
+    let confidencePct: number | null = null;
+    if (score.executed >= CONF_MIN_SAMPLE) {
+      winRate =
+        Math.round((score.wins / score.executed) * 1000) / 10;
+      confidencePct = winRate;
+
+      if (confidencePct < CONF_BLOCK_BELOW) {
+        allowNewLock = false;
+        allowDemoFollow = false;
+        tier = "pause";
+        riskMult = 0;
+        reasons.push(
+          `day confidence ${confidencePct}% < ${CONF_BLOCK_BELOW}% (n=${score.executed}) → no new locks`,
+        );
+      } else if (confidencePct >= CONF_BOOST_AT) {
+        // Keep hard pause only on 3+ SL; otherwise boost volume
+        if (score.losses < THREE_SL_HARD && module !== "scalp") {
+          tier = "prefer";
+          allowNewLock = true;
+          riskMult = Math.max(riskMult, 1.25);
+          cooldownMs = Math.min(
+            cooldownMs > 0 ? cooldownMs : POST_TP_PREFER_MS,
+            POST_TP_PREFER_MS,
+          );
+          if (DEMO_CANDIDATES.has(module)) allowDemoFollow = true;
+          reasons.push(
+            `day confidence ${confidencePct}% ≥ ${CONF_BOOST_AT}% → more trades`,
+          );
+        } else {
+          reasons.push(
+            `day confidence ${confidencePct}% but hard pause (${score.losses} SL)`,
+          );
+        }
+      } else {
+        reasons.push(
+          `day confidence ${confidencePct}% (60–70 band → normal)`,
+        );
+      }
+    } else {
+      reasons.push(
+        `confidence pending (<${CONF_MIN_SAMPLE} fills today)`,
+      );
+    }
 
     byModule[module] = {
       module,
@@ -342,6 +401,8 @@ export function evaluateDayRegimeFromScores(
           ? Math.max(cooldownMs, THROTTLE_COOLDOWN_MS)
           : cooldownMs,
       riskMult,
+      winRate,
+      confidencePct,
     };
   }
 
@@ -449,6 +510,16 @@ export function gateNewLockFromSnapshot(
   now = Date.now(),
   levels?: { entry: number; sl: number; tp1: number },
 ): LockGateResult {
+  const weekend = isFridayCloseOrWeekend(now);
+  if (weekend.blocked) {
+    return {
+      ok: false,
+      reason: weekend.reason,
+      tier: "pause",
+      cooldownMs: 60 * 60 * 1000,
+    };
+  }
+
   const module = normalizeRegimeModule(moduleRaw);
   if (!module) {
     return { ok: true, reason: "unknown module", tier: "normal", cooldownMs: 0 };
@@ -562,8 +633,18 @@ export function regimeSummaryLines(snap: DayRegimeSnapshot): string[] {
   return ALL_MODULES.map((m) => {
     const r = snap.byModule[m];
     const sc = r.score;
-    return `${m}: ${r.tier} exec=${sc.executed} ${sc.wins}W/${sc.losses}L net=${sc.netR}R demo=${r.allowDemoFollow ? "Y" : "N"} x${r.riskMult}`;
+    const conf =
+      r.confidencePct != null ? ` conf=${r.confidencePct}%` : " conf=pending";
+    return `${m}: ${r.tier} exec=${sc.executed} ${sc.wins}W/${sc.losses}L net=${sc.netR}R${conf} demo=${r.allowDemoFollow ? "Y" : "N"} x${r.riskMult}`;
   });
 }
 
-export { PREFER_BASE, DEMO_CANDIDATES, POST_TP_PAUSE_MS, POST_TP_PREFER_MS };
+export {
+  PREFER_BASE,
+  DEMO_CANDIDATES,
+  POST_TP_PAUSE_MS,
+  POST_TP_PREFER_MS,
+  CONF_MIN_SAMPLE,
+  CONF_BLOCK_BELOW,
+  CONF_BOOST_AT,
+};

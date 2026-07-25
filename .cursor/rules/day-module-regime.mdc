@@ -12,10 +12,18 @@ Do **not** remove `src/regime/dayModuleRules.ts` or `positiveDayDesk.ts` without
 
 ## Prefer (keep firing)
 
-- **QS Pro + Cipher B** prefer-base
+- **QS Pro + Cipher B + Pro** prefer-base
 - Prefer: 2 SL → soft throttle (still fires); 3 SL → hard pause
 - Prefer post-TP pause **45m** (others 90m)
 - Winning prefer day → demo risk ×1.25
+
+## Day WR confidence (per module)
+
+- After **≥3** EXECUTED fills today: confidence = win rate %
+- **≥70%** → boost (prefer, more trades, risk ×1.25) unless 3+ SL hard pause
+- **60–70%** → normal band (existing tier rules)
+- **&lt;60%** → no new locks / no demo follow for that module today
+- Friday **20:00 PKT → Mon open**: no new locks (weekend close)
 
 ## Cut losers (not silence everything)
 

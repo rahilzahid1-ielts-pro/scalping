@@ -142,7 +142,7 @@ export async function syncDemoFromHistory(opts?: {
       date: regime.date,
       lines: Object.values(regime.byModule).map(
         (r) =>
-          `${r.module}:${r.tier} ${r.score.wins}W/${r.score.losses}L net=${r.score.netR}R demo=${r.allowDemoFollow ? "Y" : "N"} x${r.riskMult}`,
+          `${r.module}:${r.tier} ${r.score.wins}W/${r.score.losses}L conf=${r.confidencePct ?? "pending"}% net=${r.score.netR}R demo=${r.allowDemoFollow ? "Y" : "N"} x${r.riskMult}`,
       ),
     },
     dayBudget: {
