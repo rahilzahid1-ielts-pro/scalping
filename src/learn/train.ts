@@ -8,6 +8,11 @@ import {
   labelOf,
 } from "./features";
 import { mineSlCauses } from "./explain";
+import {
+  buildScenarioPlaybook,
+  mineTpWins,
+  moduleMarketMatrix,
+} from "./scenarios";
 import type { LearnRow, TrainedModel } from "./types";
 
 function sigmoid(z: number): number {
@@ -78,7 +83,6 @@ export function trainLogisticSlModel(
   let tp = 0;
   let fp = 0;
   let fn = 0;
-  let tn = 0;
   let correct = 0;
   for (const i of testIdx) {
     const p = predictProba(weights, X[i]);
@@ -88,7 +92,6 @@ export function trainLogisticSlModel(
     if (pred === 1 && actual === 1) tp += 1;
     else if (pred === 1 && actual === 0) fp += 1;
     else if (pred === 0 && actual === 1) fn += 1;
-    else tn += 1;
   }
 
   const lossN = y.filter((v) => v === 1).length;
@@ -110,6 +113,9 @@ export function trainLogisticSlModel(
   }
 
   const slCauses = mineSlCauses(rows);
+  const tpWins = mineTpWins(rows);
+  const moduleMarket = moduleMarketMatrix(rows);
+  const playbook = buildScenarioPlaybook(rows);
 
   return {
     version: 1,
@@ -128,6 +134,9 @@ export function trainLogisticSlModel(
       baselineSlRate: rows.length > 0 ? lossN / rows.length : 0,
     },
     slCauses,
+    tpWins,
+    moduleMarket,
+    playbook: playbook.slice(0, 120),
     moduleHourSlRate,
     thresholds: {
       // Prefer keep firing — only block when model is fairly sure

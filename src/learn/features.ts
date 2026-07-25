@@ -37,6 +37,12 @@ export function featureNames(): string[] {
     "rr_lt_0_7",
     "rr_ok",
     "rr_gt_1_2",
+    "trend_up",
+    "trend_down",
+    "trend_flat",
+    "vol_low",
+    "vol_mid",
+    "vol_high",
   ];
   for (const m of MODULES) names.push(`mod_${m}`);
   names.push("stack_same_side_90m");
@@ -68,6 +74,18 @@ function rrBucket(slMoney: number, tp1Money: number): [number, number, number] {
   return [0, 1, 0];
 }
 
+function trendFlags(trend: LearnRow["trend"]): [number, number, number] {
+  if (trend === "up") return [1, 0, 0];
+  if (trend === "down") return [0, 1, 0];
+  return [0, 0, 1]; // flat or missing
+}
+
+function volFlags(vol: LearnRow["vol"]): [number, number, number] {
+  if (vol === "low") return [1, 0, 0];
+  if (vol === "high") return [0, 0, 1];
+  return [0, 1, 0]; // mid or missing
+}
+
 export type ContextFlags = {
   stackSameSide90m: boolean;
   afterTpSameSide90m: boolean;
@@ -76,7 +94,7 @@ export type ContextFlags = {
 export function extractFeatures(
   row: Pick<
     LearnRow,
-    "module" | "side" | "executedAt" | "slMoney" | "tp1Money"
+    "module" | "side" | "executedAt" | "slMoney" | "tp1Money" | "trend" | "vol"
   >,
   ctx: ContextFlags = {
     stackSameSide90m: false,
@@ -88,6 +106,8 @@ export function extractFeatures(
   const [asia, mid, eve, night] = sessionFlags(hour);
   const [slT, slM, slF] = slBucket(row.slMoney);
   const [rrL, rrO, rrH] = rrBucket(row.slMoney, row.tp1Money);
+  const [tUp, tDn, tFlat] = trendFlags(row.trend);
+  const [vLo, vMid, vHi] = volFlags(row.vol);
 
   const vector = [
     1, // bias placeholder kept in vector for indexing; train uses separate bias
@@ -104,6 +124,12 @@ export function extractFeatures(
     rrL,
     rrO,
     rrH,
+    tUp,
+    tDn,
+    tFlat,
+    vLo,
+    vMid,
+    vHi,
     ...oneHotModule(row.module),
     ctx.stackSameSide90m ? 1 : 0,
     ctx.afterTpSameSide90m ? 1 : 0,

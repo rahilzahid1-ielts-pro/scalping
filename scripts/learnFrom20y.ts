@@ -1,6 +1,6 @@
 /**
  * Year-chunk 20y learn: backtest each calendar year (no Scalp) →
- * scenario playbook + SL causes + trained model.
+ * scenario playbook + SL/TP causes + module×market + trained model.
  *
  *   npm run learn:20y -- --file=data/XAU_5m_data.csv --from=2005 --to=2025
  *   npm run learn:20y -- --file=data/XAU_5m_data.csv --from=2023 --to=2025
@@ -13,7 +13,11 @@ import { loadHistoricalFile } from "../src/backtest/loadData";
 import type { Candle } from "../src/types";
 import type { LearnRow } from "../src/learn/types";
 import { mineSlCauses } from "../src/learn/explain";
-import { karachiHour } from "../src/learn/features";
+import {
+  buildScenarioPlaybook,
+  mineTpWins,
+  moduleMarketMatrix,
+} from "../src/learn/scenarios";
 import { trainLogisticSlModel } from "../src/learn/train";
 import {
   LEARN_DIR,
@@ -72,83 +76,6 @@ function summarize(rows: LearnRow[]) {
   };
 }
 
-type ScenarioBucket = {
-  key: string;
-  n: number;
-  sl: number;
-  rate: number;
-  action: "allow" | "throttle" | "avoid";
-  tip: string;
-};
-
-function buildScenarioPlaybook(rows: LearnRow[]): ScenarioBucket[] {
-  type Acc = { n: number; sl: number };
-  const buckets = new Map<string, Acc>();
-
-  const bump = (key: string, isSl: boolean) => {
-    const a = buckets.get(key) ?? { n: 0, sl: 0 };
-    a.n += 1;
-    if (isSl) a.sl += 1;
-    buckets.set(key, a);
-  };
-
-  for (const r of rows) {
-    const isSl = r.outcome === "SL_HIT";
-    const hour = karachiHour(r.executedAt);
-    const session =
-      hour >= 4 && hour < 11
-        ? "asia_am"
-        : hour >= 11 && hour < 16
-          ? "mid"
-          : hour >= 16 && hour < 21
-            ? "eve"
-            : "night";
-    bump(`module:${r.module}`, isSl);
-    bump(`side:${r.side}`, isSl);
-    bump(`session:${session}`, isSl);
-    bump(`module_session:${r.module}|${session}`, isSl);
-    bump(`module_side:${r.module}|${r.side}`, isSl);
-    if (r.slMoney > 12) bump("fat_sl", isSl);
-    if (r.slMoney > 0 && r.tp1Money / r.slMoney < 0.7) bump("bad_rr", isSl);
-  }
-
-  const tipFor = (key: string): string => {
-    if (key.startsWith("module:scalp") || key === "fat_sl")
-      return "Skip / demote — fat risk";
-    if (key.includes("night") && key.includes("BUY"))
-      return "Block late counter BUY";
-    if (key.startsWith("session:asia_am") && key.includes("SELL"))
-      return "Careful — bounce cluster risk after dump";
-    if (key === "bad_rr") return "Skip reward << risk";
-    if (key.startsWith("module:intra30") || key.startsWith("module:intraday"))
-      return "Size smaller / day-boost only when green";
-    if (
-      key.startsWith("module:cipher_b") ||
-      key.startsWith("module:qs_pro") ||
-      key.startsWith("module:pro")
-    )
-      return "Prefer when not stacked / post-TP";
-    return "Use lean cooldown + post-TP pause";
-  };
-
-  const out: ScenarioBucket[] = [];
-  for (const [key, a] of buckets) {
-    if (a.n < 25) continue;
-    const rate = a.sl / a.n;
-    const action: ScenarioBucket["action"] =
-      rate >= 0.4 ? "avoid" : rate >= 0.3 ? "throttle" : "allow";
-    out.push({
-      key,
-      n: a.n,
-      sl: a.sl,
-      rate: Math.round(rate * 1000) / 10,
-      action,
-      tip: tipFor(key),
-    });
-  }
-  return out.sort((a, b) => b.rate - a.rate || b.n - a.n);
-}
-
 async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes("--help") || argv.includes("-h")) {
@@ -158,7 +85,7 @@ async function main() {
   npm run learn:20y -- --from=2005 --to=2025 --spread=0.25
 
 No Scalp. Year chunks → scenario_playbook.json + sl_model.json
-ETA ~3–5 min per year.`);
+(SL causes + TP wins + module×market). ETA ~3–5 min per year.`);
     return;
   }
   const file = argValue(argv, "--file") ?? DEFAULT_FILE;
@@ -239,6 +166,8 @@ ETA ~3–5 min per year.`);
   }
 
   const playbook = buildScenarioPlaybook(unique);
+  const moduleMarket = moduleMarketMatrix(unique);
+  const tpWins = mineTpWins(unique);
   const playbookPath = join(LEARN_DIR, "scenario_playbook.json");
   writeFileSync(
     playbookPath,
@@ -249,8 +178,16 @@ ETA ~3–5 min per year.`);
         to: toY,
         sampleN: unique.length,
         rule:
-          "avoid = SL rate ≥40% (n≥25); throttle ≥30%; else allow. Combine with lean cooldown / post-TP pause.",
-        scenarios: playbook.slice(0, 80),
+          "avoid = SL≥40% (n≥25); throttle ≥30%; prefer = WR≥72% (n≥40). Combine with lean cooldown / post-TP pause.",
+        scenarios: playbook.slice(0, 100),
+        moduleMarket: {
+          worst: moduleMarket.filter((c) => c.verdict === "avoid" || c.verdict === "weak").slice(0, 25),
+          best: [...moduleMarket]
+            .filter((c) => c.verdict === "strong" || c.verdict === "ok")
+            .sort((a, b) => b.wr - a.wr || b.n - a.n)
+            .slice(0, 25),
+        },
+        tpWins: tpWins.slice(0, 10),
       },
       null,
       2,
@@ -274,6 +211,14 @@ ETA ~3–5 min per year.`);
     byYear,
     metrics: model.metrics,
     slCauses: model.slCauses,
+    tpWins: model.tpWins,
+    moduleMarketBest: [...moduleMarket]
+      .filter((c) => c.verdict === "strong")
+      .sort((a, b) => b.wr - a.wr)
+      .slice(0, 15),
+    moduleMarketWorst: moduleMarket
+      .filter((c) => c.verdict === "avoid" || c.verdict === "weak")
+      .slice(0, 15),
     playbookTop: playbook.slice(0, 20),
     labelsPath,
     playbookPath,
@@ -293,17 +238,50 @@ By-year     : ${join(LEARN_DIR, "by_year_report.json")}
 Report      : ${REPORT_PATH}
 `);
 
-  console.log("Top avoid scenarios:");
+  console.log("By module WR:");
+  for (const [m, s] of Object.entries(overall.byMod).sort(
+    (a, b) => b[1].w / (b[1].w + b[1].l) - a[1].w / (a[1].w + a[1].l),
+  )) {
+    const n = s.w + s.l;
+    const wr = n ? ((100 * s.w) / n).toFixed(1) : "n/a";
+    console.log(`  ${m}: ${wr}% (${s.w}W/${s.l}L n=${n})`);
+  }
+
+  console.log("\nTop avoid scenarios:");
   for (const s of playbook.filter((p) => p.action === "avoid").slice(0, 8)) {
     console.log(`  [${s.rate}% SL] ${s.key} n=${s.n} → ${s.tip}`);
   }
-  console.log("\nTop SL causes (all years):");
+  console.log("\nTop prefer scenarios:");
+  for (const s of playbook.filter((p) => p.action === "prefer").slice(0, 6)) {
+    console.log(`  [${s.wr}% WR] ${s.key} n=${s.n} → ${s.tip}`);
+  }
+  console.log("\nTop SL causes:");
   for (const c of model.slCauses.slice(0, 6)) {
     console.log(`  [${c.pctOfLosses}%] ${c.label} n=${c.n} → ${c.fix}`);
   }
+  console.log("\nTop TP win patterns:");
+  for (const c of tpWins.slice(0, 6)) {
+    console.log(`  [${c.pctOfWins}%] ${c.label} n=${c.n} → ${c.tip}`);
+  }
+  console.log("\nBest module×market:");
+  for (const c of [...moduleMarket]
+    .filter((x) => x.verdict === "strong")
+    .sort((a, b) => b.wr - a.wr)
+    .slice(0, 6)) {
+    console.log(`  [${c.wr}% WR] ${c.key} n=${c.n} (${c.verdict})`);
+  }
+  console.log("\nWorst module×market:");
+  for (const c of moduleMarket
+    .filter((x) => x.verdict === "avoid" || x.verdict === "weak")
+    .slice(0, 6)) {
+    console.log(`  [${c.wr}% WR] ${c.key} n=${c.n} (${c.verdict})`);
+  }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+const isDirect = process.argv[1]?.replace(/\\/g, "/").endsWith("learnFrom20y.ts");
+if (isDirect) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

@@ -55,6 +55,7 @@ import {
 } from "../src/intra30/store";
 import type { Candle } from "../src/types";
 import type { LearnModule, LearnRow } from "../src/learn/types";
+import { attachMarketContext } from "../src/learn/marketContext";
 import { trainLogisticSlModel } from "../src/learn/train";
 import {
   LEARN_DIR,
@@ -134,7 +135,8 @@ function collectCompare(strategy: "cipher_b_clone" | "fractal"): LearnRow[] {
       entry: r.entry,
       sl: r.sl,
       tp1: r.tp1,
-      executedAt: r.createdAt,
+      // Bar time — createdAt is wall-clock and breaks year filters in learn:20y
+      executedAt: r.executedAt ?? r.time,
       resolvedAt: r.resolvedAt,
       outcome: r.outcome,
       realizedR: r.realizedR,
@@ -511,6 +513,8 @@ export function collectNoScalpLabels(
     log(`    → ${rows.length} (${w}W/${l}L) · ${((Date.now() - t) / 1000).toFixed(1)}s`);
   }
 
+  labeled.sort((a, b) => a.executedAt - b.executedAt);
+  attachMarketContext(labeled, candles);
   return labeled.filter((r) => r.module !== "scalp");
 }
 

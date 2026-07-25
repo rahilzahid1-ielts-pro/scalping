@@ -24,7 +24,12 @@ export function saveModel(model: TrainedModel, path = MODEL_PATH): void {
 export function loadModel(path = MODEL_PATH): TrainedModel | null {
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as TrainedModel;
+    const raw = JSON.parse(readFileSync(path, "utf8")) as TrainedModel;
+    // Back-compat for models trained before TP/playbook fields
+    raw.tpWins ??= [];
+    raw.moduleMarket ??= [];
+    raw.playbook ??= [];
+    return raw;
   } catch {
     return null;
   }
