@@ -22,6 +22,8 @@
   --warn-soft: rgba(200, 160, 60, 0.18);
   --chip: rgba(255, 255, 255, 0.06);
   --mod-line: rgba(255, 255, 255, 0.08);
+  --panel-bg: linear-gradient(180deg, rgba(18, 26, 34, 0.98), rgba(12, 18, 24, 0.99));
+  --surface-inset: #0d141b;
   --body-bg:
     radial-gradient(1200px 600px at 10% -10%, rgba(196, 163, 90, 0.12), transparent 55%),
     radial-gradient(900px 500px at 100% 0%, rgba(45, 120, 110, 0.1), transparent 50%),
@@ -54,8 +56,10 @@ html[data-theme="light"] {
   --bad-soft: rgba(160, 48, 48, 0.12);
   --warn: #8a6a18;
   --warn-soft: rgba(180, 140, 40, 0.14);
-  --chip: rgba(20, 35, 50, 0.06);
+  --chip: rgba(20, 35, 50, 0.05);
   --mod-line: rgba(20, 35, 50, 0.1);
+  --panel-bg: #ffffff;
+  --surface-inset: #f0f3f6;
   --body-bg:
     radial-gradient(1000px 500px at 8% -8%, rgba(143, 115, 64, 0.1), transparent 55%),
     radial-gradient(800px 420px at 100% 0%, rgba(40, 110, 100, 0.07), transparent 50%),
@@ -291,10 +295,11 @@ button.active {
 }
 
 .panel {
-  background: linear-gradient(180deg, rgba(18, 26, 34, 0.95), rgba(12, 18, 24, 0.98));
+  background: var(--panel-bg);
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 1rem 1.1rem;
+  color: var(--text);
   animation: rise 0.8s ease both;
 }
 
@@ -322,7 +327,7 @@ button.active {
   padding: 0.25rem 0.55rem;
   border-radius: 999px;
   background: var(--accent-soft);
-  color: #e8d4a0;
+  color: var(--accent-strong);
   border: 1px solid rgba(196, 163, 90, 0.35);
 }
 
@@ -579,7 +584,7 @@ button.active {
   width: 76px;
   height: 76px;
   border-radius: 50%;
-  background: #0d141b;
+  background: var(--surface-inset);
   display: grid;
   place-items: center;
   text-align: center;
@@ -1168,11 +1173,11 @@ button.active {
   margin: 0 0 0.75rem;
   padding: 0.75rem 1rem;
   border-radius: 10px;
-  background: #070b10;
+  background: var(--surface-inset);
   border: 1px solid rgba(196, 163, 90, 0.35);
   font-family: var(--font-mono);
   font-size: 0.95rem;
-  color: #f0dfb0;
+  color: var(--accent-strong);
   overflow-x: auto;
 }
 
@@ -1205,7 +1210,7 @@ button.active {
   cursor: pointer;
 }
 .history-field select option {
-  background: #0d131a;
+  background: var(--bg-elevated);
   color: var(--text);
 }
 .history-modules {
@@ -1831,34 +1836,55 @@ button.active {
 }
 
 html[data-theme="light"] .panel,
-html[data-theme="light"] .chart-shell {
-  box-shadow: 0 1px 2px rgba(20, 35, 50, 0.04), 0 8px 24px rgba(20, 35, 50, 0.06);
+html[data-theme="light"] .chart-shell,
+html[data-theme="light"] .signal-hero,
+html[data-theme="light"] .learn-status-panel,
+html[data-theme="light"] .demo-account {
+  background: #ffffff !important;
+  color: #15202b !important;
+  box-shadow: 0 1px 2px rgba(20, 35, 50, 0.04), 0 10px 28px rgba(20, 35, 50, 0.07);
 }
 
 html[data-theme="light"] .topbar-push {
   background: rgba(20, 35, 50, 0.04);
+  color: #15202b;
 }
 
 html[data-theme="light"] .chart-shell,
-html[data-theme="light"] .details-body {
-  background: var(--bg-elevated);
+html[data-theme="light"] .details-body,
+html[data-theme="light"] .demo-stats > div,
+html[data-theme="light"] .demo-list > li,
+html[data-theme="light"] .demo-open-block,
+html[data-theme="light"] .demo-open-card,
+html[data-theme="light"] .learn-status-panel {
+  background: #ffffff;
+  color: #15202b;
 }
 
-/* Pale-on-dark leftovers → readable ink in White UI */
+html[data-theme="light"] .panel *,
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .topbar *,
+html[data-theme="light"] .controls,
+html[data-theme="light"] .controls button,
+html[data-theme="light"] .footer-note,
+html[data-theme="light"] .footer-note * {
+  color: inherit;
+}
+
 html[data-theme="light"] .panel,
-html[data-theme="light"] .panel p,
-html[data-theme="light"] .panel span,
-html[data-theme="light"] .panel li,
-html[data-theme="light"] .panel label,
-html[data-theme="light"] .panel strong,
-html[data-theme="light"] .panel h2,
-html[data-theme="light"] .panel h3,
 html[data-theme="light"] .topbar,
 html[data-theme="light"] .controls,
 html[data-theme="light"] .footer-note,
 html[data-theme="light"] .action-now,
-html[data-theme="light"] .signal-hero {
-  color: var(--text);
+html[data-theme="light"] .signal-hero,
+html[data-theme="light"] .brand h1,
+html[data-theme="light"] .brand-mark,
+html[data-theme="light"] .demo-account h2,
+html[data-theme="light"] .demo-open-mod,
+html[data-theme="light"] .demo-stats strong,
+html[data-theme="light"] .learn-v,
+html[data-theme="light"] .learn-status-head h3 {
+  color: #15202b !important;
 }
 
 html[data-theme="light"] .muted,
@@ -1867,34 +1893,83 @@ html[data-theme="light"] .demo-sub,
 html[data-theme="light"] .demo-kicker,
 html[data-theme="light"] .demo-section,
 html[data-theme="light"] .demo-row-meta,
+html[data-theme="light"] .demo-open-when,
+html[data-theme="light"] .demo-open-pnl-r,
+html[data-theme="light"] .demo-open-levels,
+html[data-theme="light"] .demo-stats span,
+html[data-theme="light"] .learn-k,
+html[data-theme="light"] .learn-sub,
 html[data-theme="light"] .brand p,
-html[data-theme="light"] .footer-note {
-  color: var(--muted) !important;
+html[data-theme="light"] .footer-note,
+html[data-theme="light"] .chart-label span {
+  color: #5c6b7a !important;
 }
 
-html[data-theme="light"] .brand h1,
-html[data-theme="light"] .brand-mark {
-  color: var(--text);
+html[data-theme="light"] .demo-up,
+html[data-theme="light"] .side-buy,
+html[data-theme="light"] .hist-out.win {
+  color: #1a7a45 !important;
+}
+
+html[data-theme="light"] .demo-down,
+html[data-theme="light"] .side-sell,
+html[data-theme="light"] .hist-out.loss,
+html[data-theme="light"] .history-error,
+html[data-theme="light"] .demo-error,
+html[data-theme="light"] .demo-reset {
+  color: #c43c3c !important;
 }
 
 html[data-theme="light"] button.active {
-  color: var(--accent-strong);
+  color: #5c481f !important;
 }
 
-html[data-theme="light"] .history-table .side-buy,
-html[data-theme="light"] .hist-out.win {
-  color: var(--buy) !important;
+html[data-theme="light"] .demo-side-pill.buy,
+html[data-theme="light"] .demo-btn-tp {
+  color: #1a7a45 !important;
 }
-html[data-theme="light"] .history-table .side-sell,
-html[data-theme="light"] .hist-out.loss,
-html[data-theme="light"] .history-error {
-  color: var(--sell) !important;
+
+html[data-theme="light"] .demo-side-pill.sell,
+html[data-theme="light"] .demo-btn-sl {
+  color: #c43c3c !important;
+}
+
+html[data-theme="light"] .demo-open-levels b,
+html[data-theme="light"] .learn-badge.on {
+  color: inherit;
+}
+
+html[data-theme="light"] .learn-badge.on {
+  color: #1a7a45 !important;
+}
+
+html[data-theme="light"] .learn-badge.off {
+  color: #a03030 !important;
 }
 
 html[data-theme="light"] select,
-html[data-theme="light"] option {
-  background: var(--bg-elevated);
-  color: var(--text);
+html[data-theme="light"] option,
+html[data-theme="light"] .history-field input,
+html[data-theme="light"] .history-field select {
+  background: #ffffff !important;
+  color: #15202b !important;
+  border-color: rgba(25, 40, 55, 0.15);
+}
+
+html[data-theme="light"] .mode-toggle,
+html[data-theme="light"] .asset-tabs {
+  background: rgba(20, 35, 50, 0.04);
+}
+
+html[data-theme="light"] .confidence-inner,
+html[data-theme="light"] .cmd-box,
+html[data-theme="light"] .surface-inset {
+  background: #eef1f4 !important;
+  color: #15202b !important;
+}
+
+html[data-theme="light"] .cmd-box {
+  color: #5c481f !important;
 }
 
 @media (max-width: 900px) {
