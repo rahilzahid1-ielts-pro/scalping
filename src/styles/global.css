@@ -1963,6 +1963,62 @@ button.active {
   opacity: 0.75;
 }
 
+.theme-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 0.22rem 0.55rem 0.22rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1;
+}
+.theme-switch-label {
+  letter-spacing: 0.01em;
+}
+.theme-switch-track {
+  position: relative;
+  width: 2.1rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  background: rgba(127, 145, 168, 0.35);
+  border: 1px solid var(--line);
+  transition: background 0.18s ease, border-color 0.18s ease;
+  flex-shrink: 0;
+}
+.theme-switch-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: calc(1.15rem - 4px);
+  height: calc(1.15rem - 4px);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.18s ease;
+}
+.theme-switch.on .theme-switch-track {
+  background: rgba(61, 186, 138, 0.55);
+  border-color: rgba(61, 186, 138, 0.65);
+}
+.theme-switch.on .theme-switch-knob {
+  transform: translateX(0.92rem);
+}
+.theme-switch-state {
+  min-width: 1.6rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.theme-switch.on .theme-switch-state {
+  color: var(--buy);
+}
+
 .theme-toggle.on {
   background: var(--accent-soft);
   border-color: rgba(196, 163, 90, 0.55);

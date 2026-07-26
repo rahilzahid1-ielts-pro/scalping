@@ -370,15 +370,21 @@ export default function App() {
           Live {pollMs}ms
           <button
             type="button"
-            className={`topbar-push theme-toggle ${lightOn ? "on" : ""}`}
+            className={`theme-switch ${lightOn ? "on" : ""}`}
             onClick={toggleLight}
+            role="switch"
+            aria-checked={lightOn}
             title={
               lightOn
-                ? "White UI ON — tap to return to dark"
-                : "White UI OFF — tap for light portal"
+                ? "White UI ON — tap for dark"
+                : "White UI OFF — tap for light"
             }
           >
-            {lightOn ? "White UI ON" : "White UI"}
+            <span className="theme-switch-label">White UI</span>
+            <span className="theme-switch-track" aria-hidden="true">
+              <span className="theme-switch-knob" />
+            </span>
+            <span className="theme-switch-state">{lightOn ? "ON" : "OFF"}</span>
           </button>
           <button
             type="button"
