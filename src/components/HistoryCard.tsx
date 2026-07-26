@@ -280,13 +280,37 @@ export function HistoryCard() {
 
   return (
     <section className="panel history-panel">
-      <div className="panel-head">
-        <h3>TRADE HISTORY</h3>
-        <span className="badge">Asia/Karachi</span>
+      <div className="history-top">
+        <div className="history-title-block">
+          <h3>Trade history</h3>
+          <span className="history-tz">Asia / Karachi</span>
+        </div>
+        <div className="history-actions">
+          <button
+            type="button"
+            className="history-btn ghost"
+            onClick={() => {
+              const d = karachiTodayInput();
+              setFrom(d);
+              setTo(d);
+            }}
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            className="history-btn primary"
+            onClick={() => void downloadRange()}
+            disabled={downloading}
+            title="Selected date range ki tamam modules history CSV mein download karein"
+          >
+            {downloading ? "Exporting…" : "Export CSV"}
+          </button>
+        </div>
       </div>
 
-      <div className="history-filters">
-        <label className="history-field">
+      <div className="history-toolbar" aria-label="History filters">
+        <label className="history-field history-field-date">
           <span>From</span>
           <input
             type="date"
@@ -295,7 +319,10 @@ export function HistoryCard() {
             onChange={(e) => setFromSafe(e.target.value)}
           />
         </label>
-        <label className="history-field">
+        <span className="history-date-sep" aria-hidden="true">
+          →
+        </span>
+        <label className="history-field history-field-date">
           <span>To</span>
           <input
             type="date"
@@ -304,18 +331,23 @@ export function HistoryCard() {
             onChange={(e) => setToSafe(e.target.value)}
           />
         </label>
-        <div className="history-modules" role="tablist" aria-label="Module filter">
-          {MODULES.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className={module === m.id ? "active" : ""}
-              onClick={() => setModule(m.id)}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
+
+        <div className="history-toolbar-divider" aria-hidden="true" />
+
+        <label className="history-field history-field-grow">
+          <span>Module</span>
+          <select
+            value={module}
+            onChange={(e) => setModule(e.target.value as ModuleId)}
+          >
+            {MODULES.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label className="history-field">
           <span>Execution</span>
           <select
@@ -323,10 +355,11 @@ export function HistoryCard() {
             onChange={(e) => setExecution(e.target.value as ExecutionFilter)}
           >
             <option value="all">All</option>
-            <option value="executed">Executed only</option>
+            <option value="executed">Executed</option>
             <option value="not_executed">Not executed</option>
           </select>
         </label>
+
         <label className="history-field">
           <span>Result</span>
           <select
@@ -335,31 +368,11 @@ export function HistoryCard() {
           >
             <option value="all">All</option>
             <option value="open">Open</option>
-            <option value="tp1">TP1 hit</option>
+            <option value="tp1">TP hit</option>
             <option value="sl">SL hit</option>
             <option value="invalidated">Invalidated</option>
           </select>
         </label>
-        <button
-          type="button"
-          className="refresh-btn history-today"
-          onClick={() => {
-            const d = karachiTodayInput();
-            setFrom(d);
-            setTo(d);
-          }}
-        >
-          Today
-        </button>
-        <button
-          type="button"
-          className="refresh-btn history-download"
-          onClick={() => void downloadRange()}
-          disabled={downloading}
-          title="Selected date range ki tamam modules history CSV mein download karein"
-        >
-          {downloading ? "Downloading…" : "Download CSV"}
-        </button>
       </div>
 
       {loading && !data && <p className="muted">Loading history…</p>}
@@ -368,10 +381,16 @@ export function HistoryCard() {
       {data && (
         <>
           <div className="history-summary">
-            <strong>{data.from && data.to ? (data.from === data.to ? data.from : `${data.from} → ${data.to}`) : data.date}</strong>
+            <strong>
+              {data.from && data.to
+                ? data.from === data.to
+                  ? data.from
+                  : `${data.from} → ${data.to}`
+                : data.date}
+            </strong>
             <span>{totalsLine}</span>
             {visibleTrades.length !== data.trades.length && (
-              <span>
+              <span className="history-showing">
                 Showing {visibleTrades.length} of {data.trades.length}
               </span>
             )}
@@ -392,11 +411,13 @@ export function HistoryCard() {
           )}
 
           {visibleTrades.length === 0 ? (
-            <p className="muted">
-              {data.trades.length === 0
-                ? "Is range me koi trade nahi — lock dikhega as NOT EXECUTED; jab price entry pe aaye to EXECUTED time ke sath."
-                : "Selected filters ke liye koi trade nahi."}
-            </p>
+            <div className="history-empty">
+              <p>
+                {data.trades.length === 0
+                  ? "Is range me koi trade nahi — lock dikhega as NOT EXECUTED; jab price entry pe aaye to EXECUTED time ke sath."
+                  : "Selected filters ke liye koi trade nahi."}
+              </p>
+            </div>
           ) : (
             <div className="history-table-wrap">
               <table className="history-table">
