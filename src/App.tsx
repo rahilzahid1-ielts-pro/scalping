@@ -511,7 +511,6 @@ export default function App() {
 
       <main className="layout-simple">
         <div className="command-column">
-          <LearnStatusCard />
           {loading && !nowAction && !booted && (
             <div className="panel loading">Loading…</div>
           )}
@@ -590,6 +589,7 @@ export default function App() {
         </div>
 
         <div className="chart-column chart-compact">
+          <LearnStatusCard />
           <div className="chart-shell chart-small">
             <div className="chart-label">
               <strong>{asset.name}</strong>

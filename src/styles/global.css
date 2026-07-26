@@ -1514,6 +1514,10 @@ button.active {
   color: #e8d4a0;
 }
 
+.chart-column .learn-status-panel {
+  margin-bottom: 0;
+}
+
 .learn-status-panel {
   margin-bottom: 0.75rem;
 }
