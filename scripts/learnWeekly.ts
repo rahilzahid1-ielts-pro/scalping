@@ -18,6 +18,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { join } from "node:path";
 import { buildHistoryPayload, karachiYmd } from "../src/history/apiHistory";
 import { normalizeLearnModule, loadLearnRowsFromDir } from "../src/learn/csvImport";
@@ -41,6 +42,8 @@ import type { LearnRow } from "../src/learn/types";
 import { loadHistoricalFile } from "../src/backtest/loadData";
 
 const LABELS_PATH = join(LEARN_DIR, "labeled_20y.jsonl");
+/** Git-friendly compressed base (~2.5MB vs ~25MB raw). */
+const LABELS_GZ_PATH = join(LEARN_DIR, "labeled_20y.jsonl.gz");
 const STAMP_PATH = join(LEARN_DIR, "last_weekly_run.json");
 const PREV_MODEL = join(LEARN_DIR, "sl_model.prev.json");
 const DEFAULT_CSV = "data/XAU_5m_data.csv";
@@ -76,6 +79,21 @@ function loadJsonl(path: string): LearnRow[] {
     .split(/\n/)
     .filter(Boolean)
     .map((l) => JSON.parse(l) as LearnRow);
+}
+
+/** Prefer raw jsonl on volume; else gunzip the git-shipped .gz base. */
+function loadBaseLabels(): LearnRow[] {
+  if (existsSync(LABELS_PATH)) {
+    return loadJsonl(LABELS_PATH);
+  }
+  if (existsSync(LABELS_GZ_PATH)) {
+    const text = gunzipSync(readFileSync(LABELS_GZ_PATH)).toString("utf8");
+    return text
+      .split(/\n/)
+      .filter(Boolean)
+      .map((l) => JSON.parse(l) as LearnRow);
+  }
+  return [];
 }
 
 async function rowsFromLive(from: string, to: string): Promise<LearnRow[]> {
@@ -180,7 +198,7 @@ export async function runWeeklyLearn(opts?: {
   if (!existsSync(LEARN_DIR)) mkdirSync(LEARN_DIR, { recursive: true });
 
   const prev = loadModel();
-  const base = loadJsonl(LABELS_PATH);
+  const base = loadBaseLabels();
   log(
     `[weekly-learn] base labels=${base.length} prevModel sampleN=${prev?.sampleN ?? "n/a"}`,
   );
@@ -218,7 +236,7 @@ export async function runWeeklyLearn(opts?: {
       ok: false,
       skipped: true,
       reason:
-        "Not enough labels — put labeled_20y.jsonl on data/learn (run learn:20y once) or wait for more live fills",
+        "Not enough labels — add data/learn/labeled_20y.jsonl.gz (git) or .jsonl on volume, or wait for more live fills",
       sampleN: merged.length,
       liveAdded: live.length,
     };
