@@ -501,21 +501,23 @@ export default function App() {
             TTrades Fractal
           </button>
         </div>
-        <button
-          type="button"
-          className="refresh-btn"
-          onClick={requestNewPlan}
-          disabled={planForThisMode?.status === "IN_TRADE_HINT"}
-          title={
-            planForThisMode?.status === "IN_TRADE_HINT"
-              ? "Active trade complete/SL hone tak plan locked hai"
-              : "Waiting plan cancel karke fresh setup check karein"
-          }
-        >
-          {planForThisMode?.status === "IN_TRADE_HINT"
-            ? "Trade active · locked"
-            : "New plan"}
-        </button>
+        {deskView !== "history" && deskView !== "demo" && (
+          <button
+            type="button"
+            className="refresh-btn"
+            onClick={requestNewPlan}
+            disabled={planForThisMode?.status === "IN_TRADE_HINT"}
+            title={
+              planForThisMode?.status === "IN_TRADE_HINT"
+                ? "Active trade complete/SL hone tak plan locked hai"
+                : "Waiting plan cancel karke fresh setup check karein"
+            }
+          >
+            {planForThisMode?.status === "IN_TRADE_HINT"
+              ? "Trade active · locked"
+              : "New plan"}
+          </button>
+        )}
       </nav>
 
       <main className="layout-simple">
