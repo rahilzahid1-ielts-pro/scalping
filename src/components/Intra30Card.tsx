@@ -178,7 +178,7 @@ export function Intra30Card() {
 
   return (
     <section className={`action-now tone-${tone}`}>
-      <p className="action-now-label">INTRA30 · Gold</p>
+      <p className="action-now-label">INTRA30</p>
       <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
         Pehli strict strong (90%/5%) + H1/Daily same · no 2h chase · 1 OPEN ·

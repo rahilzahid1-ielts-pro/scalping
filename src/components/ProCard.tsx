@@ -296,7 +296,7 @@ function ModuleCardShell(props: {
 export function ProCard() {
   return (
     <ModuleCardShell
-      label="PRO · Gold"
+      label="PRO"
       subtitle="Strict SMC — conf≥80 · HTF aligned · trend only · daily bias agrees"
       apiPath="/api/pro/latest"
       cacheKey="pro"

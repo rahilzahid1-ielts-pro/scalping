@@ -170,7 +170,7 @@ export function QuickScalpCard() {
 
   return (
     <section className={`action-now tone-${tone}`}>
-      <p className="action-now-label">QUICK SCALP · BLITZ · Gold</p>
+      <p className="action-now-label">QUICK SCALP · BLITZ</p>
       <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
         Trend-only SMC · conf≥75 · HTF aligned · TP1 @ 0.85R (foran bank / exit)

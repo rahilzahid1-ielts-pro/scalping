@@ -181,7 +181,7 @@ export function PulseCard() {
 
   return (
     <section className={`action-now tone-${tone}`}>
-      <p className="action-now-label">QS PRO · PULSE · Gold</p>
+      <p className="action-now-label">QS PRO · PULSE</p>
       <h2 className="action-now-headline">{headline}</h2>
       <p className="action-now-sub">
         Best mix: SMC scalping + fractal agree · daily agree · no spike-chase ·

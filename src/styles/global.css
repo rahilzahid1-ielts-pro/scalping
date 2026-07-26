@@ -204,7 +204,7 @@ button.active {
 .mode-toggle {
   display: flex;
   gap: 0.4rem;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--chip);
   padding: 0.3rem;
   border-radius: 12px;
   border: 1px solid var(--line);
@@ -227,7 +227,7 @@ button.active {
 
 .refresh-btn {
   margin-left: auto;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--chip);
 }
 
 .refresh-btn:disabled {
@@ -1425,14 +1425,14 @@ button.active {
 .demo-reset {
   border: 1px solid rgba(220, 80, 80, 0.45);
   background: rgba(220, 80, 80, 0.12);
-  color: #f0b0b0;
+  color: var(--sell);
   border-radius: 10px;
   padding: 0.45rem 0.75rem;
   cursor: pointer;
   white-space: nowrap;
 }
 .demo-error {
-  color: #f08080;
+  color: var(--sell);
   margin: 0 0 0.75rem;
 }
 .demo-stats {
@@ -1444,8 +1444,8 @@ button.active {
 .demo-stats > div {
   padding: 0.65rem 0.75rem;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--chip);
+  border: 1px solid var(--line);
 }
 .demo-stats span {
   display: block;
@@ -1455,12 +1455,13 @@ button.active {
 }
 .demo-stats strong {
   font-size: 1.05rem;
+  color: var(--text);
 }
 .demo-up {
-  color: #6ddea0 !important;
+  color: var(--buy) !important;
 }
 .demo-down {
-  color: #f08080 !important;
+  color: var(--sell) !important;
 }
 .demo-controls {
   display: flex;
@@ -1469,6 +1470,7 @@ button.active {
   align-items: center;
   margin-bottom: 1rem;
   font-size: 0.88rem;
+  color: var(--text);
 }
 .demo-toggle {
   display: flex;
@@ -1486,6 +1488,148 @@ button.active {
   letter-spacing: 0.04em;
   color: var(--muted);
 }
+.demo-section-open {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text);
+  font-size: 0.95rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.demo-open-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.demo-open-block {
+  margin: 0.85rem 0 1.1rem;
+  padding: 0.85rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+}
+.demo-open-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+.demo-open-total {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.demo-open-empty {
+  margin: 0;
+}
+.demo-open-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.demo-open-card {
+  padding: 0.85rem 0.95rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--bg-elevated);
+}
+.demo-open-card.is-buy {
+  border-color: rgba(61, 186, 138, 0.45);
+  background:
+    linear-gradient(135deg, var(--buy-soft), transparent 55%),
+    var(--bg-elevated);
+  box-shadow: inset 3px 0 0 var(--buy);
+}
+.demo-open-card.is-sell {
+  border-color: rgba(226, 92, 92, 0.45);
+  background:
+    linear-gradient(135deg, var(--sell-soft), transparent 55%),
+    var(--bg-elevated);
+  box-shadow: inset 3px 0 0 var(--sell);
+}
+.demo-open-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.demo-open-side {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  min-width: 0;
+}
+.demo-side-pill {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 0.35rem 0.55rem;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.demo-side-pill.buy {
+  background: var(--buy-soft);
+  color: var(--buy);
+  border: 1px solid rgba(61, 186, 138, 0.4);
+}
+.demo-side-pill.sell {
+  background: var(--sell-soft);
+  color: var(--sell);
+  border: 1px solid rgba(226, 92, 92, 0.4);
+}
+.demo-open-mod {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.demo-open-when {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+.demo-open-pnl {
+  text-align: right;
+  flex-shrink: 0;
+}
+.demo-open-pnl-main {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.demo-open-pnl-r {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+.demo-open-levels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-top: 0.65rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.demo-open-levels b {
+  color: var(--text);
+  font-weight: 650;
+}
 .demo-list {
   list-style: none;
   margin: 0;
@@ -1497,9 +1641,10 @@ button.active {
 .demo-list > li {
   padding: 0.65rem 0.75rem;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--chip);
+  border: 1px solid var(--line);
   font-size: 0.88rem;
+  color: var(--text);
 }
 .demo-list.compact > li {
   padding: 0.4rem 0.55rem;
@@ -1520,16 +1665,26 @@ button.active {
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin-top: 0.45rem;
+  margin-top: 0.55rem;
 }
 .demo-row-actions button {
   font-size: 0.78rem;
-  padding: 0.3rem 0.55rem;
+  padding: 0.35rem 0.6rem;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: inherit;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--text);
   cursor: pointer;
+}
+.demo-btn-tp {
+  border-color: rgba(61, 186, 138, 0.45) !important;
+  background: var(--buy-soft) !important;
+  color: var(--buy) !important;
+}
+.demo-btn-sl {
+  border-color: rgba(226, 92, 92, 0.45) !important;
+  background: var(--sell-soft) !important;
+  color: var(--sell) !important;
 }
 .demo-take-wrap {
   margin: 0.85rem 0 0.4rem;
@@ -1538,7 +1693,7 @@ button.active {
   width: 100%;
   border: 1px solid rgba(196, 163, 90, 0.55);
   background: linear-gradient(180deg, rgba(196, 163, 90, 0.28), rgba(196, 163, 90, 0.12));
-  color: #f3e2b0;
+  color: var(--accent-strong);
   border-radius: 12px;
   padding: 0.7rem 1rem;
   font-size: 1rem;
@@ -1552,7 +1707,7 @@ button.active {
 .demo-take-msg {
   margin: 0.4rem 0 0;
   font-size: 0.85rem;
-  color: #e8d4a0;
+  color: var(--accent-strong);
 }
 
 .chart-column .learn-status-panel {
@@ -1685,10 +1840,61 @@ html[data-theme="light"] .topbar-push {
 }
 
 html[data-theme="light"] .chart-shell,
-html[data-theme="light"] .details-body,
-html[data-theme="light"] .demo-ledger li,
-html[data-theme="light"] .demo-closed li {
+html[data-theme="light"] .details-body {
   background: var(--bg-elevated);
+}
+
+/* Pale-on-dark leftovers → readable ink in White UI */
+html[data-theme="light"] .panel,
+html[data-theme="light"] .panel p,
+html[data-theme="light"] .panel span,
+html[data-theme="light"] .panel li,
+html[data-theme="light"] .panel label,
+html[data-theme="light"] .panel strong,
+html[data-theme="light"] .panel h2,
+html[data-theme="light"] .panel h3,
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .controls,
+html[data-theme="light"] .footer-note,
+html[data-theme="light"] .action-now,
+html[data-theme="light"] .signal-hero {
+  color: var(--text);
+}
+
+html[data-theme="light"] .muted,
+html[data-theme="light"] .updated,
+html[data-theme="light"] .demo-sub,
+html[data-theme="light"] .demo-kicker,
+html[data-theme="light"] .demo-section,
+html[data-theme="light"] .demo-row-meta,
+html[data-theme="light"] .brand p,
+html[data-theme="light"] .footer-note {
+  color: var(--muted) !important;
+}
+
+html[data-theme="light"] .brand h1,
+html[data-theme="light"] .brand-mark {
+  color: var(--text);
+}
+
+html[data-theme="light"] button.active {
+  color: var(--accent-strong);
+}
+
+html[data-theme="light"] .history-table .side-buy,
+html[data-theme="light"] .hist-out.win {
+  color: var(--buy) !important;
+}
+html[data-theme="light"] .history-table .side-sell,
+html[data-theme="light"] .hist-out.loss,
+html[data-theme="light"] .history-error {
+  color: var(--sell) !important;
+}
+
+html[data-theme="light"] select,
+html[data-theme="light"] option {
+  background: var(--bg-elevated);
+  color: var(--text);
 }
 
 @media (max-width: 900px) {

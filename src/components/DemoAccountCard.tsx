@@ -173,7 +173,7 @@ export function DemoAccountCard() {
               <strong>{acct.riskPct}%</strong>
             </div>
             <div>
-              <span>Live Gold</span>
+              <span>Live price</span>
               <strong>
                 {data?.livePrice != null ? data.livePrice.toFixed(2) : "—"}
               </strong>
@@ -210,73 +210,120 @@ export function DemoAccountCard() {
             </label>
           </div>
 
-          <h3 className="demo-section">OPEN positions</h3>
-          {(data?.openPositions?.length ?? 0) === 0 ? (
-            <p className="muted">
-              Koi open trade nahi. Main desk pe &quot;Demo pe trade lo&quot; dabao jab ENTER
-              aaye.
-            </p>
-          ) : (
-            <ul className="demo-list">
-              {data!.openPositions!.map((p) => (
-                <li key={p.id}>
-                  <div className="demo-row-main">
-                    <strong className={p.side === "BUY" ? "demo-up" : "demo-down"}>
-                      {p.side}
-                    </strong>
-                    <span>
-                      {p.module} · @{p.entry.toFixed(2)} · SL {p.sl.toFixed(2)} · TP1{" "}
-                      {p.tp1.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="demo-row-meta">
-                    Risk ${p.riskUsd.toFixed(2)} · Float {money(p.floatingPnl)} (
-                    {p.floatingR != null ? `${p.floatingR.toFixed(2)}R` : "—"}) ·{" "}
-                    {pkt(p.openedAt)}
-                  </div>
-                  <div className="demo-row-actions">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void post("/api/demo/close", {
-                          positionId: p.id,
-                          outcome: "TP1_HIT",
-                        })
-                      }
+          <div className="demo-open-block">
+            <div className="demo-open-head">
+              <h3 className="demo-section demo-section-open">
+                Open trades
+                <span className="demo-open-count">
+                  {data?.openPositions?.length ?? 0}
+                </span>
+              </h3>
+              {(data?.floatingPnl != null && (data?.openPositions?.length ?? 0) > 0) && (
+                <strong
+                  className={`demo-open-total ${(data.floatingPnl ?? 0) >= 0 ? "demo-up" : "demo-down"}`}
+                >
+                  {money(data.floatingPnl)} float
+                </strong>
+              )}
+            </div>
+            {(data?.openPositions?.length ?? 0) === 0 ? (
+              <p className="muted demo-open-empty">
+                Koi open trade nahi. Main desk pe &quot;Demo pe trade lo&quot; dabao jab ENTER
+                aaye.
+              </p>
+            ) : (
+              <ul className="demo-open-list">
+                {data!.openPositions!.map((p) => {
+                  const float = p.floatingPnl ?? 0;
+                  const floatUp = float >= 0;
+                  return (
+                    <li
+                      key={p.id}
+                      className={`demo-open-card ${p.side === "BUY" ? "is-buy" : "is-sell"}`}
                     >
-                      Close TP1
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void post("/api/demo/close", {
-                          positionId: p.id,
-                          outcome: "SL_HIT",
-                        })
-                      }
-                    >
-                      Close SL
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        void post("/api/demo/close", {
-                          positionId: p.id,
-                          outcome: "MANUAL",
-                          realizedR: 0,
-                        })
-                      }
-                    >
-                      Flat 0R
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+                      <div className="demo-open-top">
+                        <div className="demo-open-side">
+                          <span className={`demo-side-pill ${p.side === "BUY" ? "buy" : "sell"}`}>
+                            {p.side}
+                          </span>
+                          <div>
+                            <strong className="demo-open-mod">{p.module}</strong>
+                            <span className="demo-open-when">{pkt(p.openedAt)}</span>
+                          </div>
+                        </div>
+                        <div className={`demo-open-pnl ${floatUp ? "demo-up" : "demo-down"}`}>
+                          <span className="demo-open-pnl-main">{money(p.floatingPnl)}</span>
+                          <span className="demo-open-pnl-r">
+                            {p.floatingR != null ? `${p.floatingR.toFixed(2)}R` : "—"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="demo-open-levels">
+                        <span>
+                          Entry <b>{p.entry.toFixed(2)}</b>
+                        </span>
+                        <span>
+                          SL <b>{p.sl.toFixed(2)}</b>
+                        </span>
+                        <span>
+                          TP1 <b>{p.tp1.toFixed(2)}</b>
+                        </span>
+                        {p.tp2 != null && (
+                          <span>
+                            TP2 <b>{p.tp2.toFixed(2)}</b>
+                          </span>
+                        )}
+                        <span>
+                          Risk <b>${p.riskUsd.toFixed(2)}</b>
+                        </span>
+                      </div>
+                      <div className="demo-row-actions">
+                        <button
+                          type="button"
+                          className="demo-btn-tp"
+                          disabled={busy}
+                          onClick={() =>
+                            void post("/api/demo/close", {
+                              positionId: p.id,
+                              outcome: "TP1_HIT",
+                            })
+                          }
+                        >
+                          Close TP1
+                        </button>
+                        <button
+                          type="button"
+                          className="demo-btn-sl"
+                          disabled={busy}
+                          onClick={() =>
+                            void post("/api/demo/close", {
+                              positionId: p.id,
+                              outcome: "SL_HIT",
+                            })
+                          }
+                        >
+                          Close SL
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void post("/api/demo/close", {
+                              positionId: p.id,
+                              outcome: "MANUAL",
+                              realizedR: 0,
+                            })
+                          }
+                        >
+                          Flat 0R
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
 
           <h3 className="demo-section">Recent closed</h3>
           <ul className="demo-list compact">

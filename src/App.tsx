@@ -423,11 +423,6 @@ export default function App() {
       </header>
 
       <nav className="controls compact">
-        <div className="asset-tabs">
-          <button type="button" className="active" disabled>
-            Gold
-          </button>
-        </div>
         <div className="mode-toggle">
           <button
             type="button"
@@ -547,7 +542,7 @@ export default function App() {
             <PulseCard />
           ) : deskView === "cipher_b" ? (
             <StrategyCompareCard
-              title="CIPHER B · Gold"
+              title="CIPHER B"
               subtitle="WaveTrend Cipher-B + SMC dual-confirm · trend only · TP1 @ 0.9R"
               apiPath="/api/cipherbclone/latest"
               cacheKey="cipher_b"
@@ -555,7 +550,7 @@ export default function App() {
             />
           ) : deskView === "fractal" ? (
             <StrategyCompareCard
-              title="TTRADES FRACTAL · Gold"
+              title="TTRADES FRACTAL"
               subtitle="Fractal + SMC agree · daily agree · no 2h spike-chase · TP1 @ 0.9R"
               apiPath="/api/fractal/latest"
               cacheKey="fractal"
