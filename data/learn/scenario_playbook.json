@@ -1,9 +1,10 @@
 {
-  "generatedAt": "2026-07-25T14:35:23.528Z",
-  "from": 2005,
-  "to": 2025,
-  "sampleN": 68105,
-  "rule": "avoid = SL≥40% (n≥25); throttle ≥30%; prefer = WR≥72% (n≥40). Combine with lean cooldown / post-TP pause.",
+  "generatedAt": "2026-07-26T08:16:51.861Z",
+  "source": "weekly-learn",
+  "sampleN": 68110,
+  "liveDays": 90,
+  "liveAdded": 5,
+  "rule": "avoid = SL≥40% (n≥25); throttle ≥30%; prefer = WR≥72% (n≥40).",
   "scenarios": [
     {
       "key": "module_session_side:intra30|night|SELL",
@@ -205,10 +206,10 @@
     },
     {
       "key": "module_side:intraday|SELL",
-      "n": 1798,
-      "sl": 764,
-      "wr": 57.5,
-      "rate": 42.5,
+      "n": 1803,
+      "sl": 765,
+      "wr": 57.6,
+      "rate": 42.4,
       "action": "avoid",
       "tip": "Use lean cooldown + post-TP pause"
     },
@@ -232,8 +233,8 @@
     },
     {
       "key": "module:intraday",
-      "n": 4029,
-      "sl": 1648,
+      "n": 4034,
+      "sl": 1649,
       "wr": 59.1,
       "rate": 40.9,
       "action": "avoid",
@@ -286,10 +287,10 @@
     },
     {
       "key": "module_session:intraday|mid",
-      "n": 699,
-      "sl": 266,
-      "wr": 61.9,
-      "rate": 38.1,
+      "n": 704,
+      "sl": 267,
+      "wr": 62.1,
+      "rate": 37.9,
       "action": "throttle",
       "tip": "Use lean cooldown + post-TP pause"
     },
@@ -304,10 +305,10 @@
     },
     {
       "key": "module_trend:intraday|up",
-      "n": 1380,
-      "sl": 513,
-      "wr": 62.8,
-      "rate": 37.2,
+      "n": 1385,
+      "sl": 514,
+      "wr": 62.9,
+      "rate": 37.1,
       "action": "throttle",
       "tip": "Respect M5 trend alignment"
     },
@@ -366,18 +367,18 @@
       "tip": "Use lean cooldown + post-TP pause"
     },
     {
-      "key": "module_session_side:intraday|mid|SELL",
-      "n": 285,
-      "sl": 101,
-      "wr": 64.6,
-      "rate": 35.4,
+      "key": "session:asia_am",
+      "n": 18708,
+      "sl": 6592,
+      "wr": 64.8,
+      "rate": 35.2,
       "action": "throttle",
       "tip": "Use lean cooldown + post-TP pause"
     },
     {
-      "key": "session:asia_am",
-      "n": 18708,
-      "sl": 6592,
+      "key": "module_session_side:intraday|mid|SELL",
+      "n": 290,
+      "sl": 102,
       "wr": 64.8,
       "rate": 35.2,
       "action": "throttle",
@@ -502,8 +503,8 @@
     },
     {
       "key": "side:SELL",
-      "n": 26889,
-      "sl": 8442,
+      "n": 26894,
+      "sl": 8443,
       "wr": 68.6,
       "rate": 31.4,
       "action": "throttle",
@@ -619,8 +620,8 @@
     },
     {
       "key": "session:mid",
-      "n": 15006,
-      "sl": 4475,
+      "n": 15011,
+      "sl": 4476,
       "wr": 70.2,
       "rate": 29.8,
       "action": "allow",
@@ -708,15 +709,6 @@
       "tip": "Use lean cooldown + post-TP pause"
     },
     {
-      "key": "fat_sl",
-      "n": 544,
-      "sl": 155,
-      "wr": 71.5,
-      "rate": 28.5,
-      "action": "allow",
-      "tip": "Skip / demote — fat risk"
-    },
-    {
       "key": "trend:down",
       "n": 20059,
       "sl": 5673,
@@ -733,6 +725,15 @@
       "rate": 28.3,
       "action": "allow",
       "tip": "Use lean cooldown + post-TP pause"
+    },
+    {
+      "key": "fat_sl",
+      "n": 548,
+      "sl": 155,
+      "wr": 71.7,
+      "rate": 28.3,
+      "action": "allow",
+      "tip": "Skip / demote — fat risk"
     },
     {
       "key": "module_session_side:fractal|asia_am|BUY",
@@ -898,8 +899,8 @@
     },
     {
       "key": "vol:high",
-      "n": 22741,
-      "sl": 5236,
+      "n": 22746,
+      "sl": 5237,
       "wr": 77,
       "rate": 23,
       "action": "prefer",
@@ -1455,7 +1456,7 @@
     {
       "id": "clean_rr",
       "label": "Clean RR (TP1 ≥ 0.85 × SL $)",
-      "n": 32856,
+      "n": 32860,
       "pctOfWins": 68.8,
       "examples": [
         "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
@@ -1467,7 +1468,7 @@
     {
       "id": "no_stack",
       "label": "No same-print lean stack in prior 90m",
-      "n": 15048,
+      "n": 15052,
       "pctOfWins": 31.5,
       "examples": [
         "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
