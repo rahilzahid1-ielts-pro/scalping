@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "trainedAt": "2026-07-26T08:16:51.279Z",
-  "sampleN": 68110,
-  "winN": 47755,
-  "lossN": 20355,
+  "trainedAt": "2026-07-25T14:35:31.095Z",
+  "sampleN": 68105,
+  "winN": 47751,
+  "lossN": 20354,
   "featureNames": [
     "bias",
     "side_sell",
@@ -37,44 +37,44 @@
     "after_tp_same_side_90m"
   ],
   "weights": [
-    0.22308048357687482,
-    0.33441599742506517,
-    0.1476588605681394,
-    -0.2056381441684812,
-    -0.04531847116244678,
-    0.297739029334335,
-    0.03156818122044499,
-    -0.18378711732320574,
-    -0.05042446218572241,
-    0.09727769362244049,
-    0.05334839063240917,
-    0.25165069444034954,
-    0.031046268440444214,
-    -0.18249534081166632,
-    -0.027629142274622216,
-    -0.0553324986636555,
-    0.18316326300740512,
-    0.09876680533491361,
-    0.23470380377777453,
-    -0.23326898704356114,
+    0.36425166601037606,
+    0.3364260231586171,
+    0.07171350139090107,
+    -0.0968884166642417,
+    -0.045588966678561396,
+    0.29952113308275147,
+    0.03175668029663532,
+    -0.043076915924720106,
+    0.026019941609154953,
+    0.16292424471687528,
+    0.05366774445007458,
+    0.2531623713334244,
+    0.10797485002536752,
+    -0.11852529058268754,
+    0.11401174172404144,
+    -0.055667739357248544,
+    0.1842679284093118,
+    0.13249683398294285,
+    0.23611330649973075,
+    -0.12599820970656897,
     0,
-    0.2694018622347176,
-    -0.28848292222844324,
-    0.050608897930463574,
-    -0.05053010438549637,
-    0.22970693522460675,
-    0.13860841670913457,
-    -0.24911146341585552,
-    0.7750970037486656,
-    -0.7442111523030766
+    0.27102143378737353,
+    -0.2526021476622552,
+    0.05090403799323127,
+    0.014227103930513256,
+    0.23108823918979918,
+    0.17857712028786304,
+    -0.25060385675042085,
+    0.8884501064711097,
+    -0.6400272440330043
   ],
   "metrics": {
-    "trainN": 51083,
-    "testN": 17027,
-    "accuracy": 0.460210254301991,
-    "precisionSl": 0.34246470227133213,
-    "recallSl": 0.8776794493608653,
-    "baselineSlRate": 0.29885479371604756
+    "trainN": 51079,
+    "testN": 17026,
+    "accuracy": 0.30829319863737814,
+    "precisionSl": 0.29981456002871326,
+    "recallSl": 0.985837922895358,
+    "baselineSlRate": 0.298862051244402
   },
   "slCauses": [
     {
@@ -92,7 +92,7 @@
     {
       "id": "post_tp_same_side",
       "label": "Re-fire same side within 90m after a TP",
-      "n": 6561,
+      "n": 6560,
       "pctOfLosses": 32.2,
       "examples": [
         "Quick Scalp SELL @ 426.27 (2005-01-04 17:00 PKT~)",
@@ -140,7 +140,7 @@
     {
       "id": "whipsaw_fast",
       "label": "Whipsaw — resolved ≤5 minutes",
-      "n": 192,
+      "n": 191,
       "pctOfLosses": 0.9,
       "examples": [
         "Pro SELL @ 423.8 (2005-03-24 09:10 PKT~)",
@@ -186,7 +186,7 @@
     {
       "id": "clean_rr",
       "label": "Clean RR (TP1 ≥ 0.85 × SL $)",
-      "n": 32860,
+      "n": 32856,
       "pctOfWins": 68.8,
       "examples": [
         "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
@@ -198,7 +198,7 @@
     {
       "id": "no_stack",
       "label": "No same-print lean stack in prior 90m",
-      "n": 15052,
+      "n": 15048,
       "pctOfWins": 31.5,
       "examples": [
         "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
@@ -616,6 +616,16 @@
       "verdict": "avoid"
     },
     {
+      "key": "module_side:intraday|SELL",
+      "module": "intraday",
+      "side": "SELL",
+      "n": 1798,
+      "w": 1034,
+      "l": 764,
+      "wr": 57.5,
+      "verdict": "avoid"
+    },
+    {
       "key": "module_session_trend:pro|night|flat",
       "module": "pro",
       "session": "night",
@@ -624,16 +634,6 @@
       "w": 326,
       "l": 241,
       "wr": 57.5,
-      "verdict": "avoid"
-    },
-    {
-      "key": "module_side:intraday|SELL",
-      "module": "intraday",
-      "side": "SELL",
-      "n": 1803,
-      "w": 1038,
-      "l": 765,
-      "wr": 57.6,
       "verdict": "avoid"
     },
     {
@@ -736,10 +736,10 @@
       "key": "module_session:intraday|mid",
       "module": "intraday",
       "session": "mid",
-      "n": 704,
-      "w": 437,
-      "l": 267,
-      "wr": 62.1,
+      "n": 699,
+      "w": 433,
+      "l": 266,
+      "wr": 61.9,
       "verdict": "ok"
     },
     {
@@ -753,22 +753,22 @@
       "verdict": "ok"
     },
     {
+      "key": "module_trend:intraday|up",
+      "module": "intraday",
+      "trend": "up",
+      "n": 1380,
+      "w": 867,
+      "l": 513,
+      "wr": 62.8,
+      "verdict": "ok"
+    },
+    {
       "key": "module_vol:pro|low",
       "module": "pro",
       "vol": "low",
       "n": 3398,
       "w": 2138,
       "l": 1260,
-      "wr": 62.9,
-      "verdict": "ok"
-    },
-    {
-      "key": "module_trend:intraday|up",
-      "module": "intraday",
-      "trend": "up",
-      "n": 1385,
-      "w": 871,
-      "l": 514,
       "wr": 62.9,
       "verdict": "ok"
     },
@@ -804,6 +804,16 @@
       "verdict": "ok"
     },
     {
+      "key": "module_vol:intraday|high",
+      "module": "intraday",
+      "vol": "high",
+      "n": 901,
+      "w": 573,
+      "l": 328,
+      "wr": 63.6,
+      "verdict": "ok"
+    },
+    {
       "key": "module_session_trend:cipher_b|night|flat",
       "module": "cipher_b",
       "session": "night",
@@ -821,16 +831,6 @@
       "n": 5420,
       "w": 3451,
       "l": 1969,
-      "wr": 63.7,
-      "verdict": "ok"
-    },
-    {
-      "key": "module_vol:intraday|high",
-      "module": "intraday",
-      "vol": "high",
-      "n": 906,
-      "w": 577,
-      "l": 329,
       "wr": 63.7,
       "verdict": "ok"
     },
@@ -999,10 +999,10 @@
       "module": "intraday",
       "session": "mid",
       "trend": "up",
-      "n": 252,
-      "w": 170,
-      "l": 82,
-      "wr": 67.5,
+      "n": 247,
+      "w": 166,
+      "l": 81,
+      "wr": 67.2,
       "verdict": "ok"
     },
     {
@@ -2223,10 +2223,10 @@
     },
     {
       "key": "module_side:intraday|SELL",
-      "n": 1803,
-      "sl": 765,
-      "wr": 57.6,
-      "rate": 42.4,
+      "n": 1798,
+      "sl": 764,
+      "wr": 57.5,
+      "rate": 42.5,
       "action": "avoid",
       "tip": "Use lean cooldown + post-TP pause"
     },
@@ -2250,8 +2250,8 @@
     },
     {
       "key": "module:intraday",
-      "n": 4034,
-      "sl": 1649,
+      "n": 4029,
+      "sl": 1648,
       "wr": 59.1,
       "rate": 40.9,
       "action": "avoid",
@@ -2304,10 +2304,10 @@
     },
     {
       "key": "module_session:intraday|mid",
-      "n": 704,
-      "sl": 267,
-      "wr": 62.1,
-      "rate": 37.9,
+      "n": 699,
+      "sl": 266,
+      "wr": 61.9,
+      "rate": 38.1,
       "action": "throttle",
       "tip": "Use lean cooldown + post-TP pause"
     },
@@ -2322,10 +2322,10 @@
     },
     {
       "key": "module_trend:intraday|up",
-      "n": 1385,
-      "sl": 514,
-      "wr": 62.9,
-      "rate": 37.1,
+      "n": 1380,
+      "sl": 513,
+      "wr": 62.8,
+      "rate": 37.2,
       "action": "throttle",
       "tip": "Respect M5 trend alignment"
     },
@@ -2384,18 +2384,18 @@
       "tip": "Use lean cooldown + post-TP pause"
     },
     {
-      "key": "session:asia_am",
-      "n": 18708,
-      "sl": 6592,
-      "wr": 64.8,
-      "rate": 35.2,
+      "key": "module_session_side:intraday|mid|SELL",
+      "n": 285,
+      "sl": 101,
+      "wr": 64.6,
+      "rate": 35.4,
       "action": "throttle",
       "tip": "Use lean cooldown + post-TP pause"
     },
     {
-      "key": "module_session_side:intraday|mid|SELL",
-      "n": 290,
-      "sl": 102,
+      "key": "session:asia_am",
+      "n": 18708,
+      "sl": 6592,
       "wr": 64.8,
       "rate": 35.2,
       "action": "throttle",
@@ -2520,8 +2520,8 @@
     },
     {
       "key": "side:SELL",
-      "n": 26894,
-      "sl": 8443,
+      "n": 26889,
+      "sl": 8442,
       "wr": 68.6,
       "rate": 31.4,
       "action": "throttle",
@@ -2637,8 +2637,8 @@
     },
     {
       "key": "session:mid",
-      "n": 15011,
-      "sl": 4476,
+      "n": 15006,
+      "sl": 4475,
       "wr": 70.2,
       "rate": 29.8,
       "action": "allow",
@@ -2726,6 +2726,15 @@
       "tip": "Use lean cooldown + post-TP pause"
     },
     {
+      "key": "fat_sl",
+      "n": 544,
+      "sl": 155,
+      "wr": 71.5,
+      "rate": 28.5,
+      "action": "allow",
+      "tip": "Skip / demote — fat risk"
+    },
+    {
       "key": "trend:down",
       "n": 20059,
       "sl": 5673,
@@ -2742,15 +2751,6 @@
       "rate": 28.3,
       "action": "allow",
       "tip": "Use lean cooldown + post-TP pause"
-    },
-    {
-      "key": "fat_sl",
-      "n": 548,
-      "sl": 155,
-      "wr": 71.7,
-      "rate": 28.3,
-      "action": "allow",
-      "tip": "Skip / demote — fat risk"
     },
     {
       "key": "module_session_side:fractal|asia_am|BUY",
@@ -2916,8 +2916,8 @@
     },
     {
       "key": "vol:high",
-      "n": 22746,
-      "sl": 5237,
+      "n": 22741,
+      "sl": 5236,
       "wr": 77,
       "rate": 23,
       "action": "prefer",
@@ -3078,8 +3078,8 @@
     },
     {
       "key": "trend:up",
-      "n": 30431,
-      "sl": 7923,
+      "n": 30426,
+      "sl": 7922,
       "wr": 74,
       "rate": 26,
       "action": "prefer",
@@ -3636,9 +3636,9 @@
       "rate": 0.33066666666666666
     },
     "intraday|11": {
-      "n": 107,
+      "n": 106,
       "sl": 48,
-      "rate": 0.4485981308411215
+      "rate": 0.4528301886792453
     },
     "qs_pro|11": {
       "n": 756,
@@ -3686,9 +3686,9 @@
       "rate": 0.3333333333333333
     },
     "intraday|13": {
-      "n": 171,
-      "sl": 72,
-      "rate": 0.42105263157894735
+      "n": 169,
+      "sl": 71,
+      "rate": 0.42011834319526625
     },
     "fractal|6": {
       "n": 173,
@@ -3801,9 +3801,9 @@
       "rate": 0.44
     },
     "intraday|12": {
-      "n": 121,
+      "n": 119,
       "sl": 43,
-      "rate": 0.35537190082644626
+      "rate": 0.36134453781512604
     },
     "intra30|6": {
       "n": 277,
