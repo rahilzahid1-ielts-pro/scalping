@@ -11,4 +11,5 @@ data/**
 !data/learn/by_year_report.json
 !data/learn/last_weekly_run.json
 !data/learn/sl_model.prev.json
+!data/learn/labeled_20y.jsonl.gz
 daemon/state.json
