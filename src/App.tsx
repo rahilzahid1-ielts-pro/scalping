@@ -22,6 +22,7 @@ import { useLivePrice } from "./hooks/useLivePrice";
 import { requestAlertPermission, testAlertSound, useEntryAlert, usePlanLockAlert } from "./hooks/useEntryAlert";
 import { useServiceWorkerAlerts } from "./hooks/useServiceWorkerAlerts";
 import { enablePush, getPushState, sendTestPush, type PushState } from "./services/pushClient";
+import { useTheme } from "./hooks/useTheme";
 import { roundPrice } from "./strategies/indicators";
 import { computeNowAction } from "./utils/nowAction";
 import { signalInterval } from "./utils/sessionPlan";
@@ -64,6 +65,7 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [booted, setBooted] = useState(false);
   const [liquidityWarn, setLiquidityWarn] = useState(false);
+  const { lightOn, toggleLight } = useTheme();
 
   const { quote, error: quoteError, pollMs } = useLivePrice(assetId);
   const quoteRef = useRef(quote);
@@ -366,6 +368,18 @@ export default function App() {
         <div className="topbar-meta">
           <span className={`live-dot ${quote && now - quote.ts < 2000 ? "on" : ""}`} />
           Live {pollMs}ms
+          <button
+            type="button"
+            className={`topbar-push theme-toggle ${lightOn ? "on" : ""}`}
+            onClick={toggleLight}
+            title={
+              lightOn
+                ? "White UI ON — tap to return to dark"
+                : "White UI OFF — tap for light portal"
+            }
+          >
+            {lightOn ? "White UI ON" : "White UI"}
+          </button>
           <button
             type="button"
             className={`topbar-push ${pushState === "subscribed" ? "on" : ""}`}

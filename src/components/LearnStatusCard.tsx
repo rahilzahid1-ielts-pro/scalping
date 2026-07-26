@@ -39,7 +39,7 @@ type LearnStatus = {
   error?: string;
 };
 
-function pkt(isoOrMs: string | number | null | undefined): string {
+function pktShort(isoOrMs: string | number | null | undefined): string {
   if (isoOrMs == null) return "—";
   const ms = typeof isoOrMs === "number" ? isoOrMs : Date.parse(isoOrMs);
   if (!Number.isFinite(ms)) return "—";
@@ -57,11 +57,11 @@ function pkt(isoOrMs: string | number | null | undefined): string {
   }
 }
 
-function stateLabel(s: LearnStatus["weekly"]): string {
+function weeklyShort(s: LearnStatus["weekly"]): string {
   if (!s) return "—";
   if (s.state === "off") return "OFF";
-  if (s.state === "never") return "ON · waiting first Sunday run";
-  if (s.state === "stale") return "ON · run overdue / check logs";
+  if (s.state === "never") return "ON · first Sun";
+  if (s.state === "stale") return "ON · stale";
   if (s.state === "ok") return "ON · healthy";
   return "ON";
 }
@@ -71,6 +71,10 @@ function confClass(c: number | null): string {
   if (c >= 70) return "learn-conf hot";
   if (c < 60) return "learn-conf cold";
   return "learn-conf mid";
+}
+
+function shortMod(m: string): string {
+  return m.replace("qs_pro", "QS Pro").replace("cipher_b", "Cipher").replace("quick_scalp", "QS");
 }
 
 export function LearnStatusCard() {
@@ -99,7 +103,13 @@ export function LearnStatusCard() {
   const weekly = data?.weekly;
   const live = Boolean(model?.loaded && model?.gateActive);
   const modules = (data?.day?.modules ?? [])
-    .filter((m) => m.executed > 0 || m.module === "qs_pro" || m.module === "cipher_b" || m.module === "pro")
+    .filter(
+      (m) =>
+        m.executed > 0 ||
+        m.module === "qs_pro" ||
+        m.module === "cipher_b" ||
+        m.module === "pro",
+    )
     .slice()
     .sort((a, b) => (b.confidencePct ?? -1) - (a.confidencePct ?? -1));
 
@@ -113,58 +123,51 @@ export function LearnStatusCard() {
       </div>
 
       {error && <p className="learn-err">{error}</p>}
-
-      {!data && !error && <p className="muted">Loading learn status…</p>}
+      {!data && !error && <p className="muted">Loading…</p>}
 
       {data && (
         <>
-          <div className="learn-grid">
-            <div>
-              <div className="learn-k">Model</div>
-              <div className="learn-v">
+          <div className="learn-strip">
+            <div className="learn-cell">
+              <span className="learn-k">Model</span>
+              <span className="learn-v">
                 {model?.loaded
-                  ? `${model.sampleN.toLocaleString()} trades · WR ${model.wr ?? "—"}%`
-                  : "Not loaded"}
-              </div>
-              <div className="learn-sub">
-                Trained {pkt(model?.trainedAt)} · playbook {model?.playbookN ?? 0}
-                {model?.source ? ` · ${model.source}` : ""}
-              </div>
+                  ? `${(model.sampleN / 1000).toFixed(model.sampleN >= 10000 ? 0 : 1)}k · ${model.wr ?? "—"}%`
+                  : "—"}
+              </span>
+              <span className="learn-sub" title={model?.source ?? undefined}>
+                {pktShort(model?.trainedAt)} · pb {model?.playbookN ?? 0}
+              </span>
             </div>
-            <div>
-              <div className="learn-k">Weekly retrain</div>
-              <div className="learn-v">{stateLabel(weekly)}</div>
-              <div className="learn-sub">
-                Last {pkt(weekly?.lastRunIso)}
-                {weekly?.lastWr != null ? ` · WR ${weekly.lastWr}%` : ""}
-                {weekly?.liveAdded != null ? ` · +${weekly.liveAdded} live` : ""}
-                {weekly?.daysSince != null ? ` · ${weekly.daysSince}d ago` : ""}
-                {" · "}
-                {weekly?.nextHint}
-              </div>
+            <div className="learn-cell">
+              <span className="learn-k">Weekly</span>
+              <span className="learn-v">{weeklyShort(weekly)}</span>
+              <span className="learn-sub">
+                {pktShort(weekly?.lastRunIso)}
+                {weekly?.liveAdded != null ? ` · +${weekly.liveAdded}` : ""}
+              </span>
             </div>
-            <div>
-              <div className="learn-k">Labels on disk</div>
-              <div className="learn-v">
+            <div className="learn-cell">
+              <span className="learn-k">Labels</span>
+              <span className="learn-v">
                 {data.labels?.gz ? "gz ✓" : "gz —"}
-                {" · "}
-                {data.labels?.jsonl ? "jsonl ✓" : "jsonl —"}
-              </div>
-              <div className="learn-sub">
-                {data.seed?.copied?.length
-                  ? `Seeded this boot: ${data.seed.copied.length} file(s)`
-                  : "Gate blocks bad playbook / low day confidence / Friday close"}
-              </div>
+                {data.labels?.jsonl ? " · jsonl ✓" : ""}
+              </span>
+              <span className="learn-sub">{weekly?.nextHint ?? "Sun ~22:00 PKT"}</span>
             </div>
           </div>
 
           {modules.length > 0 && (
             <div className="learn-mods">
-              <div className="learn-k">Today confidence (PKT {data.day?.date})</div>
+              <span className="learn-k">Today {data.day?.date}</span>
               <div className="learn-mod-row">
                 {modules.map((m) => (
-                  <span key={m.module} className={confClass(m.confidencePct)} title={m.tier}>
-                    {m.module.replace("_", " ")}{" "}
+                  <span
+                    key={m.module}
+                    className={confClass(m.confidencePct)}
+                    title={`${m.module} · ${m.tier}`}
+                  >
+                    {shortMod(m.module)}{" "}
                     {m.confidencePct != null ? `${m.confidencePct}%` : "…"}
                     {!m.allowNewLock ? " ⏸" : ""}
                   </span>

@@ -7,16 +7,60 @@
   --muted: #8b9aab;
   --accent: #c4a35a;
   --accent-soft: rgba(196, 163, 90, 0.16);
+  --accent-strong: #f3e6c4;
   --buy: #3dba8a;
   --buy-soft: rgba(61, 186, 138, 0.14);
   --sell: #e25c5c;
   --sell-soft: rgba(226, 92, 92, 0.14);
   --wait: #7f91a8;
   --wait-soft: rgba(127, 145, 168, 0.14);
+  --ok: #9be7b0;
+  --ok-soft: rgba(46, 160, 90, 0.25);
+  --bad: #f0a0a0;
+  --bad-soft: rgba(180, 60, 60, 0.25);
+  --warn: #e8d4a0;
+  --warn-soft: rgba(200, 160, 60, 0.18);
+  --chip: rgba(255, 255, 255, 0.06);
+  --mod-line: rgba(255, 255, 255, 0.08);
+  --body-bg:
+    radial-gradient(1200px 600px at 10% -10%, rgba(196, 163, 90, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(45, 120, 110, 0.1), transparent 50%),
+    linear-gradient(180deg, #0c131a 0%, var(--bg) 40%, #070b10 100%);
   --font-display: "Syne", sans-serif;
   --font-body: "DM Sans", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  --bg: #f2f4f6;
+  --bg-elevated: #ffffff;
+  --bg-panel: #ffffff;
+  --line: rgba(25, 40, 55, 0.12);
+  --text: #15202b;
+  --muted: #5c6b7a;
+  --accent: #8f7340;
+  --accent-soft: rgba(143, 115, 64, 0.14);
+  --accent-strong: #5c481f;
+  --buy: #1f9a6a;
+  --buy-soft: rgba(31, 154, 106, 0.12);
+  --sell: #c43c3c;
+  --sell-soft: rgba(196, 60, 60, 0.1);
+  --wait: #5a6d82;
+  --wait-soft: rgba(90, 109, 130, 0.1);
+  --ok: #1a7a45;
+  --ok-soft: rgba(26, 122, 69, 0.14);
+  --bad: #a03030;
+  --bad-soft: rgba(160, 48, 48, 0.12);
+  --warn: #8a6a18;
+  --warn-soft: rgba(180, 140, 40, 0.14);
+  --chip: rgba(20, 35, 50, 0.06);
+  --mod-line: rgba(20, 35, 50, 0.1);
+  --body-bg:
+    radial-gradient(1000px 500px at 8% -8%, rgba(143, 115, 64, 0.1), transparent 55%),
+    radial-gradient(800px 420px at 100% 0%, rgba(40, 110, 100, 0.07), transparent 50%),
+    linear-gradient(180deg, #f7f8fa 0%, var(--bg) 45%, #e8ecf0 100%);
+  color-scheme: light;
 }
 
 * {
@@ -32,10 +76,7 @@ body,
 
 body {
   font-family: var(--font-body);
-  background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(196, 163, 90, 0.12), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, rgba(45, 120, 110, 0.1), transparent 50%),
-    linear-gradient(180deg, #0c131a 0%, var(--bg) 40%, #070b10 100%);
+  background: var(--body-bg);
   color: var(--text);
   line-height: 1.45;
 }
@@ -58,7 +99,7 @@ button:hover {
 button.active {
   background: var(--accent-soft);
   border-color: rgba(196, 163, 90, 0.55);
-  color: #f3e6c4;
+  color: var(--accent-strong);
 }
 
 .app {
@@ -1520,91 +1561,134 @@ button.active {
 
 .learn-status-panel {
   margin-bottom: 0.75rem;
+  padding: 0.75rem 0.9rem;
 }
 .learn-status-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.55rem;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
 }
 .learn-status-head h3 {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   letter-spacing: 0.02em;
 }
 .learn-badge {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  padding: 0.22rem 0.5rem;
+  padding: 0.18rem 0.45rem;
   border-radius: 4px;
+  white-space: nowrap;
 }
 .learn-badge.on {
-  background: rgba(46, 160, 90, 0.25);
-  color: #9be7b0;
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 .learn-badge.off {
-  background: rgba(180, 60, 60, 0.25);
-  color: #f0a0a0;
+  background: var(--bad-soft);
+  color: var(--bad);
 }
-.learn-grid {
+.learn-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.65rem;
+  gap: 0.35rem 0.55rem;
+}
+.learn-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-right: 0.45rem;
+  border-right: 1px solid var(--mod-line);
+}
+.learn-cell:last-child {
+  border-right: none;
+  padding-right: 0;
 }
 .learn-k {
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  opacity: 0.65;
-  margin-bottom: 0.15rem;
+  color: var(--muted);
 }
 .learn-v {
-  font-size: 0.92rem;
-  font-weight: 600;
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .learn-sub {
-  font-size: 0.75rem;
-  opacity: 0.7;
-  margin-top: 0.15rem;
-  line-height: 1.35;
+  font-size: 0.68rem;
+  color: var(--muted);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .learn-err {
-  color: #f0a0a0;
+  color: var(--bad);
   font-size: 0.85rem;
 }
 .learn-mods {
-  margin-top: 0.7rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 0.5rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--mod-line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
 }
 .learn-mod-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.35rem;
+  gap: 0.3rem;
 }
 .learn-conf {
-  font-size: 0.72rem;
-  padding: 0.18rem 0.42rem;
+  font-size: 0.68rem;
+  padding: 0.14rem 0.38rem;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--chip);
 }
 .learn-conf.hot {
-  background: rgba(46, 160, 90, 0.22);
-  color: #9be7b0;
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 .learn-conf.mid {
-  background: rgba(200, 160, 60, 0.18);
-  color: #e8d4a0;
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 .learn-conf.cold {
-  background: rgba(180, 60, 60, 0.2);
-  color: #f0a0a0;
+  background: var(--bad-soft);
+  color: var(--bad);
 }
 .learn-conf.pending {
   opacity: 0.75;
+}
+
+.theme-toggle.on {
+  background: var(--accent-soft);
+  border-color: rgba(196, 163, 90, 0.55);
+  color: var(--accent-strong);
+}
+
+html[data-theme="light"] .panel,
+html[data-theme="light"] .chart-shell {
+  box-shadow: 0 1px 2px rgba(20, 35, 50, 0.04), 0 8px 24px rgba(20, 35, 50, 0.06);
+}
+
+html[data-theme="light"] .topbar-push {
+  background: rgba(20, 35, 50, 0.04);
+}
+
+html[data-theme="light"] .chart-shell,
+html[data-theme="light"] .details-body,
+html[data-theme="light"] .demo-ledger li,
+html[data-theme="light"] .demo-closed li {
+  background: var(--bg-elevated);
 }
 
 @media (max-width: 900px) {
@@ -1620,8 +1704,20 @@ button.active {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .learn-grid {
+  .learn-strip {
     grid-template-columns: 1fr;
+  }
+
+  .learn-cell {
+    border-right: none;
+    padding-right: 0;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--mod-line);
+  }
+
+  .learn-cell:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
   }
 }
 
