@@ -268,6 +268,38 @@ function calibrationApiPlugin(): Plugin {
           return;
         }
 
+        if (req.url?.startsWith("/api/learn/")) {
+          try {
+            const u = new URL(req.url, "http://localhost");
+            const send = (code: number, body: unknown) => {
+              res.statusCode = code;
+              res.setHeader("Content-Type", "application/json");
+              res.end(JSON.stringify(body));
+            };
+            if (
+              u.pathname === "/api/learn/status" &&
+              (req.method === "GET" || !req.method)
+            ) {
+              const { buildLearnStatusPayload } = await import(
+                "./src/learn/apiStatus"
+              );
+              send(200, await buildLearnStatusPayload());
+              return;
+            }
+            send(404, { ok: false, error: "unknown learn route" });
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader("Content-Type", "application/json");
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: e instanceof Error ? e.message : "learn api error",
+              }),
+            );
+          }
+          return;
+        }
+
         if (req.url?.startsWith("/api/cipherbclone/") || req.url?.startsWith("/api/fractal/")) {
           try {
             const url = req.url.split("?")[0];

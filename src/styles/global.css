@@ -1514,6 +1514,95 @@ button.active {
   color: #e8d4a0;
 }
 
+.learn-status-panel {
+  margin-bottom: 0.75rem;
+}
+.learn-status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+.learn-status-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+.learn-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.22rem 0.5rem;
+  border-radius: 4px;
+}
+.learn-badge.on {
+  background: rgba(46, 160, 90, 0.25);
+  color: #9be7b0;
+}
+.learn-badge.off {
+  background: rgba(180, 60, 60, 0.25);
+  color: #f0a0a0;
+}
+.learn-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+.learn-k {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+  margin-bottom: 0.15rem;
+}
+.learn-v {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.learn-sub {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-top: 0.15rem;
+  line-height: 1.35;
+}
+.learn-err {
+  color: #f0a0a0;
+  font-size: 0.85rem;
+}
+.learn-mods {
+  margin-top: 0.7rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.learn-mod-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+.learn-conf {
+  font-size: 0.72rem;
+  padding: 0.18rem 0.42rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.learn-conf.hot {
+  background: rgba(46, 160, 90, 0.22);
+  color: #9be7b0;
+}
+.learn-conf.mid {
+  background: rgba(200, 160, 60, 0.18);
+  color: #e8d4a0;
+}
+.learn-conf.cold {
+  background: rgba(180, 60, 60, 0.2);
+  color: #f0a0a0;
+}
+.learn-conf.pending {
+  opacity: 0.75;
+}
+
 @media (max-width: 900px) {
   .layout-simple {
     grid-template-columns: 1fr;
@@ -1525,6 +1614,10 @@ button.active {
 
   .demo-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .learn-grid {
+    grid-template-columns: 1fr;
   }
 }
 

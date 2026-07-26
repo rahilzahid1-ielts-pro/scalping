@@ -404,6 +404,19 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/learn/status" && req.method === "GET") {
+      try {
+        const { buildLearnStatusPayload } = await import("../src/learn/apiStatus");
+        sendJson(res, 200, await buildLearnStatusPayload());
+      } catch (e) {
+        sendJson(res, 500, {
+          ok: false,
+          error: e instanceof Error ? e.message : "learn status error",
+        });
+      }
+      return;
+    }
+
     if (path === "/api/cipherbclone/latest" && req.method === "GET") {
       const { buildLatestPayload } = await import("../src/strategyCompare/apiLatest");
       sendJson(res, 200, await buildLatestPayload("cipher_b_clone"));

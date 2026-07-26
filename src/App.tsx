@@ -12,6 +12,7 @@ import { Intra30Card } from "./components/Intra30Card";
 import { PulseCard } from "./components/PulseCard";
 import { HistoryCard } from "./components/HistoryCard";
 import { DemoAccountCard } from "./components/DemoAccountCard";
+import { LearnStatusCard } from "./components/LearnStatusCard";
 import { StrategyCompareCard } from "./components/StrategyCompareCard";
 import { DetailsAccordion } from "./components/DetailsAccordion";
 import { BiasCard } from "./components/BiasCard";
@@ -510,6 +511,7 @@ export default function App() {
 
       <main className="layout-simple">
         <div className="command-column">
+          <LearnStatusCard />
           {loading && !nowAction && !booted && (
             <div className="panel loading">Loading…</div>
           )}
