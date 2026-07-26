@@ -455,7 +455,7 @@ button.active {
 
 .chart-live-px {
   font-family: var(--font-mono);
-  color: #f0dfb0;
+  color: var(--accent-strong);
 }
 
 .prediction-panel .path-banner {
@@ -513,7 +513,7 @@ button.active {
 }
 
 .win-prob {
-  color: #f0dfb0;
+  color: var(--accent-strong);
 }
 
 .pred-summary {
@@ -555,7 +555,7 @@ button.active {
 .new-plan-btn {
   background: var(--accent-soft) !important;
   border-color: rgba(196, 163, 90, 0.5) !important;
-  color: #f3e6c4 !important;
+  color: var(--accent-strong) !important;
 }
 
 .plan-panel.status-INVALIDATED {
@@ -755,7 +755,7 @@ button.active {
 }
 
 .playbook strong {
-  color: #f0dfb0;
+  color: var(--accent-strong);
 }
 
 .disclaimer {
@@ -809,7 +809,7 @@ button.active {
 
 @keyframes tick-flash {
   from {
-    color: #f0dfb0;
+    color: var(--accent-strong);
   }
   to {
     color: var(--text);
@@ -939,7 +939,7 @@ button.active {
 }
 
 .action-now-scores .win {
-  color: #f0dfb0;
+  color: var(--accent-strong);
 }
 
 .action-now-detail {
@@ -1095,7 +1095,7 @@ button.active {
 }
 
 .tone-wait-entry .action-now-headline {
-  color: #f0dfb0;
+  color: var(--accent-strong);
 }
 
 .tone-wait .action-now-headline,
@@ -1228,7 +1228,7 @@ button.active {
   color: var(--muted);
 }
 .history-modules button.active {
-  color: #e8d4a0;
+  color: var(--accent-strong);
   border-color: rgba(196, 163, 90, 0.55);
   background: var(--accent-soft);
 }
@@ -1313,7 +1313,7 @@ button.active {
   border: 1px solid rgba(224, 138, 138, 0.35);
 }
 .hist-out.open {
-  color: #e8d4a0;
+  color: var(--accent-strong);
   background: rgba(196, 163, 90, 0.12);
   border: 1px solid rgba(196, 163, 90, 0.35);
 }
@@ -1389,7 +1389,7 @@ button.active {
   border-radius: 12px;
   border: 1px dashed rgba(196, 163, 90, 0.45);
   background: rgba(196, 163, 90, 0.08);
-  color: #e8d4a0;
+  color: var(--accent-strong);
 }
 .forming-preview strong {
   display: block;
