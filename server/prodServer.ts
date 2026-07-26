@@ -560,6 +560,25 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`[prodServer] listening on 0.0.0.0:${PORT}`);
   console.log(`[prodServer] serving ${DIST}`);
 
+  // Railway volume at /app/data hides git data/learn — seed from learn-seed/
+  void import("../src/learn/modelStore")
+    .then(({ ensureLearnSeeded }) => {
+      const r = ensureLearnSeeded();
+      if (r.copied.length) {
+        console.log("[prodServer] Learn seed copied:", r.copied.join(", "));
+      } else if (r.missing.length) {
+        console.warn(
+          "[prodServer] Learn seed incomplete — missing:",
+          r.missing.join(", "),
+        );
+      } else {
+        console.log("[prodServer] Learn artifacts present under data/learn");
+      }
+    })
+    .catch((e) => {
+      console.error("[prodServer] Learn seed failed:", e);
+    });
+
   // Live alert worker on Railway — Telegram phone alerts even when web is closed
   void import("../daemon/alertBot").then(({ startAlertWorker, shouldAutoStartAlertWorker }) => {
     if (shouldAutoStartAlertWorker()) {

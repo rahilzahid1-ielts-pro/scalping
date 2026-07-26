@@ -32,6 +32,7 @@ import {
   LEARN_DIR,
   MODEL_PATH,
   REPORT_PATH,
+  ensureLearnSeeded,
   loadModel,
   saveModel,
   saveReport,
@@ -196,6 +197,7 @@ export async function runWeeklyLearn(opts?: {
   const force = opts?.force ?? false;
 
   if (!existsSync(LEARN_DIR)) mkdirSync(LEARN_DIR, { recursive: true });
+  ensureLearnSeeded();
 
   const prev = loadModel();
   const base = loadBaseLabels();

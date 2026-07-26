@@ -1,0 +1,194 @@
+{
+  "trainedAt": "2026-07-26T08:16:51.279Z",
+  "source": "weekly-learn",
+  "liveFrom": "2026-04-27",
+  "liveTo": "2026-07-26",
+  "liveDays": 90,
+  "liveAdded": 5,
+  "sampleN": 68110,
+  "overall": {
+    "n": 68110,
+    "w": 47755,
+    "l": 20355,
+    "wr": 70.1,
+    "moduleCount": 7
+  },
+  "metrics": {
+    "trainN": 51083,
+    "testN": 17027,
+    "accuracy": 0.460210254301991,
+    "precisionSl": 0.34246470227133213,
+    "recallSl": 0.8776794493608653,
+    "baselineSlRate": 0.29885479371604756
+  },
+  "slCauses": [
+    {
+      "id": "same_print_stack",
+      "label": "Same-print lean stack (≤$8, 90m, other module)",
+      "n": 13357,
+      "pctOfLosses": 65.6,
+      "examples": [
+        "Quick Scalp SELL @ 426.27 (2005-01-04 17:00 PKT~)",
+        "Cipher B SELL @ 426.27 (2005-01-04 18:00 PKT~)",
+        "Fractal SELL @ 426.27 (2005-01-04 18:05 PKT~)"
+      ],
+      "fix": "Lean-family correlation cooldown"
+    },
+    {
+      "id": "post_tp_same_side",
+      "label": "Re-fire same side within 90m after a TP",
+      "n": 6561,
+      "pctOfLosses": 32.2,
+      "examples": [
+        "Quick Scalp SELL @ 426.27 (2005-01-04 17:00 PKT~)",
+        "Cipher B SELL @ 425.37 (2005-01-05 07:10 PKT~)",
+        "Quick Scalp SELL @ 425.4 (2005-01-05 16:35 PKT~)"
+      ],
+      "fix": "Post-TP bounce pause"
+    },
+    {
+      "id": "asymmetric_rr",
+      "label": "Bad RR (TP1 < 0.7 × SL $)",
+      "n": 2750,
+      "pctOfLosses": 13.5,
+      "examples": [
+        "Intra30 BUY @ 429.55 (2005-01-04 02:05 PKT~)",
+        "Intra30 SELL @ 426.05 (2005-01-04 23:55 PKT~)",
+        "Intra30 SELL @ 417.75 (2005-01-07 22:50 PKT~)"
+      ],
+      "fix": "Skip setups where reward << risk"
+    },
+    {
+      "id": "night_counter_buy",
+      "label": "Late / night BUY (20–02 PKT)",
+      "n": 2464,
+      "pctOfLosses": 12.1,
+      "examples": [
+        "Intra30 BUY @ 421.45 (2005-01-11 21:00 PKT~)",
+        "Intra30 BUY @ 423.25 (2005-01-25 22:10 PKT~)",
+        "Intra30 BUY @ 422.25 (2005-01-31 20:40 PKT~)"
+      ],
+      "fix": "Sell-lean day → block counter BUY (esp. Scalp)"
+    },
+    {
+      "id": "asia_bounce_sell",
+      "label": "Asia mid-morning SELL (08–12 PKT)",
+      "n": 1527,
+      "pctOfLosses": 7.5,
+      "examples": [
+        "QS Pro SELL @ 425.74 (2005-01-05 08:50 PKT~)",
+        "Quick Scalp SELL @ 425.3 (2005-01-05 09:30 PKT~)",
+        "QS Pro SELL @ 421.17 (2005-01-17 08:15 PKT~)"
+      ],
+      "fix": "After morning dump, pause stacked SELLs into bounce"
+    },
+    {
+      "id": "whipsaw_fast",
+      "label": "Whipsaw — resolved ≤5 minutes",
+      "n": 192,
+      "pctOfLosses": 0.9,
+      "examples": [
+        "Pro SELL @ 423.8 (2005-03-24 09:10 PKT~)",
+        "Pro SELL @ 426.7 (2005-04-01 20:25 PKT~)",
+        "QS Pro BUY @ 548.5 (2006-02-08 20:55 PKT~)"
+      ],
+      "fix": "Opposite-block / min hold / skip noise re-entries"
+    },
+    {
+      "id": "fat_sl",
+      "label": "Fat SL (>$12 risk)",
+      "n": 155,
+      "pctOfLosses": 0.8,
+      "examples": [
+        "QS Pro BUY @ 985.24 (2008-03-05 22:45 PKT~)",
+        "Pro BUY @ 911.45 (2008-10-08 21:40 PKT~)",
+        "QS Pro BUY @ 925 (2008-10-10 14:30 PKT~)"
+      ],
+      "fix": "Demote / skip Quick Scalp & wide Scalp; prefer $5–$9 risk desks"
+    },
+    {
+      "id": "scalp_module",
+      "label": "Scalp module fill",
+      "n": 0,
+      "pctOfLosses": 0,
+      "examples": [],
+      "fix": "Keep Scalp demoted from size / demo"
+    }
+  ],
+  "tpWins": [
+    {
+      "id": "trend_aligned",
+      "label": "Trend-aligned side (BUY in up / SELL in down)",
+      "n": 34601,
+      "pctOfWins": 72.5,
+      "examples": [
+        "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
+        "Quick Scalp SELL @ 429.47 (2005-01-04 04:50 PKT~)",
+        "Cipher B SELL @ 429.1 (2005-01-04 06:50 PKT~)"
+      ],
+      "tip": "Prefer modules when side matches M5 trend"
+    },
+    {
+      "id": "clean_rr",
+      "label": "Clean RR (TP1 ≥ 0.85 × SL $)",
+      "n": 32860,
+      "pctOfWins": 68.8,
+      "examples": [
+        "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
+        "Quick Scalp SELL @ 429.47 (2005-01-04 04:50 PKT~)",
+        "QS Pro SELL @ 429.47 (2005-01-04 06:05 PKT~)"
+      ],
+      "tip": "Favor setups with reward ≈ risk or better"
+    },
+    {
+      "id": "no_stack",
+      "label": "No same-print lean stack in prior 90m",
+      "n": 15052,
+      "pctOfWins": 31.5,
+      "examples": [
+        "Intraday SELL @ 430.05 (2005-01-03 22:05 PKT~)",
+        "Quick Scalp SELL @ 429.47 (2005-01-04 04:50 PKT~)",
+        "Quick Scalp SELL @ 429.1 (2005-01-04 08:35 PKT~)"
+      ],
+      "tip": "Keep lean-family cooldown — solo prints win more"
+    },
+    {
+      "id": "low_vol",
+      "label": "Low volatility regime",
+      "n": 14346,
+      "pctOfWins": 30,
+      "examples": [
+        "QS Pro SELL @ 429.1 (2005-01-04 08:40 PKT~)",
+        "Cipher B SELL @ 428.97 (2005-01-04 13:15 PKT~)",
+        "Pro SELL @ 428.1 (2005-01-04 19:10 PKT~)"
+      ],
+      "tip": "Size up slightly in low-ATR windows for lean desks"
+    },
+    {
+      "id": "asia_qs_family",
+      "label": "Asia AM + QS Pro / Quick Scalp / Fractal",
+      "n": 6829,
+      "pctOfWins": 14.3,
+      "examples": [
+        "Quick Scalp SELL @ 429.47 (2005-01-04 04:50 PKT~)",
+        "QS Pro SELL @ 429.47 (2005-01-04 06:05 PKT~)",
+        "Quick Scalp SELL @ 429.1 (2005-01-04 08:35 PKT~)"
+      ],
+      "tip": "Lean scalping family strong in Asia morning"
+    },
+    {
+      "id": "mid_sl",
+      "label": "Mid SL band ($6–$12)",
+      "n": 4805,
+      "pctOfWins": 10.1,
+      "examples": [
+        "Pro BUY @ 502.9 (2005-12-23 01:20 PKT~)",
+        "Pro BUY @ 559.95 (2006-03-25 01:05 PKT~)",
+        "Intraday BUY @ 559.95 (2006-03-27 07:00 PKT~)"
+      ],
+      "tip": "Prefer $6–$12 risk desks over fat/tight extremes"
+    }
+  ],
+  "sanity": "ok",
+  "modelPath": "C:\\scalping\\data\\learn\\sl_model.json"
+}

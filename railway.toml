@@ -22,12 +22,15 @@ restartPolicyMaxRetries = 10
 # (created as scalping-volume) so signals.db + push-subscriptions survive redeploys.
 # Without it, every deploy wipes locks and the UI jumps back to WAITING.
 #
+# The volume HIDES git files under data/learn. Boot copies missing artifacts from
+# learn-seed/ (outside the volume) into data/learn — model, playbook, labels gz.
+# Weekly retrain then writes updates onto the volume (persists across deploys).
+#
 # Weekly learn (Sunday ~22:00 PKT): merges live EXECUTED + labeled_20y.jsonl →
 # retrain model/playbook if sanity passes. Auto-ON on Railway.
 #   ENABLE_WEEKLY_LEARN=0 to disable
 #   LEARN_WEEKLY_LIVE_DAYS=90
-# Put data/learn/labeled_20y.jsonl.gz in the repo (compressed ~2.5MB) or
-# labeled_20y.jsonl on the Railway volume — weekly learn uses either.
+# Keep learn-seed/labeled_20y.jsonl.gz in the repo (compressed ~2.5MB).
 # Do not upload raw 25MB jsonl via GitHub web UI (25MB limit).
 #
 # Closed-app phone alerts also need:

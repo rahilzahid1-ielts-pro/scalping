@@ -4,7 +4,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  ensureLearnSeeded,
   LEARN_DIR,
+  LEARN_SEED_DIR,
   loadModel,
   REPORT_PATH,
 } from "./modelStore";
@@ -77,6 +79,7 @@ function weeklyStatusLabel(
 }
 
 export async function buildLearnStatusPayload() {
+  const seed = ensureLearnSeeded();
   const model = loadModel();
   const stamp = readStamp();
   const daysSince = daysSinceLastWeeklyRun();
@@ -145,6 +148,14 @@ export async function buildLearnStatusPayload() {
       jsonl: existsSync(LABELS_PATH),
       gz: existsSync(LABELS_GZ),
       playbookFile: existsSync(PLAYBOOK_PATH),
+    },
+    paths: {
+      learnDir: LEARN_DIR,
+      seedDir: LEARN_SEED_DIR,
+    },
+    seed: {
+      copied: seed.copied,
+      missing: seed.missing,
     },
     day: day
       ? {

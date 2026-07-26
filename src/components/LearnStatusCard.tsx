@@ -34,6 +34,7 @@ type LearnStatus = {
     nextHint: string;
   };
   labels?: { jsonl: boolean; gz: boolean; playbookFile: boolean };
+  seed?: { copied: string[]; missing: string[] };
   day?: { date: string; modules: ModuleRow[] } | null;
   error?: string;
 };
@@ -150,7 +151,9 @@ export function LearnStatusCard() {
                 {data.labels?.jsonl ? "jsonl ✓" : "jsonl —"}
               </div>
               <div className="learn-sub">
-                Gate blocks bad playbook / low day confidence / Friday close
+                {data.seed?.copied?.length
+                  ? `Seeded this boot: ${data.seed.copied.length} file(s)`
+                  : "Gate blocks bad playbook / low day confidence / Friday close"}
               </div>
             </div>
           </div>

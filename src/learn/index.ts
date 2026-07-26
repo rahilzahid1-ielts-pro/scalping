@@ -9,7 +9,15 @@ export type {
 } from "./types";
 export { loadLearnRowsFromDir, rowsFromHistoryCsv, normalizeLearnModule } from "./csvImport";
 export { trainLogisticSlModel, predictSlProbability } from "./train";
-export { saveModel, loadModel, MODEL_PATH, REPORT_PATH, LEARN_DIR } from "./modelStore";
+export {
+  saveModel,
+  loadModel,
+  ensureLearnSeeded,
+  MODEL_PATH,
+  REPORT_PATH,
+  LEARN_DIR,
+  LEARN_SEED_DIR,
+} from "./modelStore";
 export { gateLearnedLock, noteLearnResolved, getLearnModel, resetLearnRuntimeCache } from "./runtime";
 export { mineSlCauses } from "./explain";
 export { mineTpWins, moduleMarketMatrix, buildScenarioPlaybook } from "./scenarios";

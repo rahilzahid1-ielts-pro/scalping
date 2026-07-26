@@ -77,6 +77,10 @@ async function maybeRun(): Promise<void> {
 }
 
 export function startWeeklyLearnWorker(): void {
+  void import("../src/learn/modelStore")
+    .then(({ ensureLearnSeeded }) => ensureLearnSeeded())
+    .catch(() => undefined);
+
   if (workerRunning) {
     log("already running");
     return;
