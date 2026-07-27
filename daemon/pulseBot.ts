@@ -149,7 +149,7 @@ async function tick(): Promise<void> {
         log("resolved", openTrade.direction, hit);
         // TP1 closes the active lock for new entries; TP2 may upgrade later.
         if (hit === "TP1_HIT" || hit === "TP2_HIT") {
-          noteModuleTp("qs_pro", openTrade.direction);
+          noteModuleTp("qs_pro", openTrade.direction, Date.now(), openTrade.entry);
         }
         openTrade = null;
       }

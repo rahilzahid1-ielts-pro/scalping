@@ -25,7 +25,7 @@ import {
 } from "../src/history/entryTouch";
 import { entryTolerance } from "../src/utils/tradeSafety";
 import { isFridayCloseOrWeekend } from "../src/utils/marketHours";
-import { gateNewLock } from "../src/regime/dayModuleRules";
+import { gateNewLock, noteModuleTp } from "../src/regime/dayModuleRules";
 
 const TICK_MS = Number(process.env.PRO_TICK_MS) || 60_000;
 const ASSET = "XAUUSD" as const;
@@ -99,6 +99,9 @@ async function tick(): Promise<void> {
         const r = hit === "TP1_HIT" ? 1 : -1;
         updateProOutcome(db, openTrade.id, hit, r, Date.now());
         log("resolved", openTrade.direction, hit);
+        if (hit === "TP1_HIT") {
+          noteModuleTp("pro", openTrade.direction, Date.now(), openTrade.entry);
+        }
         openTrade = null;
       }
     }

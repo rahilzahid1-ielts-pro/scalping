@@ -147,7 +147,12 @@ export function createCompareBot(cfg: CompareBotConfig) {
           );
           log("resolved", openTrade.direction, hit);
           if (hit === "TP1_HIT") {
-            noteModuleTp(strategyToRegime(cfg.strategy), openTrade.direction);
+            noteModuleTp(
+              strategyToRegime(cfg.strategy),
+              openTrade.direction,
+              Date.now(),
+              openTrade.entry,
+            );
           }
           openTrade = null;
         }

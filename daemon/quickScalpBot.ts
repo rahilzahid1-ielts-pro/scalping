@@ -103,7 +103,7 @@ async function tick(): Promise<void> {
         updateQuickScalpOutcome(db, openTrade.id, hit, r, Date.now());
         log("resolved", openTrade.direction, hit);
         if (hit === "TP1_HIT") {
-          noteModuleTp("quick_scalp", openTrade.direction);
+          noteModuleTp("quick_scalp", openTrade.direction, Date.now(), openTrade.entry);
         }
         openTrade = null;
       }

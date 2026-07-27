@@ -165,7 +165,7 @@ function manageOpenTrade(
       log("resolved", row.direction, outcome, "@", row.entry);
       noteResolve(row.direction);
       if (outcome === "TP1_HIT" || outcome === "TP2_HIT") {
-        noteModuleTp("intra30", row.direction);
+        noteModuleTp("intra30", row.direction, Date.now(), row.entry);
       }
       tp1ReachedById.delete(row.id);
       return null;

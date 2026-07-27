@@ -4,7 +4,8 @@
  * Positive-day desk (not silent desk):
  * - Prefer (QS Pro + Cipher + Pro) keep firing — 2 SL = throttle, 3 SL = pause
  * - Day WR confidence: ≥70% → more trades; <60% (n≥3) → no new locks
- * - Shorter post-TP pause on prefer (45m) so winners still print
+ * - Post-TP same-side pause 90m across lean family (includes Pro)
+ * - Chase-after-TP: block same-side if entry already ≥$12 beyond last TP entry (3h)
  * - Demote Scalp / Quick Scalp (fat SL killers)
  * - Demo size scales by tier; day stop / profit-protect in positiveDayDesk
  * - Friday 20:00 PKT → Mon open: no new locks
@@ -34,6 +35,8 @@ export interface ModuleDayScore {
   losses: number;
   netR: number;
   lastTpAt: number | null;
+  /** Entry of the most recent TP (for chase-after-win guard). */
+  lastTpEntry: number | null;
   lastSlAt: number | null;
   lastSide: "BUY" | "SELL" | null;
   sellWins: number;
@@ -62,7 +65,11 @@ export interface DayRegimeSnapshot {
   refreshedAt: number;
   byModule: Record<RegimeModule, ModuleRegime>;
   sellLeanDay: boolean;
-  leanLastTp: { at: number; side: "BUY" | "SELL" } | null;
+  leanLastTp: {
+    at: number;
+    side: "BUY" | "SELL";
+    entry: number | null;
+  } | null;
 }
 
 export interface LockGateResult {
@@ -91,12 +98,17 @@ const PREFER_BASE = new Set<RegimeModule>(["qs_pro", "cipher_b", "pro"]);
 /** Noise / fat SL desks — demoted unless env override. */
 const DEMOTE_BASE = new Set<RegimeModule>(["scalp", "quick_scalp"]);
 
-/** Correlated lean / same-print family. */
+/**
+ * Same-side post-TP / chase family — after a win, don't stack another
+ * SELL lower (or BUY higher) across these desks.
+ * Pro included so QS Pro TP blocks Pro re-short (2026-07-27 double SL).
+ */
 export const LEAN_FAMILY = new Set<RegimeModule>([
   "qs_pro",
   "cipher_b",
   "quick_scalp",
   "fractal",
+  "pro",
 ]);
 
 /**
@@ -121,17 +133,26 @@ const CONF_MIN_SAMPLE = 3;
 const CONF_BLOCK_BELOW = 60;
 /** At/above this WR% → prefer boost (more trades / higher risk). */
 const CONF_BOOST_AT = 70;
+/** Same-side pause after lean/prefer TP (was 45m prefer / 90m other). */
 const POST_TP_PAUSE_MS = 90 * 60 * 1000;
-const POST_TP_PREFER_MS = 45 * 60 * 1000;
+const POST_TP_PREFER_MS = 90 * 60 * 1000;
 const THROTTLE_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+/** Block same-side re-entry if price already extended this far past last TP entry. */
+const CHASE_AFTER_TP_USD = 12;
+/** How long the chase-after-TP guard stays armed. */
+const CHASE_AFTER_TP_MS = 3 * 60 * 60 * 1000;
 const CACHE_TTL_MS = 90_000;
 
 let cache: DayRegimeSnapshot | null = null;
 let cacheInflight: Promise<DayRegimeSnapshot> | null = null;
 
 /** In-process TP stamps (faster than waiting for history refresh). */
-const liveTpStamps: { module: RegimeModule; side: "BUY" | "SELL"; at: number }[] =
-  [];
+const liveTpStamps: {
+  module: RegimeModule;
+  side: "BUY" | "SELL";
+  at: number;
+  entry: number | null;
+}[] = [];
 
 function isWin(outcome: string): boolean {
   return outcome === "TP1_HIT" || outcome === "TP2_HIT";
@@ -149,6 +170,7 @@ function emptyScore(module: RegimeModule): ModuleDayScore {
     losses: 0,
     netR: 0,
     lastTpAt: null,
+    lastTpEntry: null,
     lastSlAt: null,
     lastSide: null,
     sellWins: 0,
@@ -198,7 +220,10 @@ export function scoreModulesFromTrades(
       s.wins += 1;
       if (t.side === "SELL") s.sellWins += 1;
       else s.buyWins += 1;
-      if (s.lastTpAt == null || at > s.lastTpAt) s.lastTpAt = at;
+      if (s.lastTpAt == null || at > s.lastTpAt) {
+        s.lastTpAt = at;
+        s.lastTpEntry = Number.isFinite(t.entry) ? t.entry : null;
+      }
     } else {
       s.losses += 1;
       if (s.lastSlAt == null || at > s.lastSlAt) s.lastSlAt = at;
@@ -225,25 +250,40 @@ function allowQuickScalpLocksEnv(): boolean {
 export function evaluateDayRegimeFromScores(
   scores: Record<RegimeModule, ModuleDayScore>,
   now = Date.now(),
-  liveTps: { module: RegimeModule; side: "BUY" | "SELL"; at: number }[] = [],
+  liveTps: {
+    module: RegimeModule;
+    side: "BUY" | "SELL";
+    at: number;
+    entry?: number | null;
+  }[] = [],
 ): Omit<DayRegimeSnapshot, "date" | "refreshedAt"> {
   const sellWins = ALL_MODULES.reduce((a, m) => a + scores[m].sellWins, 0);
   const buyWins = ALL_MODULES.reduce((a, m) => a + scores[m].buyWins, 0);
   const sellLeanDay = sellWins >= 2 && sellWins > buyWins;
 
-  let leanLastTp: { at: number; side: "BUY" | "SELL" } | null = null;
+  let leanLastTp: DayRegimeSnapshot["leanLastTp"] = null;
   for (const m of LEAN_FAMILY) {
     const tp = scores[m].lastTpAt;
     if (tp == null) continue;
     const side = scores[m].lastSide;
     if (!side) continue;
-    if (!leanLastTp || tp > leanLastTp.at) leanLastTp = { at: tp, side };
+    if (!leanLastTp || tp > leanLastTp.at) {
+      leanLastTp = {
+        at: tp,
+        side,
+        entry: scores[m].lastTpEntry,
+      };
+    }
   }
   for (const stamp of liveTps) {
     if (!LEAN_FAMILY.has(stamp.module)) continue;
-    if (now - stamp.at > POST_TP_PAUSE_MS) continue;
+    if (now - stamp.at > Math.max(POST_TP_PAUSE_MS, CHASE_AFTER_TP_MS)) continue;
     if (!leanLastTp || stamp.at > leanLastTp.at) {
-      leanLastTp = { at: stamp.at, side: stamp.side };
+      leanLastTp = {
+        at: stamp.at,
+        side: stamp.side,
+        entry: stamp.entry ?? null,
+      };
     }
   }
 
@@ -463,15 +503,16 @@ export function noteModuleTp(
   module: RegimeModule,
   side: "BUY" | "SELL",
   at = Date.now(),
+  entry: number | null = null,
 ): void {
-  liveTpStamps.push({ module, side, at });
+  liveTpStamps.push({ module, side, at, entry });
   while (liveTpStamps.length > 40) liveTpStamps.shift();
   if (cache && LEAN_FAMILY.has(module)) {
     if (!cache.leanLastTp || at >= cache.leanLastTp.at) {
       cache = {
         ...cache,
         refreshedAt: at,
-        leanLastTp: { at, side },
+        leanLastTp: { at, side, entry },
       };
     }
   }
@@ -560,6 +601,33 @@ export function gateNewLockFromSnapshot(
       tier: "throttle",
       cooldownMs: pauseMs,
     };
+  }
+
+  // After a same-side TP, don't chase further in the same direction (late entry).
+  if (
+    LEAN_FAMILY.has(module) &&
+    snap.leanLastTp &&
+    snap.leanLastTp.side === direction &&
+    snap.leanLastTp.entry != null &&
+    levels &&
+    Number.isFinite(levels.entry) &&
+    now - snap.leanLastTp.at < CHASE_AFTER_TP_MS
+  ) {
+    const extension =
+      direction === "SELL"
+        ? snap.leanLastTp.entry - levels.entry
+        : levels.entry - snap.leanLastTp.entry;
+    if (extension >= CHASE_AFTER_TP_USD) {
+      return {
+        ok: false,
+        reason: `chase-after-TP block — ${direction} ${extension.toFixed(1)}$ past last TP entry`,
+        tier: "throttle",
+        cooldownMs: Math.min(
+          CHASE_AFTER_TP_MS - (now - snap.leanLastTp.at),
+          60 * 60 * 1000,
+        ),
+      };
+    }
   }
 
   // Learned overlay (past CSV / live history) — only if levels known
