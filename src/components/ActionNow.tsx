@@ -21,10 +21,10 @@ interface Props {
 
 const PUSH_LABEL: Record<PushState, string> = {
   unsupported: "Push N/A",
-  default: "🔔 Enable Push",
+  default: "Push OFF",
   denied: "Push Blocked",
-  granted: "🔔 Enable Push",
-  subscribed: "✅ Push ON",
+  granted: "Push OFF",
+  subscribed: "Push ON",
 };
 
 export function ActionNow({
@@ -189,14 +189,17 @@ export function ActionNow({
           onClick={onEnablePush}
           disabled={pushState === "unsupported" || pushState === "denied"}
           title={
-            pushState === "denied"
-              ? "Notifications blocked — enable them in browser/site settings"
-              : pushState === "unsupported"
-                ? "This browser doesn't support push notifications"
-                : "Get trade alerts on your phone even when the app is closed"
+            pushState === "subscribed"
+              ? "Push ON — tap to turn OFF"
+              : pushState === "denied"
+                ? "Notifications blocked — enable them in browser/site settings"
+                : pushState === "unsupported"
+                  ? "This browser doesn't support push notifications"
+                  : "Push OFF — tap to enable closed-app alerts"
           }
         >
           {PUSH_LABEL[pushState]}
+          {pushState === "subscribed" ? " · tap OFF" : ""}
         </button>
         {onTestPush && (
           <button type="button" onClick={onTestPush} disabled={!!pushBusy}>

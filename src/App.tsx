@@ -21,7 +21,7 @@ import { StrategyBreakdown } from "./components/StrategyBreakdown";
 import { useLivePrice } from "./hooks/useLivePrice";
 import { requestAlertPermission, testAlertSound, useEntryAlert, usePlanLockAlert } from "./hooks/useEntryAlert";
 import { useServiceWorkerAlerts } from "./hooks/useServiceWorkerAlerts";
-import { enablePush, getPushState, sendTestPush, type PushState } from "./services/pushClient";
+import { enablePush, disablePush, getPushState, sendTestPush, type PushState } from "./services/pushClient";
 import { useTheme } from "./hooks/useTheme";
 import { roundPrice } from "./strategies/indicators";
 import { computeNowAction } from "./utils/nowAction";
@@ -260,7 +260,12 @@ export default function App() {
     setAlertsOn((a) => !a);
   };
 
-  const enablePushNotifications = async () => {
+  const togglePushNotifications = async () => {
+    if (pushState === "subscribed") {
+      await disablePush();
+      setPushState(await getPushState());
+      return;
+    }
     const { state, error } = await enablePush();
     setPushState(state);
     if (error) console.warn("[push]", error);
@@ -388,24 +393,34 @@ export default function App() {
           </button>
           <button
             type="button"
-            className={`topbar-push ${pushState === "subscribed" ? "on" : ""}`}
-            onClick={() => void enablePushNotifications()}
+            className={`theme-switch ${pushState === "subscribed" ? "on" : ""}`}
+            onClick={() => void togglePushNotifications()}
+            role="switch"
+            aria-checked={pushState === "subscribed"}
             disabled={pushState === "unsupported" || pushState === "denied"}
             title={
               pushState === "subscribed"
-                ? "Closed-app push ON — phone pe alert aayega jab app band ho"
+                ? "Push ON — tap to turn OFF (closed-app alerts band)"
                 : pushState === "denied"
                   ? "Notifications blocked — phone Settings → Site notifications ON karo"
-                  : "Home-screen app band hone pe bhi trade alert ke liye Push ON karo"
+                  : pushState === "unsupported"
+                    ? "Is browser mein push support nahi"
+                    : "Push OFF — tap to ON (app band pe bhi alert)"
             }
           >
-            {pushState === "subscribed"
-              ? "✅ Push ON"
-              : pushState === "denied"
-                ? "Push Blocked"
-                : pushState === "unsupported"
-                  ? "Push N/A"
-                  : "🔔 Enable Push"}
+            <span className="theme-switch-label">Push</span>
+            <span className="theme-switch-track" aria-hidden="true">
+              <span className="theme-switch-knob" />
+            </span>
+            <span className="theme-switch-state">
+              {pushState === "subscribed"
+                ? "ON"
+                : pushState === "denied"
+                  ? "BLOCKED"
+                  : pushState === "unsupported"
+                    ? "N/A"
+                    : "OFF"}
+            </span>
           </button>
           <button
             type="button"
@@ -574,7 +589,7 @@ export default function App() {
                   onToggleAlerts={() => void toggleAlerts()}
                   onTestSound={testAlertSound}
                   pushState={pushState}
-                  onEnablePush={() => void enablePushNotifications()}
+                  onEnablePush={() => void togglePushNotifications()}
                   onTestPush={() => void testPushNotification()}
                   pushBusy={pushBusy}
                   onTakeDemo={() => void takeDemoTrade()}
