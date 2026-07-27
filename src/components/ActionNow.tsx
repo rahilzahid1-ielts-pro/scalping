@@ -19,14 +19,6 @@ interface Props {
   demoMsg?: string | null;
 }
 
-const PUSH_LABEL: Record<PushState, string> = {
-  unsupported: "Push N/A",
-  default: "Push OFF",
-  denied: "Push Blocked",
-  granted: "Push OFF",
-  subscribed: "Push ON",
-};
-
 export function ActionNow({
   now,
   assetId,
