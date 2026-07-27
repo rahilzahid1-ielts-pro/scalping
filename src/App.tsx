@@ -393,19 +393,21 @@ export default function App() {
           </button>
           <button
             type="button"
-            className={`theme-switch ${pushState === "subscribed" ? "on" : ""}`}
+            className={`theme-switch push-switch ${pushState === "subscribed" ? "on" : ""}`}
             onClick={() => void togglePushNotifications()}
             role="switch"
             aria-checked={pushState === "subscribed"}
-            disabled={pushState === "unsupported" || pushState === "denied"}
+            disabled={
+              pushBusy || pushState === "unsupported" || pushState === "denied"
+            }
             title={
               pushState === "subscribed"
-                ? "Push ON — tap to turn OFF (closed-app alerts band)"
+                ? "Push ON hai — tap karke OFF / band karo"
                 : pushState === "denied"
                   ? "Notifications blocked — phone Settings → Site notifications ON karo"
                   : pushState === "unsupported"
                     ? "Is browser mein push support nahi"
-                    : "Push OFF — tap to ON (app band pe bhi alert)"
+                    : "Push OFF hai — tap karke ON karo"
             }
           >
             <span className="theme-switch-label">Push</span>
@@ -422,11 +424,27 @@ export default function App() {
                     : "OFF"}
             </span>
           </button>
+          {pushState === "subscribed" && (
+            <button
+              type="button"
+              className="topbar-push push-off-btn"
+              onClick={() => void togglePushNotifications()}
+              disabled={pushBusy}
+              title="Closed-app push notifications band karo"
+            >
+              Push OFF
+            </button>
+          )}
           <button
             type="button"
             className="topbar-push"
             onClick={() => void testPushNotification()}
-            disabled={pushBusy || pushState === "unsupported" || pushState === "denied"}
+            disabled={
+              pushBusy ||
+              pushState === "unsupported" ||
+              pushState === "denied" ||
+              pushState !== "subscribed"
+            }
             title="Server se asli Web Push bhejo — closed-app test"
           >
             {pushBusy ? "Sending…" : "Test Push"}

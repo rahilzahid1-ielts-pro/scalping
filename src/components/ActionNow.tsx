@@ -185,24 +185,46 @@ export function ActionNow({
         </button>
         <button
           type="button"
-          className={pushState === "subscribed" ? "active" : ""}
+          className={`theme-switch push-switch ${pushState === "subscribed" ? "on" : ""}`}
           onClick={onEnablePush}
+          role="switch"
+          aria-checked={pushState === "subscribed"}
           disabled={pushState === "unsupported" || pushState === "denied"}
           title={
             pushState === "subscribed"
-              ? "Push ON — tap to turn OFF"
+              ? "Push ON — tap to OFF"
               : pushState === "denied"
                 ? "Notifications blocked — enable them in browser/site settings"
                 : pushState === "unsupported"
                   ? "This browser doesn't support push notifications"
-                  : "Push OFF — tap to enable closed-app alerts"
+                  : "Push OFF — tap to ON"
           }
         >
-          {PUSH_LABEL[pushState]}
-          {pushState === "subscribed" ? " · tap OFF" : ""}
+          <span className="theme-switch-label">Push</span>
+          <span className="theme-switch-track" aria-hidden="true">
+            <span className="theme-switch-knob" />
+          </span>
+          <span className="theme-switch-state">
+            {pushState === "subscribed"
+              ? "ON"
+              : pushState === "denied"
+                ? "BLOCKED"
+                : pushState === "unsupported"
+                  ? "N/A"
+                  : "OFF"}
+          </span>
         </button>
+        {pushState === "subscribed" && (
+          <button type="button" className="push-off-btn" onClick={onEnablePush}>
+            Push OFF
+          </button>
+        )}
         {onTestPush && (
-          <button type="button" onClick={onTestPush} disabled={!!pushBusy}>
+          <button
+            type="button"
+            onClick={onTestPush}
+            disabled={!!pushBusy || pushState !== "subscribed"}
+          >
             {pushBusy ? "Sending…" : "Test Push"}
           </button>
         )}
