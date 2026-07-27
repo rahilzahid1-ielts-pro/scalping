@@ -2019,6 +2019,12 @@ button.active {
   color: var(--buy);
 }
 
+.push-off-btn {
+  border-color: rgba(226, 92, 92, 0.45) !important;
+  color: var(--sell) !important;
+  background: var(--sell-soft) !important;
+}
+
 .theme-toggle.on {
   background: var(--accent-soft);
   border-color: rgba(196, 163, 90, 0.55);
