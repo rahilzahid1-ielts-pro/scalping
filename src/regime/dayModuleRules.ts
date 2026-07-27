@@ -5,7 +5,7 @@
  * - Prefer (QS Pro + Cipher + Pro) keep firing — 2 SL = throttle, 3 SL = pause
  * - Day WR confidence: ≥70% → more trades; <60% (n≥3) → no new locks
  * - Post-TP same-side pause 90m across lean family (includes Pro)
- * - Chase-after-TP: block same-side if entry already ≥$12 beyond last TP entry (3h)
+ * - Chase-after-TP: block same-side if entry already ≥$8 beyond last TP entry (3h)
  * - Demote Scalp / Quick Scalp (fat SL killers)
  * - Demo size scales by tier; day stop / profit-protect in positiveDayDesk
  * - Friday 20:00 PKT → Mon open: no new locks
@@ -137,8 +137,9 @@ const CONF_BOOST_AT = 70;
 const POST_TP_PAUSE_MS = 90 * 60 * 1000;
 const POST_TP_PREFER_MS = 90 * 60 * 1000;
 const THROTTLE_COOLDOWN_MS = 2 * 60 * 60 * 1000;
-/** Block same-side re-entry if price already extended this far past last TP entry. */
-const CHASE_AFTER_TP_USD = 12;
+/** Block same-side re-entry if price already extended this far past last TP entry.
+ *  $8 balances trade count vs stacked SL (2026-07-27: $10 chase after win still SL'd at $12). */
+const CHASE_AFTER_TP_USD = 8;
 /** How long the chase-after-TP guard stays armed. */
 const CHASE_AFTER_TP_MS = 3 * 60 * 60 * 1000;
 const CACHE_TTL_MS = 90_000;
