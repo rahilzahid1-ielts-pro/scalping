@@ -3,18 +3,14 @@
  * Risk sized from *starting* balance × riskPct (not current balance).
  * Open trades / low balance never block new setups — test every signal.
  *
- * Exits run the measured runner policy (src/exits/exitPolicy.ts): in a trend
- * regime bank 30% at 1R, move the stop to breakeven, then trail the remaining
- * 70% half an R behind the best price. Range regimes still bank everything at
- * TP1. Before this, the resolver closed the whole position at TP1 and ignored
- * tp2 entirely, capping every win at 0.85R against a −1R loss — that needs a
- * 54% hit rate just to break even.
+ * Exit policy: QS Pro uses runner_trail_peak (two-window A-vs-A' cleared);
+ * Cipher B / Pro / others stay fixed_tp1. DISABLE with ENABLE_DEMO_RUNNER_EXIT=0.
  */
 import {
   advanceRunnerOnPrice,
   buildExitPlan,
   DEFAULT_RUNNER_TUNE,
-  LIVE_EXIT_POLICY,
+  liveExitPolicy,
   rAtPrice,
   type ExitPlan,
   type ExitPolicyId,
@@ -162,7 +158,7 @@ export function takeDemoTrade(input: TakeTradeInput): TakeTradeResult {
       input.note ||
       `${input.side} @ ${input.entry} · risk $${riskUsd} (${acct.riskPct}% of start $${bank})`,
     regime: input.regime ?? null,
-    policy: LIVE_EXIT_POLICY,
+    policy: liveExitPolicy(input.module),
     stopNow: input.sl,
     partsClosed: 0,
     bankedR: 0,

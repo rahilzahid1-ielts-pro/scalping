@@ -690,6 +690,14 @@ server.listen(PORT, "0.0.0.0", () => {
     console.error("[prodServer] Failed to start demo runner worker:", e);
   });
 
+  void import("../src/exits/exitPolicy").then(({ liveExitPolicy }) => {
+    console.log(
+      `[prodServer] Demo exit policy: qs_pro=${liveExitPolicy("qs_pro")} ` +
+        `cipher_b=${liveExitPolicy("cipher_b")} pro=${liveExitPolicy("pro")} ` +
+        `(ENABLE_DEMO_RUNNER_EXIT=${process.env.ENABLE_DEMO_RUNNER_EXIT ?? "(default)"})`,
+    );
+  });
+
   void import("../daemon/weeklyLearnBot").then(
     ({ startWeeklyLearnWorker, shouldAutoStartWeeklyLearnWorker }) => {
       if (shouldAutoStartWeeklyLearnWorker()) {

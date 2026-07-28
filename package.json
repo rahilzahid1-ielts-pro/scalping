@@ -23,6 +23,7 @@
     "backtest:exits:sweep": "tsx scripts/sweepRunnerTune.ts",
     "backtest:exits:pick": "tsx scripts/pickRunnerTune.ts",
     "backtest:exits:parity": "tsx scripts/verifyRunnerParity.ts",
+    "backtest:exits:paired": "tsx scripts/pairedExitPolicySessionLock.ts",
     "demo-runner": "tsx daemon/demoRunnerBot.ts",
     "learn": "tsx scripts/learnFromHistory.ts",
     "learn:bt": "tsx scripts/learnFromBacktest.ts",

@@ -114,22 +114,11 @@ export interface RunnerTune {
 
 /**
  * Chosen from a grid search over QS Pro signals on four history windows
- * (`scripts/sweepRunnerTune.ts`, `scripts/pickRunnerTune.ts`). Every cell in
- * the grid beat the old full-close-at-TP1 baseline, so this is not a
- * knife-edge fit. Baseline → this cell:
+ * (`scripts/sweepRunnerTune.ts`, `scripts/pickRunnerTune.ts`).
  *
- *    180d   totalR  101.7 →  142.9  (+40%)   maxDD  −4.2 →  −4.2
- *    365d   totalR  210.7 →  289.6  (+37%)   maxDD  −5.3 →  −5.8
- *    730d   totalR  423.7 →  577.1  (+36%)   maxDD  −5.3 →  −6.0
- *   1460d   totalR  751.7 → 1009.9  (+34%)   maxDD −10.3 → −11.1
- *
- * Wider trails looked better on short windows but on the 1460d sample they
- * returned the same while drawdown grew from −11 to −22 R, so the short-window
- * gain was noise and the risk was not. 0.5R had the best return/drawdown ratio
- * in every window.
- *
- * Banking 30% at 1R and moving the stop to breakeven guarantees +0.30R once the
- * first target fills, which is why the hit rate only slips ~74% → ~69%.
+ * Live: QS Pro only, after paired A-vs-A' on two non-overlapping windows
+ * (`scripts/pairedExitPolicySessionLock.ts`). Cipher B / Pro stay fixed_tp1.
+ * Disable with ENABLE_DEMO_RUNNER_EXIT=0.
  */
 export const DEFAULT_RUNNER_TUNE: RunnerTune = {
   bankFraction: 0.3,
@@ -138,7 +127,23 @@ export const DEFAULT_RUNNER_TUNE: RunnerTune = {
   trailPeakR: 0.5,
 };
 
-/** Policy the live desks run. Peak-trail needs only a polled price. */
+/** Modules cleared for runner_trail_peak on the trusted A-vs-A' bar. */
+const RUNNER_LIVE_MODULES = new Set(["qs_pro"]);
+
+/**
+ * Live demo exit policy. Default ON for QS Pro only (two-window A-vs-A'
+ * cleared). Cipher B / Pro / others stay fixed_tp1. Set
+ * ENABLE_DEMO_RUNNER_EXIT=0 to force fixed_tp1 everywhere.
+ */
+export function liveExitPolicy(module?: string | null): ExitPolicyId {
+  const v = (process.env.ENABLE_DEMO_RUNNER_EXIT ?? "1").toLowerCase();
+  if (v === "0" || v === "false" || v === "off") return "fixed_tp1";
+  const m = String(module ?? "").toLowerCase().trim();
+  if (RUNNER_LIVE_MODULES.has(m)) return "runner_trail_peak";
+  return "fixed_tp1";
+}
+
+/** @deprecated Prefer liveExitPolicy(module) — QS Pro default when env allows. */
 export const LIVE_EXIT_POLICY: ExitPolicyId = "runner_trail_peak";
 
 function ladderFor(

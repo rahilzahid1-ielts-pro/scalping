@@ -18,7 +18,8 @@ let running = false;
 export function shouldAutoStartDemoRunner(): boolean {
   const v = (process.env.ENABLE_DEMO_RUNNER ?? "").toLowerCase();
   if (v === "0" || v === "false" || v === "off") return false;
-  // On by default: an untended runner is worse than no runner.
+  // QS Pro runner is live (ENABLE_DEMO_RUNNER_EXIT default on); poller also
+  // resolves fixed_tp1 SL/TP1 for other modules. Default ON so exits are not UI-gated.
   return true;
 }
 
