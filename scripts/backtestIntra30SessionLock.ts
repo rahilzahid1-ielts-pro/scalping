@@ -1,11 +1,11 @@
 /**
- * Intra30 Step-2 session-lock backtest (TP $3 / SL $6 as coded).
+ * Intra30 Step-2 session-lock backtest (actual shipped logic).
  *
  *   npx tsx scripts/backtestIntra30SessionLock.ts
  *
  * Same pipeline as Main Intraday / sessionLockAllModules:
  * canAutoLockPlan → createFrozenPlan → zone-touch → SL-first.
- * Candidate = generateIntra30Signal (strong candle → next bar, TP $3 / SL $3).
+ * Candidate = generateIntra30Signal (strong candle → next bar, TP1 $3 / TP2 $6 / SL $5).
  */
 import { existsSync, unlinkSync, writeFileSync } from "node:fs";
 import { loadHistoricalFile, windowStartIndex } from "../src/backtest/loadData";
@@ -38,7 +38,7 @@ const SPREAD = 0.25;
 const DAYS = 365;
 const ASSET: AssetId = "XAUUSD";
 const LOW_N = 50;
-const MODE: TradeMode = "intraday";
+const MODE: TradeMode = "scalping";
 const REJECT_ALREADY_MISSED = true;
 
 function argValue(argv: string[], name: string): string | undefined {
@@ -121,7 +121,8 @@ Bars       : ${loaded.quality.bars}
 Window     : last ${DAYS}d (start idx ${winStart})
 Spread     : ${SPREAD}
 Resolution : canAutoLockPlan → createFrozenPlan → zone-touch → SL-first
-Candidate  : generateIntra30Signal (strong candle → next M5, TP/SL $3)
+Mode       : ${MODE} (matches live fetchMultiTimeframe("scalping"))
+Candidate  : generateIntra30Signal (strong candle → next M5, TP1 $${INTRA30_TP_DISTANCE} / TP2 $6 / SL $${INTRA30_SL_DISTANCE})
 `);
 
   const db = resetDb();
@@ -198,7 +199,7 @@ Candidate  : generateIntra30Signal (strong candle → next M5, TP/SL $3)
   const payload = {
     generatedAt: new Date().toISOString(),
     method:
-      "runWalkForward session-lock. Intra30 candidate = strong-candle next-bar (TP $3 / SL $3 / TP2 $6). Zone-touch required. Reject-missed ON, 0.5R wait-invalidation OFF.",
+      "runWalkForward session-lock. Intra30 candidate = strong-candle next-bar (TP1 $3 / TP2 $6 / SL $5). Zone-touch required. Reject-missed ON, 0.5R wait-invalidation OFF.",
     file,
     days: DAYS,
     spread: SPREAD,

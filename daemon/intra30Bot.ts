@@ -1,10 +1,11 @@
 /**
  * Intra30 bot — first strong of pattern → next M5 bar entry.
  * Multiple OPEN trades allowed; each new pattern can fire while others run.
- * TP1 $3 / TP2 $6 / SL $3; TP2 runner exits on weak candle.
+ * TP1 $3 / TP2 $6 / SL $5; TP2 runner exits on weak candle.
  *
  * Local:  npm run intra30
- * Prod:   ON by default on Railway (ENABLE_INTRA30_WORKER=0 to disable).
+ * Prod:   OFF by default until trusted backtest clears it.
+ *         Set ENABLE_INTRA30_WORKER=1 to enable.
  */
 import { ASSETS } from "../src/config/assets";
 import { fetchMultiTimeframe } from "../src/services/marketData";
@@ -320,13 +321,12 @@ export function startIntra30Worker(): void {
 }
 
 export function shouldAutoStartIntra30Worker(): boolean {
-  const flag = String(process.env.ENABLE_INTRA30_WORKER ?? "auto")
+  const flag = String(process.env.ENABLE_INTRA30_WORKER ?? "0")
     .trim()
     .toLowerCase();
   if (flag === "0" || flag === "false" || flag === "off") return false;
   if (flag === "1" || flag === "true" || flag === "on") return true;
-  // Railway / prod: ON by default (set =0 to disable).
-  return Boolean(process.env.RAILWAY_ENVIRONMENT);
+  return false;
 }
 
 async function main() {
