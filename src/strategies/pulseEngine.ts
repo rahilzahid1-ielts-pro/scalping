@@ -13,7 +13,7 @@
 import type { AssetId, Candle, TradeMode } from "../types";
 import { generateFractalSignal } from "./archived/fractalSignal";
 import { generateSignal } from "./signalEngine";
-import { leanDeskEntryBlock } from "../utils/entryFilters";
+import { hasFreshExtreme, leanDeskEntryBlock } from "../utils/entryFilters";
 
 const RR_TP1 = 0.85;
 const RR_TP2 = 1.5;
@@ -42,8 +42,12 @@ export interface PulseFrames {
   daily: Candle[];
 }
 
-/** Min SMC confidence for QS Pro when fractal breakout is quiet. */
-const QS_PRO_SMC_FALLBACK_CONF = 75;
+/**
+ * Min SMC confidence for QS Pro when fractal breakout is quiet.
+ * Raised 75 → 85 after the 2026-07-28 SL: the fallback path fired on lagging
+ * MAs (conf 97%, no fractal) while gold was rallying off its low.
+ */
+const QS_PRO_SMC_FALLBACK_CONF = 85;
 
 export function diagnosePulseGate(
   frames: PulseFrames,
@@ -80,6 +84,14 @@ export function diagnosePulseGate(
     return {
       pass: false,
       waitReason: `QS Pro: fractal nahi · SMC conf ${smc.confidence}% < ${QS_PRO_SMC_FALLBACK_CONF}%`,
+    };
+  }
+  // No fractal means no momentum print — demand that price is at least still
+  // making fresh lows (SELL) / highs (BUY), else we're fading a live reversal.
+  if (!hasFreshExtreme(smc.side, frames.primary)) {
+    return {
+      pass: false,
+      waitReason: `QS Pro: fractal nahi · ${smc.side} extreme stale — fresh break chahiye`,
     };
   }
   const block = leanDeskEntryBlock({

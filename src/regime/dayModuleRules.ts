@@ -6,6 +6,8 @@
  * - Day WR confidence: ≥70% → more trades; <60% (n≥3) → no new locks
  * - Post-TP same-side pause 90m across lean family (includes Pro)
  * - Chase-after-TP: block same-side if entry already ≥$8 beyond last TP entry (3h)
+ * - Retrace-after-TP: block same-side if entry has pulled ≥$3 back past that TP entry
+ * - Day side-stop: 2 same-side SL → prefer-only + 2h cooldown, 3 → side band
  * - Demote Scalp / Quick Scalp (fat SL killers)
  * - Demo size scales by tier; day stop / profit-protect in positiveDayDesk
  * - Friday 20:00 PKT → Mon open: no new locks
@@ -41,6 +43,10 @@ export interface ModuleDayScore {
   lastSide: "BUY" | "SELL" | null;
   sellWins: number;
   buyWins: number;
+  sellLosses: number;
+  buyLosses: number;
+  /** Most recent SL time per side (drives the day side-stop). */
+  lastSlBySide: { BUY: number | null; SELL: number | null };
 }
 
 export interface ModuleRegime {
@@ -70,6 +76,12 @@ export interface DayRegimeSnapshot {
     side: "BUY" | "SELL";
     entry: number | null;
   } | null;
+  /**
+   * Day-level same-side SL tally across every module. Daily bias forces all
+   * desks onto one direction, so per-module tiers alone let same-side SLs
+   * stack (24–28 Jul: 11 SELL SL out of 18 SELL fills).
+   */
+  sideRisk: Record<"BUY" | "SELL", { sl: number; lastSlAt: number | null }>;
 }
 
 export interface LockGateResult {
@@ -142,6 +154,19 @@ const THROTTLE_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const CHASE_AFTER_TP_USD = 8;
 /** How long the chase-after-TP guard stays armed. */
 const CHASE_AFTER_TP_MS = 3 * 60 * 60 * 1000;
+/**
+ * Mirror of the chase guard: after a same-side TP, block re-entry that has
+ * retraced this far back past the winning entry. A pure time pause just gets
+ * waited out (2026-07-28: Cipher SELL TP 18:44, QS Pro re-sold $3 higher at
+ * 20:14 — exactly when the 90m pause expired — and SL'd).
+ */
+const RETRACE_AFTER_TP_USD = 3;
+/** Same-side SL count that soft-throttles a direction for the day. */
+const SIDE_SL_SOFT = 2;
+/** Same-side SL count that hard-stops a direction for the rest of the day. */
+const SIDE_SL_HARD = 3;
+/** Quiet time after the 2nd same-side SL before prefer desks may retry. */
+const SIDE_SL_COOLDOWN_MS = 2 * 60 * 60 * 1000;
 const CACHE_TTL_MS = 90_000;
 
 let cache: DayRegimeSnapshot | null = null;
@@ -176,6 +201,9 @@ function emptyScore(module: RegimeModule): ModuleDayScore {
     lastSide: null,
     sellWins: 0,
     buyWins: 0,
+    sellLosses: 0,
+    buyLosses: 0,
+    lastSlBySide: { BUY: null, SELL: null },
   };
 }
 
@@ -227,7 +255,11 @@ export function scoreModulesFromTrades(
       }
     } else {
       s.losses += 1;
+      if (t.side === "SELL") s.sellLosses += 1;
+      else s.buyLosses += 1;
       if (s.lastSlAt == null || at > s.lastSlAt) s.lastSlAt = at;
+      const prevSide = s.lastSlBySide[t.side];
+      if (prevSide == null || at > prevSide) s.lastSlBySide[t.side] = at;
     }
   }
 
@@ -261,6 +293,23 @@ export function evaluateDayRegimeFromScores(
   const sellWins = ALL_MODULES.reduce((a, m) => a + scores[m].sellWins, 0);
   const buyWins = ALL_MODULES.reduce((a, m) => a + scores[m].buyWins, 0);
   const sellLeanDay = sellWins >= 2 && sellWins > buyWins;
+
+  const sideRisk: DayRegimeSnapshot["sideRisk"] = {
+    BUY: { sl: 0, lastSlAt: null },
+    SELL: { sl: 0, lastSlAt: null },
+  };
+  for (const m of ALL_MODULES) {
+    const s = scores[m];
+    sideRisk.BUY.sl += s.buyLosses;
+    sideRisk.SELL.sl += s.sellLosses;
+    for (const side of ["BUY", "SELL"] as const) {
+      const at = s.lastSlBySide[side];
+      const prev = sideRisk[side].lastSlAt;
+      if (at != null && (prev == null || at > prev)) {
+        sideRisk[side].lastSlAt = at;
+      }
+    }
+  }
 
   let leanLastTp: DayRegimeSnapshot["leanLastTp"] = null;
   for (const m of LEAN_FAMILY) {
@@ -447,7 +496,7 @@ export function evaluateDayRegimeFromScores(
     };
   }
 
-  return { byModule, sellLeanDay, leanLastTp };
+  return { byModule, sellLeanDay, leanLastTp, sideRisk };
 }
 
 export function evaluateDayRegime(
@@ -456,7 +505,9 @@ export function evaluateDayRegime(
   date = karachiYmd(now),
 ): DayRegimeSnapshot {
   const scores = scoreModulesFromTrades(trades);
-  const live = liveTpStamps.filter((s) => now - s.at <= POST_TP_PAUSE_MS);
+  // Keep stamps for the full chase/retrace window, not just the TP pause.
+  const stampWindow = Math.max(POST_TP_PAUSE_MS, CHASE_AFTER_TP_MS);
+  const live = liveTpStamps.filter((s) => now - s.at <= stampWindow);
   const body = evaluateDayRegimeFromScores(scores, now, live);
   return {
     date,
@@ -585,6 +636,40 @@ export function gateNewLockFromSnapshot(
     };
   }
 
+  // Day side-stop — all desks share one direction on a biased day, so count
+  // same-side SLs across modules instead of per module only.
+  const sideSl = snap.sideRisk?.[direction];
+  if (sideSl) {
+    if (sideSl.sl >= SIDE_SL_HARD) {
+      return {
+        ok: false,
+        reason: `day side-stop — ${sideSl.sl} ${direction} SL today, ${direction} band`,
+        tier: "pause",
+        cooldownMs: 4 * 60 * 60 * 1000,
+      };
+    }
+    if (sideSl.sl >= SIDE_SL_SOFT) {
+      if (!PREFER_BASE.has(module)) {
+        return {
+          ok: false,
+          reason: `day side-throttle — ${sideSl.sl} ${direction} SL today, sirf prefer desks`,
+          tier: "throttle",
+          cooldownMs: SIDE_SL_COOLDOWN_MS,
+        };
+      }
+      const since = sideSl.lastSlAt == null ? Infinity : now - sideSl.lastSlAt;
+      if (since < SIDE_SL_COOLDOWN_MS) {
+        const mins = Math.ceil((SIDE_SL_COOLDOWN_MS - since) / 60_000);
+        return {
+          ok: false,
+          reason: `day side-throttle — ${sideSl.sl} ${direction} SL, ${mins}m cooldown`,
+          tier: "throttle",
+          cooldownMs: SIDE_SL_COOLDOWN_MS,
+        };
+      }
+    }
+  }
+
   const pauseMs = PREFER_BASE.has(module)
     ? POST_TP_PREFER_MS
     : POST_TP_PAUSE_MS;
@@ -618,15 +703,26 @@ export function gateNewLockFromSnapshot(
       direction === "SELL"
         ? snap.leanLastTp.entry - levels.entry
         : levels.entry - snap.leanLastTp.entry;
+    const cooldownMs = Math.min(
+      CHASE_AFTER_TP_MS - (now - snap.leanLastTp.at),
+      60 * 60 * 1000,
+    );
     if (extension >= CHASE_AFTER_TP_USD) {
       return {
         ok: false,
         reason: `chase-after-TP block — ${direction} ${extension.toFixed(1)}$ past last TP entry`,
         tier: "throttle",
-        cooldownMs: Math.min(
-          CHASE_AFTER_TP_MS - (now - snap.leanLastTp.at),
-          60 * 60 * 1000,
-        ),
+        cooldownMs,
+      };
+    }
+    // Retraced back past the winning entry → we'd be fading the bounce that
+    // followed our own TP, not riding continuation.
+    if (extension <= -RETRACE_AFTER_TP_USD) {
+      return {
+        ok: false,
+        reason: `retrace-after-TP block — ${direction} ${Math.abs(extension).toFixed(1)}$ back past last TP entry`,
+        tier: "throttle",
+        cooldownMs,
       };
     }
   }

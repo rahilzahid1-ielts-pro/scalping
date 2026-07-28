@@ -32,6 +32,17 @@ Do **not** remove `src/regime/dayModuleRules.ts` or `positiveDayDesk.ts` without
 - Lean family correlation cooldown
 - Sell-lean day: block Scalp BUY
 
+## Same-side stacking guards
+
+Daily bias forces every desk onto one direction, so per-module tiers alone let
+same-side SLs stack (24–28 Jul: 11 SELL SL of 18 SELL fills, 35% live WR).
+
+- **Day side-stop** (`sideRisk`): 2 same-side SL → prefer desks only + 2h cooldown; 3 → that side banned for the day. Opposite side stays open.
+- **Chase-after-TP** $8: block same-side entry already extended past the last lean-family TP entry (3h window)
+- **Retrace-after-TP** $3: block same-side entry that pulled back past that TP entry — a plain time pause just gets waited out
+- **Bounce guard** (`isCounterBounce`): block when price is $10+ off the 2h extreme with momentum flipped; `leanDeskEntryBlock` runs it for QS Pro + Fractal
+- **QS Pro no-fractal fallback**: SMC conf ≥85 **and** `hasFreshExtreme` — never fade a live reversal on lagging MAs alone
+
 ## Demo equity rails
 
 - Day stop **−3R** → no new auto-follows
