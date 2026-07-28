@@ -18,7 +18,18 @@ export {
   LEARN_DIR,
   LEARN_SEED_DIR,
 } from "./modelStore";
-export { gateLearnedLock, noteLearnResolved, getLearnModel, resetLearnRuntimeCache } from "./runtime";
+export {
+  gateLearnedLock,
+  noteLearnResolved,
+  getLearnModel,
+  resetLearnRuntimeCache,
+  getLearnRuntimeRecentSnapshot,
+} from "./runtime";
+export {
+  noteResolvedTradeForLearn,
+  noteLoggedSignalForLearn,
+  seedLearnRecentFromLiveDb,
+} from "./liveRuntime";
 export { mineSlCauses } from "./explain";
 export { mineTpWins, moduleMarketMatrix, buildScenarioPlaybook } from "./scenarios";
 export { attachMarketContext, marketContextAt, sessionOf } from "./marketContext";

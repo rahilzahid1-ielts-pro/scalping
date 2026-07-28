@@ -26,6 +26,7 @@ import {
 import { entryTolerance } from "../src/utils/tradeSafety";
 import { isFridayCloseOrWeekend } from "../src/utils/marketHours";
 import { gateNewLock, noteModuleTp } from "../src/regime/dayModuleRules";
+import { noteResolvedTradeForLearn } from "../src/learn/liveRuntime";
 
 const TICK_MS = Number(process.env.PRO_TICK_MS) || 60_000;
 const ASSET = "XAUUSD" as const;
@@ -97,7 +98,20 @@ async function tick(): Promise<void> {
       const hit = resolveBar(openTrade, last);
       if (hit) {
         const r = hit === "TP1_HIT" ? 1 : -1;
-        updateProOutcome(db, openTrade.id, hit, r, Date.now());
+        const resolvedAt = Date.now();
+        updateProOutcome(db, openTrade.id, hit, r, resolvedAt);
+        noteResolvedTradeForLearn({
+          id: openTrade.id,
+          module: "pro",
+          side: openTrade.direction,
+          entry: openTrade.entry,
+          sl: openTrade.sl,
+          tp1: openTrade.tp1,
+          executedAt: openTrade.executedAt,
+          resolvedAt,
+          outcome: hit,
+          realizedR: r,
+        });
         log("resolved", openTrade.direction, hit);
         if (hit === "TP1_HIT") {
           noteModuleTp("pro", openTrade.direction, Date.now(), openTrade.entry);

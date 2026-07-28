@@ -27,6 +27,9 @@ import {
 } from "../utils/sessionPlan";
 import { isTooLateToEnter } from "../utils/tradeSafety";
 import { isLiquiditySweepAgainst } from "../utils/liquidityWarning";
+import { gateLearnedLock } from "../learn/runtime";
+import { noteResolvedTradeForLearn } from "../learn/liveRuntime";
+import type { LearnModule } from "../learn/types";
 import {
   evaluateTrendConfirm,
   markTrendConsumed,
@@ -78,6 +81,12 @@ export interface BacktestOptions {
    * 0.5R toward target (reject-already-missed). Default false = baseline engine.
    */
   rejectAlreadyMissed?: boolean;
+  /**
+   * Backtest-only learned overlay. When set, run gateLearnedLock before creating
+   * a frozen plan so ML-blocked candidates do not occupy the session-lock slot.
+   * Example: "qs_pro".
+   */
+  learnedGateModule?: string;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -98,6 +107,8 @@ export interface BacktestStats {
   tp1LossesAfterTouch: number;
   /** Plans dropped mid-session because regime flipped against side. */
   regimeFlips: number;
+  /** Candidates blocked by learned gate before creating a frozen plan. */
+  learnedGateBlocks?: number;
   /** Of those, shadow shows price would have hit SL first (flip saved a loss). */
   regimeFlipWouldHitSl: number;
   /** Of those, price would have hit TP1 first (flip cancelled a would-be win). */
@@ -324,6 +335,7 @@ export function runWalkForward(
     tp1WinsAfterTouch: 0,
     tp1LossesAfterTouch: 0,
     regimeFlips: 0,
+    learnedGateBlocks: 0,
     regimeFlipWouldHitSl: 0,
     regimeFlipWouldHitTp1: 0,
     regimeFlipUnknown: 0,
@@ -369,6 +381,23 @@ export function runWalkForward(
       open: bar.open,
       high: bar.high,
       low: bar.low,
+    };
+    const noteLearnIfResolved = (before: LoggedSignal, after: LoggedSignal) => {
+      if (!opts.learnedGateModule) return;
+      if (before.outcomeTp1 != null || after.outcomeTp1 == null) return;
+      noteResolvedTradeForLearn({
+        id: after.id,
+        module: opts.learnedGateModule as LearnModule,
+        side: after.side,
+        entry: after.entry,
+        sl: after.sl,
+        tp1: after.tp1,
+        executedAt: after.zoneTouchedAt ?? after.timestamp,
+        resolvedAt: after.resolvedAt ?? asOfClose,
+        outcome: after.outcomeTp1 === "WIN" ? "TP1_HIT" : "SL_HIT",
+        realizedR: after.realizedR,
+        source: "backtest",
+      });
     };
 
     // Regime-flip invalidation: log REGIME_FLIP_INVALIDATED + shadow verdict,
@@ -553,6 +582,7 @@ export function runWalkForward(
           };
           const next = advanceSignalOnBar({ ...row }, tick, asOfClose);
           if (next) {
+            noteLearnIfResolved(row, next);
             updateBacktestSignal(db, next);
             if (next.outcomeTp1 === "WIN" || next.outcomeTp1 === "LOSS") {
               if (next.outcomeTp1 === "WIN") {
@@ -617,6 +647,7 @@ export function runWalkForward(
 
         const next = advanceSignalOnBar({ ...state.row }, tick, asOfClose);
         if (next) {
+          noteLearnIfResolved(state.row, next);
           updateBacktestSignal(db, next);
           if (next.outcomeTp1 === "WIN" || next.outcomeTp1 === "LOSS") {
             // Count TP1 only once (first time outcomeTp1 appears)
@@ -707,6 +738,26 @@ export function runWalkForward(
           (signal.side !== "BUY" && signal.side !== "SELL") ||
           fr.direction !== signal.side
         ) {
+          byMode.set(mode, state);
+          continue;
+        }
+      }
+
+      if (
+        opts.learnedGateModule &&
+        signal.levels &&
+        (signal.side === "BUY" || signal.side === "SELL")
+      ) {
+        const learned = gateLearnedLock({
+          module: opts.learnedGateModule,
+          side: signal.side,
+          entry: signal.levels.entry,
+          sl: signal.levels.stopLoss,
+          tp1: signal.levels.takeProfit1,
+          at: asOfClose,
+        });
+        if (!learned.ok) {
+          stats.learnedGateBlocks = (stats.learnedGateBlocks ?? 0) + 1;
           byMode.set(mode, state);
           continue;
         }

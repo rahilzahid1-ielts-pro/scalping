@@ -34,6 +34,30 @@ export function noteLearnResolved(row: LearnRow): void {
   while (recent.length > 80) recent.shift();
 }
 
+export function getLearnRuntimeRecentSnapshot(): {
+  count: number;
+  latest: Array<{
+    id: string;
+    module: LearnModule;
+    side: "BUY" | "SELL";
+    outcome: LearnRow["outcome"];
+    executedAt: number;
+    resolvedAt: number | null;
+  }>;
+} {
+  return {
+    count: recent.length,
+    latest: recent.slice(-10).map((r) => ({
+      id: r.id,
+      module: r.module,
+      side: r.side,
+      outcome: r.outcome,
+      executedAt: r.executedAt,
+      resolvedAt: r.resolvedAt,
+    })),
+  };
+}
+
 function moduleFromRaw(raw: string): LearnModule {
   const m = String(raw || "")
     .toLowerCase()

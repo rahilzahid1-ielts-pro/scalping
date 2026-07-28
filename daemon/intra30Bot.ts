@@ -21,6 +21,7 @@ import {
   type Intra30Direction,
 } from "../src/strategies/intra30Engine";
 import { dispatchTradeAlert } from "../src/services/notify";
+import { noteResolvedTradeForLearn } from "../src/learn/liveRuntime";
 import {
   getLiveIntra30Db,
   hasIntra30StrongBar,
@@ -156,13 +157,27 @@ function manageOpenTrade(
     }
 
     if (outcome) {
+      const resolvedAt = Date.now();
+      const realizedR = intra30RealizedR(outcome);
       updateIntra30Outcome(
         db,
         row.id,
         outcome,
-        intra30RealizedR(outcome),
-        Date.now(),
+        realizedR,
+        resolvedAt,
       );
+      noteResolvedTradeForLearn({
+        id: row.id,
+        module: "intra30",
+        side: row.direction,
+        entry: row.entry,
+        sl: row.sl,
+        tp1: row.tp1,
+        executedAt: row.executedAt,
+        resolvedAt,
+        outcome,
+        realizedR,
+      });
       log("resolved", row.direction, outcome, "@", row.entry);
       noteResolve(row.direction);
       if (outcome === "TP1_HIT" || outcome === "TP2_HIT") {

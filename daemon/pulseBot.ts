@@ -30,6 +30,7 @@ import {
   shouldSkipCorrelatedLeanLock,
 } from "../src/utils/leanDeskCooldown";
 import { gateNewLock, noteModuleTp } from "../src/regime/dayModuleRules";
+import { noteResolvedTradeForLearn } from "../src/learn/liveRuntime";
 
 const TICK_MS = Number(process.env.PULSE_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
@@ -139,13 +140,27 @@ async function tick(): Promise<void> {
     if (openTrade?.executedAt) {
       const hit = resolveBar(openTrade, last);
       if (hit) {
+        const resolvedAt = Date.now();
+        const realizedR = realizedRFor(openTrade, hit);
         updatePulseOutcome(
           db,
           openTrade.id,
           hit as PulseOutcome,
-          realizedRFor(openTrade, hit),
-          Date.now(),
+          realizedR,
+          resolvedAt,
         );
+        noteResolvedTradeForLearn({
+          id: openTrade.id,
+          module: "qs_pro",
+          side: openTrade.direction,
+          entry: openTrade.entry,
+          sl: openTrade.sl,
+          tp1: openTrade.tp1,
+          executedAt: openTrade.executedAt,
+          resolvedAt,
+          outcome: hit as "TP1_HIT" | "TP2_HIT" | "SL_HIT",
+          realizedR,
+        });
         log("resolved", openTrade.direction, hit);
         // TP1 closes the active lock for new entries; TP2 may upgrade later.
         if (hit === "TP1_HIT" || hit === "TP2_HIT") {

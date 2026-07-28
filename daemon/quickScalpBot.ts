@@ -26,6 +26,7 @@ import {
   shouldSkipCorrelatedLeanLock,
 } from "../src/utils/leanDeskCooldown";
 import { gateNewLock, noteModuleTp } from "../src/regime/dayModuleRules";
+import { noteResolvedTradeForLearn } from "../src/learn/liveRuntime";
 
 const TICK_MS = Number(process.env.QUICK_SCALP_TICK_MS) || 15_000;
 const ASSET = "XAUUSD" as const;
@@ -100,7 +101,20 @@ async function tick(): Promise<void> {
         const risk = Math.abs(openTrade.entry - openTrade.sl);
         const tp1R = risk > 0 ? Math.abs(openTrade.tp1 - openTrade.entry) / risk : 0.85;
         const r = hit === "TP1_HIT" ? tp1R : -1;
-        updateQuickScalpOutcome(db, openTrade.id, hit, r, Date.now());
+        const resolvedAt = Date.now();
+        updateQuickScalpOutcome(db, openTrade.id, hit, r, resolvedAt);
+        noteResolvedTradeForLearn({
+          id: openTrade.id,
+          module: "quick_scalp",
+          side: openTrade.direction,
+          entry: openTrade.entry,
+          sl: openTrade.sl,
+          tp1: openTrade.tp1,
+          executedAt: openTrade.executedAt,
+          resolvedAt,
+          outcome: hit,
+          realizedR: r,
+        });
         log("resolved", openTrade.direction, hit);
         if (hit === "TP1_HIT") {
           noteModuleTp("quick_scalp", openTrade.direction, Date.now(), openTrade.entry);

@@ -698,6 +698,17 @@ server.listen(PORT, "0.0.0.0", () => {
     );
   });
 
+  // Fill gateLearnedLock rolling recent[] from already-resolved live rows so
+  // stack / after-TP features are not empty until the next fresh resolve.
+  void import("../src/learn/liveRuntime").then(
+    ({ seedLearnRecentFromLiveDb }) => {
+      const n = seedLearnRecentFromLiveDb(40);
+      console.log(`[prodServer] Learn recent[] seeded from live DB: ${n} rows`);
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Learn recent seed failed:", e);
+  });
+
   void import("../daemon/weeklyLearnBot").then(
     ({ startWeeklyLearnWorker, shouldAutoStartWeeklyLearnWorker }) => {
       if (shouldAutoStartWeeklyLearnWorker()) {

@@ -13,6 +13,7 @@ import {
 import { getCachedDayRegime } from "../regime/dayModuleRules";
 import { daysSinceLastWeeklyRun } from "../../scripts/learnWeekly";
 import { shouldAutoStartWeeklyLearnWorker } from "../../daemon/weeklyLearnBot";
+import { getLearnRuntimeRecentSnapshot } from "./runtime";
 
 const LABELS_PATH = join(LEARN_DIR, "labeled_20y.jsonl");
 const LABELS_GZ = join(LEARN_DIR, "labeled_20y.jsonl.gz");
@@ -99,6 +100,7 @@ export async function buildLearnStatusPayload() {
   }
 
   const day = getCachedDayRegime();
+  const runtimeRecent = getLearnRuntimeRecentSnapshot();
   const modules = day
     ? Object.values(day.byModule).map((m) => ({
         module: m.module,
@@ -131,6 +133,9 @@ export async function buildLearnStatusPayload() {
       playbookN: model?.playbook?.length ?? 0,
       source: reportSource,
       gateActive: Boolean(model),
+    },
+    runtime: {
+      recent: runtimeRecent,
     },
     weekly: {
       enabled: weeklyEnabled,

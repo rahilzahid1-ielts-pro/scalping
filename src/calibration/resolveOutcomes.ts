@@ -12,6 +12,7 @@ import {
   rAtPrice,
   type ExitPolicyId,
 } from "../exits/exitPolicy";
+import { noteLoggedSignalForLearn } from "../learn/liveRuntime";
 
 export interface PriceTick {
   price: number;
@@ -505,6 +506,9 @@ export function resolveOpenSignalsForSymbol(
     const next = advanceSignalOnBar({ ...sig }, tick);
     if (!next) continue;
     updateSignal(next);
+    if (sig.outcomeTp1 == null && next.outcomeTp1 != null) {
+      noteLoggedSignalForLearn(next);
+    }
     updated.push(next);
   }
 

@@ -34,6 +34,7 @@ import {
   noteModuleTp,
   type RegimeModule,
 } from "../regime/dayModuleRules";
+import { noteResolvedTradeForLearn } from "../learn/liveRuntime";
 
 const ASSET = "XAUUSD" as const;
 const COOLDOWN_MS = 60 * 60 * 1000;
@@ -138,13 +139,27 @@ export function createCompareBot(cfg: CompareBotConfig) {
           const risk = Math.abs(openTrade.entry - openTrade.sl);
           const tp1R =
             risk > 0 ? Math.abs(openTrade.tp1 - openTrade.entry) / risk : 1;
+          const resolvedAt = Date.now();
+          const realizedR = hit === "TP1_HIT" ? tp1R : -1;
           updateStrategyOutcome(
             db,
             openTrade.id,
             hit,
-            hit === "TP1_HIT" ? tp1R : -1,
-            Date.now(),
+            realizedR,
+            resolvedAt,
           );
+          noteResolvedTradeForLearn({
+            id: openTrade.id,
+            module: strategyToRegime(cfg.strategy),
+            side: openTrade.direction,
+            entry: openTrade.entry,
+            sl: openTrade.sl,
+            tp1: openTrade.tp1,
+            executedAt: openTrade.executedAt,
+            resolvedAt,
+            outcome: hit,
+            realizedR,
+          });
           log("resolved", openTrade.direction, hit);
           if (hit === "TP1_HIT") {
             noteModuleTp(
