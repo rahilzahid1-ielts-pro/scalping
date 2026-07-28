@@ -51,16 +51,17 @@ trade could return more than ~1.5R. `src/exits/exitPolicy.ts` is the measured
 fix; exit policy lives in `src/exits/exitPolicy.ts` and (after A-vs-A')
 optionally in `advanceSignalOnBar`:
 
-- Trend regime: bank **30% at 1R**, move stop to BE, trail the remaining **70%
-  0.5R behind the best price**. Range regime: still bank everything at TP1.
-- **Live for QS Pro only** after paired A-vs-A' on two non-overlapping windows
-  (`scripts/pairedExitPolicySessionLock.ts`). Cipher B / Pro stay `fixed_tp1`.
-  Disable with `ENABLE_DEMO_RUNNER_EXIT=0`.
+- Trend regime code path (archived): bank **30% at 1R**, BE, trail **70%**
+  0.5R behind peak. Range: bank all at TP1. Live stays **`fixed_tp1`**.
+- **`runner_trail_peak` archived** (same shelf as TrendBurst/StrongCandle):
+  failed clean edge across four rounds (single-window, two-window,
+  ML-post-filter, ML-integrated). Default `ENABLE_DEMO_RUNNER_EXIT=0`.
+  Do not revisit unless a fundamentally different exit design is proposed.
 - Prior +34–40% R was **not** trusted session-lock (CSV + `simulateExit`).
-  Trusted keep/compare bar = session-lock `realizedR` / `advanceSignalOnBar`.
-- Do **not** extend runner to Cipher B or Pro (no real benefit under that bar).
-- `daemon/demoRunnerBot.ts` polls price every 60s (trail / SL / TP1 with UI closed).
-  Disable poller with `ENABLE_DEMO_RUNNER=0`.
+ Trusted keep/compare bar = session-lock `realizedR` / `advanceSignalOnBar`.
+- Do **not** extend runner to Cipher B or Pro.
+- `daemon/demoRunnerBot.ts` polls price every 60s when enabled.
+ Disable poller with `ENABLE_DEMO_RUNNER=0`.
 
 ## Demo equity rails
 

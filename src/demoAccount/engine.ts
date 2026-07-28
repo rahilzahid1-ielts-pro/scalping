@@ -3,8 +3,8 @@
  * Risk sized from *starting* balance × riskPct (not current balance).
  * Open trades / low balance never block new setups — test every signal.
  *
- * Exit policy: QS Pro uses runner_trail_peak (two-window A-vs-A' cleared);
- * Cipher B / Pro / others stay fixed_tp1. DISABLE with ENABLE_DEMO_RUNNER_EXIT=0.
+ * Exit policy: fixed_tp1 for all modules. QS Pro runner_trail_peak archived
+ * (ENABLE_DEMO_RUNNER_EXIT default 0; opt-in =1 for research only).
  */
 import {
   advanceRunnerOnPrice,

@@ -116,9 +116,10 @@ export interface RunnerTune {
  * Chosen from a grid search over QS Pro signals on four history windows
  * (`scripts/sweepRunnerTune.ts`, `scripts/pickRunnerTune.ts`).
  *
- * Live: QS Pro only, after paired A-vs-A' on two non-overlapping windows
- * (`scripts/pairedExitPolicySessionLock.ts`). Cipher B / Pro stay fixed_tp1.
- * Disable with ENABLE_DEMO_RUNNER_EXIT=0.
+ * Archived for live: QS Pro `runner_trail_peak` failed clean edge across
+ * four validation rounds (single-window, two-window, ML-post-filter,
+ * ML-integrated). Keep code for research scripts; live stays fixed_tp1.
+ * Opt-in only: ENABLE_DEMO_RUNNER_EXIT=1.
  */
 export const DEFAULT_RUNNER_TUNE: RunnerTune = {
   bankFraction: 0.3,
@@ -127,24 +128,24 @@ export const DEFAULT_RUNNER_TUNE: RunnerTune = {
   trailPeakR: 0.5,
 };
 
-/** Modules cleared for runner_trail_peak on the trusted A-vs-A' bar. */
+/** Opt-in modules if ENABLE_DEMO_RUNNER_EXIT=1 (archived — not production). */
 const RUNNER_LIVE_MODULES = new Set(["qs_pro"]);
 
 /**
- * Live demo exit policy. Default ON for QS Pro only (two-window A-vs-A'
- * cleared). Cipher B / Pro / others stay fixed_tp1. Set
- * ENABLE_DEMO_RUNNER_EXIT=0 to force fixed_tp1 everywhere.
+ * Live demo exit policy. Default fixed_tp1 everywhere.
+ * `runner_trail_peak` is archived (same shelf as TrendBurst/StrongCandle);
+ * set ENABLE_DEMO_RUNNER_EXIT=1 to opt a cleared module back on for research.
  */
 export function liveExitPolicy(module?: string | null): ExitPolicyId {
-  const v = (process.env.ENABLE_DEMO_RUNNER_EXIT ?? "1").toLowerCase();
-  if (v === "0" || v === "false" || v === "off") return "fixed_tp1";
+  const v = (process.env.ENABLE_DEMO_RUNNER_EXIT ?? "0").toLowerCase();
+  if (v === "0" || v === "false" || v === "off" || v === "") return "fixed_tp1";
   const m = String(module ?? "").toLowerCase().trim();
   if (RUNNER_LIVE_MODULES.has(m)) return "runner_trail_peak";
   return "fixed_tp1";
 }
 
-/** @deprecated Prefer liveExitPolicy(module) — QS Pro default when env allows. */
-export const LIVE_EXIT_POLICY: ExitPolicyId = "runner_trail_peak";
+/** @deprecated Prefer liveExitPolicy(module) — live default is fixed_tp1. */
+export const LIVE_EXIT_POLICY: ExitPolicyId = "fixed_tp1";
 
 function ladderFor(
   policy: ExitPolicyId,
