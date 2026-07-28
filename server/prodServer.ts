@@ -676,6 +676,20 @@ server.listen(PORT, "0.0.0.0", () => {
     console.error("[prodServer] Failed to start Fractal worker:", e);
   });
 
+  // Demo runner exits trail their stop, so they need the price polled even when
+  // no client is open.
+  void import("../daemon/demoRunnerBot").then(
+    ({ startDemoRunnerWorker, shouldAutoStartDemoRunner }) => {
+      if (shouldAutoStartDemoRunner()) {
+        startDemoRunnerWorker();
+      } else {
+        console.log("[prodServer] Demo runner OFF — ENABLE_DEMO_RUNNER=0");
+      }
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Failed to start demo runner worker:", e);
+  });
+
   void import("../daemon/weeklyLearnBot").then(
     ({ startWeeklyLearnWorker, shouldAutoStartWeeklyLearnWorker }) => {
       if (shouldAutoStartWeeklyLearnWorker()) {

@@ -66,6 +66,20 @@ export interface DemoPositionRow {
   openedAt: number;
   closedAt: number | null;
   note: string;
+  /** Signal regime at open — decides runner ladder vs bank-all-at-TP1. */
+  regime: string | null;
+  /** Exit policy id from src/exits/exitPolicy.ts. */
+  policy: string | null;
+  /** Current effective stop (ratchets to BE, then trails). */
+  stopNow: number | null;
+  /** Legs already banked. */
+  partsClosed: number;
+  /** R banked from those legs. */
+  bankedR: number;
+  /** $ already credited to the balance from those legs. */
+  bankedUsd: number;
+  /** Best price seen in our favour — drives the peak trail. */
+  peakPrice: number | null;
 }
 
 export interface DemoLedgerRow {
@@ -108,7 +122,14 @@ CREATE TABLE IF NOT EXISTS demo_positions (
   pnl_usd REAL,
   opened_at INTEGER NOT NULL,
   closed_at INTEGER,
-  note TEXT NOT NULL DEFAULT ''
+  note TEXT NOT NULL DEFAULT '',
+  regime TEXT,
+  policy TEXT,
+  stop_now REAL,
+  parts_closed INTEGER NOT NULL DEFAULT 0,
+  banked_r REAL NOT NULL DEFAULT 0,
+  banked_usd REAL NOT NULL DEFAULT 0,
+  peak_price REAL
 );
 CREATE INDEX IF NOT EXISTS idx_demo_pos_acct ON demo_positions(account_id, status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_demo_pos_source
@@ -127,6 +148,31 @@ CREATE TABLE IF NOT EXISTS demo_ledger (
 CREATE INDEX IF NOT EXISTS idx_demo_ledger_acct ON demo_ledger(account_id, at);
 `;
 
+/** Runner columns added after the table shipped — existing volumes need these. */
+const RUNNER_COLUMNS: [string, string][] = [
+  ["regime", "TEXT"],
+  ["policy", "TEXT"],
+  ["stop_now", "REAL"],
+  ["parts_closed", "INTEGER NOT NULL DEFAULT 0"],
+  ["banked_r", "REAL NOT NULL DEFAULT 0"],
+  ["banked_usd", "REAL NOT NULL DEFAULT 0"],
+  ["peak_price", "REAL"],
+];
+
+function migrateDemoPositions(db: Database.Database): void {
+  const cols = new Set(
+    (
+      db.prepare(`PRAGMA table_info(demo_positions)`).all() as {
+        name: string;
+      }[]
+    ).map((c) => c.name),
+  );
+  for (const [name, type] of RUNNER_COLUMNS) {
+    if (cols.has(name)) continue;
+    db.exec(`ALTER TABLE demo_positions ADD COLUMN ${name} ${type}`);
+  }
+}
+
 let dbInstance: Database.Database | null = null;
 
 function openDb(): Database.Database {
@@ -135,6 +181,7 @@ function openDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 5000");
   db.exec(SCHEMA);
+  migrateDemoPositions(db);
   return db;
 }
 
@@ -175,6 +222,13 @@ function positionFromRow(r: Record<string, unknown>): DemoPositionRow {
     openedAt: Number(r.opened_at),
     closedAt: r.closed_at == null ? null : Number(r.closed_at),
     note: String(r.note ?? ""),
+    regime: r.regime == null ? null : String(r.regime),
+    policy: r.policy == null ? null : String(r.policy),
+    stopNow: r.stop_now == null ? null : Number(r.stop_now),
+    partsClosed: r.parts_closed == null ? 0 : Number(r.parts_closed),
+    bankedR: r.banked_r == null ? 0 : Number(r.banked_r),
+    bankedUsd: r.banked_usd == null ? 0 : Number(r.banked_usd),
+    peakPrice: r.peak_price == null ? null : Number(r.peak_price),
   };
 }
 
@@ -341,11 +395,36 @@ export function insertDemoPosition(row: DemoPositionRow): void {
   db.prepare(
     `INSERT INTO demo_positions
       (id, account_id, source_id, module, side, entry, sl, tp1, tp2, risk_usd,
-       status, outcome, realized_r, pnl_usd, opened_at, closed_at, note)
+       status, outcome, realized_r, pnl_usd, opened_at, closed_at, note,
+       regime, policy, stop_now, parts_closed, banked_r, banked_usd, peak_price)
      VALUES
       (@id, @accountId, @sourceId, @module, @side, @entry, @sl, @tp1, @tp2, @riskUsd,
-       @status, @outcome, @realizedR, @pnlUsd, @openedAt, @closedAt, @note)`,
+       @status, @outcome, @realizedR, @pnlUsd, @openedAt, @closedAt, @note,
+       @regime, @policy, @stopNow, @partsClosed, @bankedR, @bankedUsd, @peakPrice)`,
   ).run(row);
+}
+
+/**
+ * Persist runner progress without closing the position. Called after each
+ * partial bank / stop ratchet so a restart resumes mid-runner.
+ */
+export function updateDemoRunnerState(
+  id: string,
+  state: {
+    stopNow: number;
+    partsClosed: number;
+    bankedR: number;
+    bankedUsd: number;
+    peakPrice: number;
+  },
+): void {
+  const db = getDemoDb();
+  db.prepare(
+    `UPDATE demo_positions
+        SET stop_now = @stopNow, parts_closed = @partsClosed,
+            banked_r = @bankedR, banked_usd = @bankedUsd, peak_price = @peakPrice
+      WHERE id = @id AND status = 'OPEN'`,
+  ).run({ id, ...state });
 }
 
 export function closeDemoPositionInDb(
@@ -354,8 +433,35 @@ export function closeDemoPositionInDb(
   realizedR: number,
   pnlUsd: number,
   closedAt: number,
+  runner?: {
+    stopNow: number;
+    partsClosed: number;
+    bankedR: number;
+    bankedUsd: number;
+    peakPrice: number;
+  },
 ): void {
   const db = getDemoDb();
+  if (runner) {
+    db.prepare(
+      `UPDATE demo_positions
+          SET status = 'CLOSED', outcome = ?, realized_r = ?, pnl_usd = ?, closed_at = ?,
+              stop_now = ?, parts_closed = ?, banked_r = ?, banked_usd = ?, peak_price = ?
+        WHERE id = ? AND status = 'OPEN'`,
+    ).run(
+      outcome,
+      realizedR,
+      pnlUsd,
+      closedAt,
+      runner.stopNow,
+      runner.partsClosed,
+      runner.bankedR,
+      runner.bankedUsd,
+      runner.peakPrice,
+      id,
+    );
+    return;
+  }
   db.prepare(
     `UPDATE demo_positions
         SET status = 'CLOSED', outcome = ?, realized_r = ?, pnl_usd = ?, closed_at = ?
@@ -363,11 +469,16 @@ export function closeDemoPositionInDb(
   ).run(outcome, realizedR, pnlUsd, closedAt, id);
 }
 
+/**
+ * Credit / debit the balance and log it. `tag` distinguishes the ledger rows a
+ * single position writes when a runner banks legs separately.
+ */
 export function applyPnlToBalance(
   positionId: string,
   pnlUsd: number,
   note: string,
   at: number,
+  tag = "",
 ): number {
   const db = getDemoDb();
   const acct = ensureDemoAccount();
@@ -376,9 +487,18 @@ export function applyPnlToBalance(
     `UPDATE demo_accounts SET balance = ?, updated_at = ? WHERE id = ?`,
   ).run(next, at, DEMO_ACCOUNT_ID);
   db.prepare(
-    `INSERT INTO demo_ledger (id, account_id, position_id, kind, amount, balance_after, note, at)
+    `INSERT OR REPLACE INTO demo_ledger
+      (id, account_id, position_id, kind, amount, balance_after, note, at)
      VALUES (?, ?, ?, 'PNL', ?, ?, ?, ?)`,
-  ).run(`ledger-pnl-${positionId}-${at}`, DEMO_ACCOUNT_ID, positionId, pnlUsd, next, note, at);
+  ).run(
+    `ledger-pnl-${positionId}-${tag}-${at}`,
+    DEMO_ACCOUNT_ID,
+    positionId,
+    pnlUsd,
+    next,
+    note,
+    at,
+  );
   return next;
 }
 

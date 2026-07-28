@@ -2,7 +2,24 @@
  * Demo account engine — open / close / price-resolve / history sync.
  * Risk sized from *starting* balance × riskPct (not current balance).
  * Open trades / low balance never block new setups — test every signal.
+ *
+ * Exits run the measured runner policy (src/exits/exitPolicy.ts): in a trend
+ * regime bank 30% at 1R, move the stop to breakeven, then trail the remaining
+ * 70% half an R behind the best price. Range regimes still bank everything at
+ * TP1. Before this, the resolver closed the whole position at TP1 and ignored
+ * tp2 entirely, capping every win at 0.85R against a −1R loss — that needs a
+ * 54% hit rate just to break even.
  */
+import {
+  advanceRunnerOnPrice,
+  buildExitPlan,
+  DEFAULT_RUNNER_TUNE,
+  LIVE_EXIT_POLICY,
+  rAtPrice,
+  type ExitPlan,
+  type ExitPolicyId,
+  type RunnerState,
+} from "../exits/exitPolicy";
 import {
   applyPnlToBalance,
   closeDemoPositionInDb,
@@ -12,6 +29,7 @@ import {
   findDemoBySourceId,
   insertDemoPosition,
   listOpenDemoPositions,
+  updateDemoRunnerState,
   type DemoAccountRow,
   type DemoOutcome,
   type DemoPositionRow,
@@ -28,7 +46,36 @@ export type TakeTradeInput = {
   note?: string;
   /** Force risk $ (otherwise riskPct of starting balance). */
   riskUsd?: number;
+  /** Signal regime — trend regimes get the runner ladder. */
+  regime?: string | null;
 };
+
+const money2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Exit plan for a position. Rows opened before the runner shipped have no
+ * `policy`, so they keep finishing under the rules they were opened with.
+ */
+export function planForPosition(pos: DemoPositionRow): ExitPlan {
+  const policy = (pos.policy as ExitPolicyId | null) ?? "fixed_tp1";
+  return buildExitPlan({
+    policy,
+    side: pos.side,
+    entry: pos.entry,
+    sl: pos.sl,
+    regime: pos.regime,
+    tune: DEFAULT_RUNNER_TUNE,
+  });
+}
+
+export function runnerStateOf(pos: DemoPositionRow): RunnerState {
+  return {
+    filled: pos.partsClosed,
+    bankedR: pos.bankedR,
+    stop: pos.stopNow ?? pos.sl,
+    peakPrice: pos.peakPrice ?? pos.entry,
+  };
+}
 
 export type TakeTradeResult =
   | { ok: true; position: DemoPositionRow; account: DemoAccountRow }
@@ -114,6 +161,13 @@ export function takeDemoTrade(input: TakeTradeInput): TakeTradeResult {
     note:
       input.note ||
       `${input.side} @ ${input.entry} · risk $${riskUsd} (${acct.riskPct}% of start $${bank})`,
+    regime: input.regime ?? null,
+    policy: LIVE_EXIT_POLICY,
+    stopNow: input.sl,
+    partsClosed: 0,
+    bankedR: 0,
+    bankedUsd: 0,
+    peakPrice: input.entry,
   };
 
   try {
@@ -145,7 +199,20 @@ export function closeDemoTrade(
 
   let r = opts.realizedR;
   if (r == null || !Number.isFinite(r)) {
-    if (opts.outcome === "SL_HIT") r = -1;
+    if (pos.partsClosed > 0) {
+      // A runner already banked legs and credited them to the balance. Settle
+      // the untouched remainder at the stop it had ratcheted to — never below
+      // what the position had already locked in.
+      const plan = planForPosition(pos);
+      const remainder = Math.max(
+        0,
+        1 - plan.legs.slice(0, pos.partsClosed).reduce((a, l) => a + l.fraction, 0),
+      );
+      const stop = pos.stopNow ?? pos.sl;
+      r =
+        pos.bankedR +
+        remainder * rAtPrice(pos.side, pos.entry, plan.risk, stop);
+    } else if (opts.outcome === "SL_HIT") r = -1;
     else if (opts.outcome === "TP1_HIT" || opts.outcome === "TP2_HIT") {
       r = rFromLevels(pos.side, pos.entry, pos.sl, pos.tp1);
       if (opts.outcome === "TP2_HIT" && pos.tp2 != null) {
@@ -155,24 +222,57 @@ export function closeDemoTrade(
       r = 0;
     }
   }
+  r = Math.round((r as number) * 1000) / 1000;
 
-  const pnlUsd = Math.round(pos.riskUsd * (r as number) * 100) / 100;
+  const pnlUsd = money2(pos.riskUsd * r);
+  // Legs banked mid-runner are already in the balance; only book the delta.
+  const delta = money2(pnlUsd - pos.bankedUsd);
   const now = Date.now();
-  closeDemoPositionInDb(positionId, opts.outcome, r as number, pnlUsd, now);
-  applyPnlToBalance(
-    positionId,
-    pnlUsd,
-    opts.note ||
-      `${pos.side} closed ${opts.outcome} · R=${(r as number).toFixed(2)} · P&L $${pnlUsd.toFixed(2)}`,
-    now,
-  );
+  closeDemoPositionInDb(positionId, opts.outcome, r, pnlUsd, now);
+  if (delta !== 0) {
+    applyPnlToBalance(
+      positionId,
+      delta,
+      opts.note ||
+        `${pos.side} closed ${opts.outcome} · R=${r.toFixed(2)} · P&L $${pnlUsd.toFixed(2)}`,
+      now,
+      "CLOSE",
+    );
+  }
 
-  const closed = { ...pos, status: "CLOSED" as const, outcome: opts.outcome, realizedR: r as number, pnlUsd, closedAt: now };
+  const closed = {
+    ...pos,
+    status: "CLOSED" as const,
+    outcome: opts.outcome,
+    realizedR: r,
+    pnlUsd,
+    closedAt: now,
+  };
   return { ok: true, position: closed, account: ensureDemoAccount() };
 }
 
 /**
- * Resolve OPEN positions against live mid (SL-first if both in same tick).
+ * Which DemoOutcome best describes how a runner finished. The enum is kept as
+ * it was so History / UI classification does not change: anything that banked a
+ * leg is a win, anything stopped before the first leg is a loss.
+ */
+function runnerOutcome(
+  legsFilled: number,
+  legsTotal: number,
+  kind: "STOP" | "TRAIL" | "TARGET",
+): DemoOutcome {
+  if (legsFilled === 0) return "SL_HIT";
+  // Only a multi-leg plan can reach a "TP2"; a range plan has one leg.
+  if (kind === "TARGET" && legsTotal > 1) return "TP2_HIT";
+  return "TP1_HIT";
+}
+
+/**
+ * Resolve OPEN positions against the latest polled price.
+ *
+ * Runner positions bank legs as they fill (crediting the balance each time) and
+ * only close when the ratcheting stop or the far target is hit. Stops win on
+ * ambiguity, same as `simulateExit` in the backtest.
  */
 export function resolveOpenAgainstPrice(live: number): {
   closed: DemoPositionRow[];
@@ -184,26 +284,97 @@ export function resolveOpenAgainstPrice(live: number): {
   }
 
   for (const pos of listOpenDemoPositions()) {
-    let hit: DemoOutcome | null = null;
-    if (pos.side === "BUY") {
-      if (live <= pos.sl) hit = "SL_HIT";
-      else if (live >= pos.tp1) hit = "TP1_HIT";
-    } else {
-      if (live >= pos.sl) hit = "SL_HIT";
-      else if (live <= pos.tp1) hit = "TP1_HIT";
+    const plan = planForPosition(pos);
+    const step = advanceRunnerOnPrice(plan, runnerStateOf(pos), live);
+    const now = Date.now();
+
+    let bankedUsd = pos.bankedUsd;
+    for (const fill of step.fills) {
+      const usd = money2(pos.riskUsd * fill.r);
+      bankedUsd = money2(bankedUsd + usd);
+      applyPnlToBalance(
+        pos.id,
+        usd,
+        `${pos.module} ${pos.side} banked ${fill.label} @ ${fill.level.toFixed(2)} · ${(fill.fraction * 100).toFixed(0)}% · +$${usd.toFixed(2)}`,
+        now,
+        fill.label,
+      );
     }
-    if (!hit) continue;
-    const res = closeDemoTrade(pos.id, {
-      outcome: hit,
-      note: `Auto resolve @ live ${live.toFixed(2)}`,
+
+    if (!step.closed) {
+      if (
+        step.fills.length ||
+        step.state.stop !== (pos.stopNow ?? pos.sl) ||
+        step.state.peakPrice !== (pos.peakPrice ?? pos.entry)
+      ) {
+        updateDemoRunnerState(pos.id, {
+          stopNow: step.state.stop,
+          partsClosed: step.state.filled,
+          bankedR: step.state.bankedR,
+          bankedUsd,
+          peakPrice: step.state.peakPrice,
+        });
+      }
+      continue;
+    }
+
+    const remainderUsd = money2(pos.riskUsd * step.closed.remainderR);
+    const totalUsd = money2(bankedUsd + remainderUsd);
+    const outcome = runnerOutcome(
+      step.state.filled,
+      plan.legs.length,
+      step.closed.kind,
+    );
+    const exitWord =
+      step.closed.kind === "TRAIL"
+        ? "trail stop"
+        : step.closed.kind === "STOP"
+          ? "stop"
+          : "final target";
+
+    closeDemoPositionInDb(pos.id, outcome, step.closed.totalR, totalUsd, now, {
+      stopNow: step.state.stop,
+      partsClosed: step.state.filled,
+      bankedR: step.state.bankedR,
+      bankedUsd,
+      peakPrice: step.state.peakPrice,
     });
-    if (res.ok) closed.push(res.position);
+    if (remainderUsd !== 0) {
+      applyPnlToBalance(
+        pos.id,
+        remainderUsd,
+        `${pos.module} ${pos.side} ${exitWord} @ ${step.closed.exitPrice.toFixed(2)} · ${(step.closed.remainderFraction * 100).toFixed(0)}% · $${remainderUsd.toFixed(2)}`,
+        now,
+        "EXIT",
+      );
+    }
+
+    closed.push({
+      ...pos,
+      status: "CLOSED",
+      outcome,
+      realizedR: step.closed.totalR,
+      pnlUsd: totalUsd,
+      closedAt: now,
+      stopNow: step.state.stop,
+      partsClosed: step.state.filled,
+      bankedR: step.state.bankedR,
+      bankedUsd,
+      peakPrice: step.state.peakPrice,
+    });
   }
 
   return { closed, account: ensureDemoAccount() };
 }
 
-/** Close OPEN demo trade when linked history source already resolved. */
+/**
+ * Close OPEN demo trade when the linked history source already resolved.
+ *
+ * A runner deliberately outlives the source plan's TP1, so for runner positions
+ * only cancellations come through here — the price resolver owns TP/stop exits.
+ * Otherwise the source hitting its 0.85R TP1 would close the runner and we'd be
+ * back to the capped exit the runner exists to fix.
+ */
 export function closeFromSourceOutcome(
   sourceId: string,
   outcome: string,
@@ -211,6 +382,11 @@ export function closeFromSourceOutcome(
 ): TakeTradeResult | null {
   const pos = findDemoBySourceId(sourceId);
   if (!pos || pos.status !== "OPEN") return null;
+
+  const isRunner = pos.policy != null && pos.policy !== "fixed_tp1";
+  const cancelled =
+    outcome === "INVALIDATED" || outcome === "REGIME_FLIP_INVALIDATED";
+  if (isRunner && !cancelled) return null;
 
   let demoOutcome: DemoOutcome = "MANUAL";
   if (outcome === "TP1_HIT" || outcome === "TP2_HIT") demoOutcome = outcome;

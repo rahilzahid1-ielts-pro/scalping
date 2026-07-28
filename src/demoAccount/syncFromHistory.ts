@@ -101,6 +101,7 @@ export async function syncDemoFromHistory(opts?: {
         module: t.module,
         sourceId: t.id,
         riskUsd,
+        regime: t.regime,
         note: `Auto ${t.moduleLabel} EXECUTED · x${budget.riskMult}`,
       });
       if (!take.ok) {
@@ -123,6 +124,7 @@ export async function syncDemoFromHistory(opts?: {
       module: t.module,
       sourceId: t.id,
       riskUsd,
+      regime: t.regime,
       note: `Auto ${t.moduleLabel} EXECUTED (OPEN) · x${budget.riskMult}`,
     });
     if (!take.ok) {

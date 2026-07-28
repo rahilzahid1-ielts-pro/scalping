@@ -43,6 +43,25 @@ same-side SLs stack (24–28 Jul: 11 SELL SL of 18 SELL fills, 35% live WR).
 - **Bounce guard** (`isCounterBounce`): block when price is $10+ off the 2h extreme with momentum flipped; `leanDeskEntryBlock` runs it for QS Pro + Fractal
 - **QS Pro no-fractal fallback**: SMC conf ≥85 **and** `hasFreshExtreme` — never fade a live reversal on lagging MAs alone
 
+## Trend runner (demo exits)
+
+The desks used to bank the whole position at TP1 (0.85R) — on 27–28 Jul gold
+ran $64 in the allowed direction and the book still finished −1.6R because no
+trade could return more than ~1.5R. `src/exits/exitPolicy.ts` is the measured
+fix; the live demo resolver runs `runner_trail_peak`:
+
+- Trend regime: bank **30% at 1R**, move stop to BE, trail the remaining **70%
+  0.5R behind the best price**. Range regime: still bank everything at TP1.
+- Verified on 180/365/730/1460d QS Pro signals: **+34–40% total R**, drawdown
+  within ~1R of the old full-close-at-TP1 baseline. Every grid cell beat the
+  baseline (scripts: `backtest:exits`, `backtest:exits:sweep`, `backtest:exits:pick`).
+- Live tick machine parity with the walk-forward: −0.85% drift over 540 trades
+  (`backtest:exits:parity`).
+- `daemon/demoRunnerBot.ts` polls price every 60s so a runner trails even when
+  no client has the UI open. Disable with `ENABLE_DEMO_RUNNER=0`.
+- Pre-runner open positions keep finishing under `fixed_tp1` (their stored
+  `policy` is null).
+
 ## Demo equity rails
 
 - Day stop **−3R** → no new auto-follows

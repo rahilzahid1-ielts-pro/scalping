@@ -59,6 +59,8 @@ export interface HistoryTrade {
   resolvedAt: number | null;
   resolvedKarachi: string | null;
   description: string;
+  /** Regime tag at lock time — demo uses it to pick runner vs bank-at-TP1. */
+  regime: string | null;
 }
 
 export interface ModuleDayStats {
@@ -278,6 +280,7 @@ function pushTrade(
     lockedAt: number;
     executedAt?: number | null;
     resolvedAt: number | null;
+    regime?: string | null;
   },
 ) {
   const outcomeLabelText = outcomeLabel(partial.outcome, partial.outcomeTp1);
@@ -326,6 +329,7 @@ function pushTrade(
     executionLabel,
     resolvedAt: partial.resolvedAt,
     resolvedKarachi,
+    regime: partial.regime ?? null,
     description: describe({
       moduleLabel,
       side: partial.side,
@@ -442,6 +446,7 @@ export async function buildHistoryPayload(opts: {
       lockedAt: s.timestamp,
       executedAt,
       resolvedAt: s.resolvedAt,
+      regime: s.regime,
     });
   }
 
@@ -482,6 +487,7 @@ export async function buildHistoryPayload(opts: {
       lockedAt: r.timestamp,
       executedAt: r.executedAt,
       resolvedAt: r.resolvedAt,
+      regime: r.regime,
     });
   }
 
@@ -502,6 +508,7 @@ export async function buildHistoryPayload(opts: {
       lockedAt: r.timestamp,
       executedAt: r.executedAt,
       resolvedAt: r.resolvedAt,
+      regime: r.regime,
     });
   }
 
@@ -522,6 +529,7 @@ export async function buildHistoryPayload(opts: {
       lockedAt: r.timestamp,
       executedAt: r.executedAt,
       resolvedAt: r.resolvedAt,
+      regime: r.regime,
     });
   }
 

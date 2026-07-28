@@ -15,6 +15,7 @@ import {
 } from "./store";
 import {
   closeDemoTrade,
+  planForPosition,
   resolveOpenAgainstPrice,
   takeDemoTrade,
   unrealizedR,
@@ -29,6 +30,10 @@ function money(n: number): number {
 export type DemoPositionView = DemoPositionRow & {
   floatingR: number | null;
   floatingPnl: number | null;
+  /** Fraction of the original size still open (runner legs reduce it). */
+  openFraction: number;
+  /** True once a leg banked and the stop is at breakeven or better. */
+  riskFree: boolean;
 };
 
 export async function buildDemoAccountPayload() {
@@ -82,12 +87,25 @@ export async function buildDemoAccountPayload() {
   };
 }
 
+/**
+ * Floating value of a position. For a runner the banked legs are already in the
+ * balance, so only the still-open fraction floats — showing the full size would
+ * double-count what we have already collected.
+ */
 function enrichOpen(p: DemoPositionRow, live: number | null): DemoPositionView {
-  const r =
-    live != null ? unrealizedR(p.side, p.entry, p.sl, live) : null;
-  const floatingPnl =
-    r != null ? money(p.riskUsd * r) : null;
-  return { ...p, floatingR: r, floatingPnl };
+  const plan = planForPosition(p);
+  const openFraction = Math.max(
+    0,
+    1 - plan.legs.slice(0, p.partsClosed).reduce((a, l) => a + l.fraction, 0),
+  );
+  const raw = live != null ? unrealizedR(p.side, p.entry, p.sl, live) : null;
+  const r = raw == null ? null : Math.round(raw * openFraction * 1000) / 1000;
+  const floatingPnl = r != null ? money(p.riskUsd * r) : null;
+  const stop = p.stopNow ?? p.sl;
+  const riskFree =
+    p.partsClosed > 0 &&
+    (p.side === "BUY" ? stop >= p.entry : stop <= p.entry);
+  return { ...p, floatingR: r, floatingPnl, openFraction, riskFree };
 }
 
 export async function handleDemoTake(body: TakeTradeInput) {
