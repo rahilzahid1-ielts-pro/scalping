@@ -124,15 +124,32 @@ export function insertProbebRow(db: Database.Database, row: ProbebRow): void {
   ).run(row);
 }
 
-export function getPendingProbeb(db: Database.Database): ProbebRow | null {
-  const r = db
+export function listPendingProbeb(db: Database.Database): ProbebRow[] {
+  const rows = db
     .prepare(
       `SELECT * FROM probeb_predictions
        WHERE actual_side IS NULL AND source = 'live'
-       ORDER BY bar_time DESC LIMIT 1`,
+       ORDER BY bar_time ASC`,
     )
-    .get() as Record<string, unknown> | undefined;
-  return r ? rowFromDb(r) : null;
+    .all() as Record<string, unknown>[];
+  return rows.map(rowFromDb);
+}
+
+/** Drop pre-fix spam rows that were not on a stable M5 open. */
+export function purgeUnstablePending(db: Database.Database): number {
+  const info = db
+    .prepare(
+      `DELETE FROM probeb_predictions
+       WHERE actual_side IS NULL AND source = 'live'
+         AND (bar_time % 300000) != 0`,
+    )
+    .run();
+  return Number(info.changes ?? 0);
+}
+
+export function getPendingProbeb(db: Database.Database): ProbebRow | null {
+  const rows = listPendingProbeb(db);
+  return rows.length ? rows[rows.length - 1] : null;
 }
 
 export function getLatestProbeb(db: Database.Database): ProbebRow | null {
@@ -167,10 +184,12 @@ export type DayAccuracy = {
   dayKey: string;
   resolved: number;
   correct: number;
+  wrong: number;
   accuracyPct: number | null;
-  /** High-confidence subset (conf ≥ 60). */
+  /** High-confidence subset (conf ≥ 40). */
   hiResolved: number;
   hiCorrect: number;
+  hiWrong: number;
   hiAccuracyPct: number | null;
 };
 
@@ -193,19 +212,23 @@ export function dayAccuracy(
   for (const r of rows) {
     resolved += 1;
     if (r.correct === 1) correct += 1;
-    if (r.confidence_pct >= 60) {
+    if (r.confidence_pct >= 40) {
       hiResolved += 1;
       if (r.correct === 1) hiCorrect += 1;
     }
   }
+  const wrong = resolved - correct;
+  const hiWrong = hiResolved - hiCorrect;
   return {
     dayKey,
     resolved,
     correct,
+    wrong,
     accuracyPct:
       resolved > 0 ? Math.round((correct / resolved) * 1000) / 10 : null,
     hiResolved,
     hiCorrect,
+    hiWrong,
     hiAccuracyPct:
       hiResolved > 0
         ? Math.round((hiCorrect / hiResolved) * 1000) / 10

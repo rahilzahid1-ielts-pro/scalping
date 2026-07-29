@@ -30,6 +30,13 @@ export type ProbebFrames = {
 const MIN_TRAIN = 80;
 const LOOKBACK = 2000;
 const MIN_BUCKET_N = 12;
+const M5_MS = 5 * 60 * 1000;
+
+/** Stable M5 open timestamp (ms). */
+export function m5FloorMs(t: number): number {
+  const ms = t < 1e12 ? t * 1000 : t;
+  return Math.floor(ms / M5_MS) * M5_MS;
+}
 
 function closeZone(c: Candle): "lo" | "mid" | "hi" {
   const range = c.high - c.low;
@@ -162,17 +169,24 @@ function confidenceFrom(n: number, edge: number): number {
   return Math.round(100 * (0.45 * nScore + 0.55 * eScore));
 }
 
+/**
+ * Predict the next candle after the last *fully closed* M5 bar
+ * (excludes the still-forming bar so barTime stays stable).
+ */
 export function generateProbebPrediction(
   frames: ProbebFrames,
 ): ProbebPrediction | null {
   const { primary, confirmation, bias } = frames;
-  if (primary.length < MIN_TRAIN + 2) return null;
+  // Drop forming bar — predictions only on closed M5 opens.
+  const closed =
+    primary.length >= 2 ? primary.slice(0, -1) : primary;
+  if (closed.length < MIN_TRAIN + 2) return null;
 
-  const i = primary.length - 1;
-  const atrExp = precomputeAtrExpand(primary);
+  const i = closed.length - 1;
+  const atrExp = precomputeAtrExpand(closed);
   const htf = htfLean(confirmation, bias);
-  const buckets = trainBuckets(primary, atrExp, htf);
-  const bucket = bucketAt(primary, i, atrExp, htf);
+  const buckets = trainBuckets(closed, atrExp, htf);
+  const bucket = bucketAt(closed, i, atrExp, htf);
   const stat = buckets.get(bucket) ?? { up: 0, dn: 0 };
   const n = stat.up + stat.dn;
 
@@ -195,6 +209,7 @@ export function generateProbebPrediction(
   const rawP = side === "BUY" ? pUp : 1 - pUp;
   const probabilityPct = Math.round(rawP * 1000) / 10;
   const confidencePct = confidenceFrom(Math.max(n, 1), Math.abs(pUp - 0.5));
+  const barTime = m5FloorMs(closed[i].time);
 
   return {
     side,
@@ -202,13 +217,13 @@ export function generateProbebPrediction(
     confidencePct,
     bucket,
     sampleN: n,
-    barTime: primary[i].time,
+    barTime,
     reason: [
       `Bucket ${bucket}`,
       n >= MIN_BUCKET_N
         ? `n=${n} · P(up)=${(pUp * 100).toFixed(1)}%`
         : `thin bucket n=${n} · shrunk to base`,
-      `Next candle lean ${side} @ ${probabilityPct}% · conf ${confidencePct}%`,
+      `Agli M5 candle lean ${side} · win ${probabilityPct}% · conf ${confidencePct}%`,
     ],
   };
 }

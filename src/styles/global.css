@@ -2198,3 +2198,91 @@ html[data-theme="light"] .cmd-box {
   }
 }
 
+/* —— Probeb desk —— */
+.probeb-hero {
+  margin-top: 0.75rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid var(--mod-line);
+  background: var(--chip);
+}
+.probeb-hero.buy {
+  border-color: color-mix(in srgb, var(--buy) 45%, var(--mod-line));
+}
+.probeb-hero.sell {
+  border-color: color-mix(in srgb, var(--sell) 45%, var(--mod-line));
+}
+.probeb-hero.strong {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #c9a227) 50%, transparent);
+}
+.probeb-hero-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.probeb-hero-side {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 0.25rem 0 0.65rem;
+}
+.probeb-hero.buy .probeb-hero-side { color: var(--buy); }
+.probeb-hero.sell .probeb-hero-side { color: var(--sell); }
+.probeb-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.probeb-hero-metrics .muted {
+  display: block;
+  font-size: 0.72rem;
+  margin-bottom: 0.15rem;
+}
+.probeb-hero-metrics strong {
+  font-size: 1.15rem;
+}
+.probeb-strong-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.probeb-day {
+  margin-top: 1.1rem;
+}
+.probeb-day h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+.probeb-day-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.probeb-day-cell {
+  padding: 0.65rem 0.7rem;
+  border-radius: 10px;
+  background: var(--chip);
+  border: 1px solid var(--mod-line);
+}
+.probeb-day-cell .muted {
+  display: block;
+  font-size: 0.72rem;
+  margin-bottom: 0.2rem;
+}
+.probeb-day-cell strong {
+  font-size: 1.35rem;
+}
+.probeb-day-cell.sahi strong { color: var(--buy); }
+.probeb-day-cell.galat strong { color: var(--sell); }
+.probeb-day-cell.pct strong { color: var(--text); }
+.probeb-sahi { color: var(--buy); font-weight: 800; }
+.probeb-galat { color: var(--sell); font-weight: 800; }
+
+@media (max-width: 720px) {
+  .probeb-hero-metrics,
+  .probeb-day-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+

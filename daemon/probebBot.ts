@@ -1,34 +1,112 @@
 /**
- * Probeb worker — predict next M5 candle, resolve prior call, track day accuracy.
+ * Probeb worker — one prediction per closed M5, resolve SAHI/GALAT, strong-conf alert.
  *
  * Local:  npm run probeb
  * Auto:   ENABLE_PROBEB_WORKER=1 (or auto on Railway)
- *
- * No demo follow / no trade locks — prediction desk only.
  */
 import { fetchMultiTimeframe } from "../src/services/marketData";
 import {
   generateProbebPrediction,
+  m5FloorMs,
   nextCandleSide,
 } from "../src/strategies/probebEngine";
 import {
   getLiveProbebDb,
-  getPendingProbeb,
   insertProbebRow,
+  listPendingProbeb,
   predictionToRow,
+  purgeUnstablePending,
   resolveProbeb,
   dayAccuracy,
 } from "../src/probeb/store";
 import { karachiYmd } from "../src/history/apiHistory";
+import { dispatchTradeAlert } from "../src/services/notify";
 
-const TICK_MS = Number(process.env.PROBEB_TICK_MS) || 30_000;
+const TICK_MS = Number(process.env.PROBEB_TICK_MS) || 20_000;
 const ASSET = "XAUUSD" as const;
+/** Strong call: win-prob + confidence both clear the bar. */
+const ALERT_PROB_MIN = Number(process.env.PROBEB_ALERT_PROB_MIN) || 60;
+const ALERT_CONF_MIN = Number(process.env.PROBEB_ALERT_CONF_MIN) || 40;
 
 let workerRunning = false;
-let lastBarTime: number | null = null;
+let lastPredictedBar: number | null = null;
+let lastAlertBar: number | null = null;
 
 function log(...args: unknown[]) {
   console.log(`[probeb ${new Date().toLocaleTimeString()}]`, ...args);
+}
+
+function findBarIndex(
+  primary: { time: number }[],
+  barTime: number,
+): number {
+  const want = m5FloorMs(barTime);
+  for (let i = primary.length - 1; i >= 0; i--) {
+    if (m5FloorMs(primary[i].time) === want) return i;
+  }
+  return -1;
+}
+
+function resolvePending(
+  db: ReturnType<typeof getLiveProbebDb>,
+  primary: Parameters<typeof nextCandleSide>[0],
+): void {
+  // Forming bar = last; need next candle after pending to be fully closed
+  // → pendingIdx + 1 < primary.length - 1, OR pendingIdx + 1 === length - 2
+  const formingIdx = primary.length - 1;
+  for (const pending of listPendingProbeb(db)) {
+    const idx = findBarIndex(primary, pending.barTime);
+    if (idx < 0) continue;
+    const nextIdx = idx + 1;
+    // Next bar must exist and not be the still-forming tip (or tip already
+    // past — if nextIdx < formingIdx then next is closed).
+    if (nextIdx >= formingIdx) continue;
+    const actual = nextCandleSide(primary, idx);
+    if (!actual) continue;
+    resolveProbeb(db, pending.id, actual);
+    const ok = actual === pending.predictedSide;
+    log(
+      ok ? "SAHI" : "GALAT",
+      pending.predictedSide,
+      "→",
+      actual,
+      `win ${pending.probabilityPct}% conf ${pending.confidencePct}%`,
+    );
+  }
+  const today = dayAccuracy(db, karachiYmd(Date.now()));
+  if (today.resolved > 0) {
+    log(
+      `aaj ${today.dayKey}: sahi ${today.correct} · galat ${today.wrong} · ${today.accuracyPct}%`,
+    );
+  }
+}
+
+async function maybeAlertStrong(pred: {
+  side: "BUY" | "SELL";
+  probabilityPct: number;
+  confidencePct: number;
+  barTime: number;
+}): Promise<void> {
+  if (pred.probabilityPct < ALERT_PROB_MIN) return;
+  if (pred.confidencePct < ALERT_CONF_MIN) return;
+  if (lastAlertBar === pred.barTime) return;
+  lastAlertBar = pred.barTime;
+  const body = [
+    `Agli M5 candle: ${pred.side}`,
+    `Winning probability ${pred.probabilityPct.toFixed(1)}%`,
+    `Confidence ${pred.confidencePct}%`,
+    `Strong Probeb call — chart pe confirm karke dekho.`,
+  ].join("\n");
+  log("STRONG ALERT", pred.side, `${pred.probabilityPct}%`, `conf ${pred.confidencePct}%`);
+  await dispatchTradeAlert({
+    kind: "PLAN_LOCK",
+    assetId: ASSET,
+    mode: "probeb",
+    side: pred.side,
+    title: "PROBEB STRONG — NEXT CANDLE",
+    body,
+    tagPrefix: "[Probeb]",
+  });
 }
 
 async function tick(): Promise<void> {
@@ -41,49 +119,7 @@ async function tick(): Promise<void> {
   }
 
   const db = getLiveProbebDb();
-  const primary = frames.primary;
-  const last = primary[primary.length - 1];
-  const barTime = last.time;
-
-  // Resolve pending prediction against the candle that just closed.
-  const pending = getPendingProbeb(db);
-  if (pending && barTime > pending.barTime) {
-    // Find index of pending bar, outcome = next candle = last closed if pending was previous
-    let pendingIdx = -1;
-    for (let i = primary.length - 1; i >= 0; i--) {
-      if (primary[i].time === pending.barTime) {
-        pendingIdx = i;
-        break;
-      }
-    }
-    if (pendingIdx >= 0 && pendingIdx + 1 < primary.length) {
-      const actual = nextCandleSide(primary, pendingIdx);
-      if (actual) {
-        resolveProbeb(db, pending.id, actual);
-        const ok = actual === pending.predictedSide;
-        log(
-          "resolved",
-          pending.predictedSide,
-          "→",
-          actual,
-          ok ? "HIT" : "MISS",
-          `@${pending.probabilityPct}%`,
-        );
-        const today = dayAccuracy(db, karachiYmd(Date.now()));
-        if (today.resolved > 0) {
-          log(
-            `today ${today.dayKey}: ${today.correct}/${today.resolved} = ${today.accuracyPct}%` +
-              (today.hiResolved
-                ? ` · hi-conf ${today.hiCorrect}/${today.hiResolved} = ${today.hiAccuracyPct}%`
-                : ""),
-          );
-        }
-      }
-    }
-  }
-
-  if (lastBarTime === barTime) return;
-  lastBarTime = barTime;
+  resolvePending(db, frames.primary);
 
   const pred = generateProbebPrediction(frames);
   if (!pred) {
@@ -91,16 +127,19 @@ async function tick(): Promise<void> {
     return;
   }
 
+  if (lastPredictedBar === pred.barTime) return;
+  lastPredictedBar = pred.barTime;
+
   const row = predictionToRow(pred, "live");
   insertProbebRow(db, row);
   log(
-    "predict next",
+    "predict next M5",
     pred.side,
-    `${pred.probabilityPct}%`,
+    `win ${pred.probabilityPct}%`,
     `conf ${pred.confidencePct}%`,
     `n=${pred.sampleN}`,
-    pred.bucket,
   );
+  await maybeAlertStrong(pred);
 }
 
 export function startProbebWorker(): void {
@@ -109,7 +148,9 @@ export function startProbebWorker(): void {
     return;
   }
   workerRunning = true;
-  log("started — Probeb next-candle probability (no trade locks)");
+  log(
+    `started — Probeb M5 SAHI/GALAT · strong alert ≥${ALERT_PROB_MIN}% win + ≥${ALERT_CONF_MIN}% conf`,
+  );
   void (async () => {
     for (;;) {
       try {
