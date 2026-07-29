@@ -40,7 +40,8 @@ same-side SLs stack (24–28 Jul: 11 SELL SL of 18 SELL fills, 35% live WR).
 - **Day side-stop** (`sideRisk`): 2 same-side SL → prefer desks only + 2h cooldown; 3 → that side banned for the day. Opposite side stays open.
 - **Chase-after-TP** $8: block same-side entry already extended past the last lean-family TP entry (3h window)
 - **Retrace-after-TP** $3: block same-side entry that pulled back past that TP entry — a plain time pause just gets waited out
-- **Bounce guard** (`isCounterBounce`): block when price is $10+ off the 2h extreme with momentum flipped; `leanDeskEntryBlock` runs it for QS Pro + Fractal
+- **Bounce guard** (`isCounterBounce`): block when price is $10+ off the 2h extreme with momentum flipped; `leanDeskEntryBlock` runs it for QS Pro + Fractal + Pro
+- **Pro late-join**: block Pro when QS Pro / Cipher / Fractal / Quick Scalp already hold an OPEN same-side lock
 - **QS Pro no-fractal fallback**: SMC conf ≥85 **and** `hasFreshExtreme` — never fade a live reversal on lagging MAs alone
 
 ## Trend runner (demo exits)

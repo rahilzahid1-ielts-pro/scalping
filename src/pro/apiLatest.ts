@@ -4,6 +4,8 @@
 import { fetchMultiTimeframe } from "../services/marketData";
 import { generateProSignal } from "../strategies/proEngine";
 import { diagnoseSmcGateBlock } from "../strategies/smcGateStatus";
+import { findLeanOpenSameSide } from "../regime/leanOpenSameSide";
+import { leanDeskEntryBlock } from "../utils/entryFilters";
 import {
   getLiveProDb,
   getOpenOrLatestPro,
@@ -105,7 +107,25 @@ export async function buildProLatestPayload() {
       };
     } else {
       const diag = diagnoseSmcGateBlock(frames, { mode: "intraday", minConf: 80 });
-      waitReason = diag.pass ? "Gates pass-ish but Pro engine null" : diag.waitReason;
+      if (!diag.pass) {
+        waitReason = diag.waitReason;
+      } else if (diag.side === "BUY" || diag.side === "SELL") {
+        const leanBlock = leanDeskEntryBlock({
+          side: diag.side,
+          dailyBias: diag.daily,
+          primary: frames.primary,
+        });
+        if (leanBlock) {
+          waitReason = `Pro: ${leanBlock}`;
+        } else {
+          const sibling = findLeanOpenSameSide(diag.side);
+          waitReason = sibling
+            ? `Pro: lean late-join — ${sibling.desk} already OPEN ${diag.side}`
+            : "Gates pass-ish but Pro engine null";
+        }
+      } else {
+        waitReason = "Gates pass-ish but Pro engine null";
+      }
     }
   } catch (e) {
     waitReason = e instanceof Error ? e.message : "market fetch failed";

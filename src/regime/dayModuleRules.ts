@@ -20,6 +20,7 @@ import {
 } from "../history/apiHistory";
 import { gateLearnedLock } from "../learn/runtime";
 import { isFridayCloseOrWeekend } from "../utils/marketHours";
+import { findLeanOpenSameSide } from "./leanOpenSameSide";
 
 export type RegimeModule = HistoryModuleId;
 
@@ -634,6 +635,20 @@ export function gateNewLockFromSnapshot(
       tier: reg.tier,
       cooldownMs: reg.cooldownMs,
     };
+  }
+
+  // Pro late-join: don't open a twin while QS Pro / Cipher / Fractal / QS
+  // already hold the same side (2026-07-29 Pro SL after lean siblings open).
+  if (module === "pro") {
+    const sibling = findLeanOpenSameSide(direction);
+    if (sibling) {
+      return {
+        ok: false,
+        reason: `lean late-join — ${sibling.desk} already OPEN ${direction}`,
+        tier: "throttle",
+        cooldownMs: 60 * 60 * 1000,
+      };
+    }
   }
 
   // Day side-stop — all desks share one direction on a biased day, so count

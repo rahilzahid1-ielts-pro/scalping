@@ -4,6 +4,7 @@
  * Does NOT modify signalEngine lock math — only gates which setups pass.
  */
 import type { AssetId, Candle, TradeMode } from "../types";
+import { leanDeskEntryBlock } from "../utils/entryFilters";
 import { generateSignal } from "./signalEngine";
 
 export type ProDirection = "BUY" | "SELL";
@@ -61,6 +62,14 @@ export function generateProSignal(
   // Regime direction should match side.
   if (sig.side === "BUY" && regime !== "TREND_UP") return null;
   if (sig.side === "SELL" && regime !== "TREND_DOWN") return null;
+
+  // Same bounce/chase guards as QS Pro + Fractal (2026-07-29 Pro SL autopsy).
+  const block = leanDeskEntryBlock({
+    side: sig.side,
+    dailyBias: sig.dailyBias.bias,
+    primary: frames.primary,
+  });
+  if (block) return null;
 
   const reasons = [
     `Pro gates: conf ${sig.confidence}% ≥ ${PRO_MIN_CONFIDENCE}`,
