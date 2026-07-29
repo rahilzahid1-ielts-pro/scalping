@@ -6,7 +6,11 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { karachiYmd } from "../history/apiHistory";
-import type { ProbebPrediction, ProbebSide } from "../strategies/probebEngine";
+import {
+  m5FloorMs,
+  type ProbebPrediction,
+  type ProbebSide,
+} from "../strategies/probebEngine";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 export const DATA_DIR = join(ROOT, "data");
@@ -92,9 +96,10 @@ export function predictionToRow(
   source: "live" | "backtest" = "live",
 ): ProbebRow {
   const createdAt = Date.now();
+  const barTime = m5FloorMs(pred.barTime);
   return {
-    id: `probeb-${pred.barTime}-${pred.side}`,
-    barTime: pred.barTime,
+    id: `probeb-${barTime}`,
+    barTime,
     predictedSide: pred.side,
     probabilityPct: pred.probabilityPct,
     confidencePct: pred.confidencePct,
@@ -103,7 +108,7 @@ export function predictionToRow(
     reason: JSON.stringify(pred.reason),
     actualSide: null,
     correct: null,
-    dayKey: karachiYmd(pred.barTime),
+    dayKey: karachiYmd(barTime),
     resolvedAt: null,
     createdAt,
     source,
@@ -135,16 +140,33 @@ export function listPendingProbeb(db: Database.Database): ProbebRow[] {
   return rows.map(rowFromDb);
 }
 
-/** Drop pre-fix spam rows that were not on a stable M5 open. */
+/** Drop polluted rows (non M5-aligned bar_time) — old live-rebase spam. */
 export function purgeUnstablePending(db: Database.Database): number {
   const info = db
     .prepare(
       `DELETE FROM probeb_predictions
-       WHERE actual_side IS NULL AND source = 'live'
-         AND (bar_time % 300000) != 0`,
+       WHERE source = 'live' AND (bar_time % 300000) != 0`,
     )
     .run();
   return Number(info.changes ?? 0);
+}
+
+/** Keep one row per floored M5 for UI (prefer resolved, else latest). */
+export function listRecentProbebDeduped(
+  db: Database.Database,
+  limit = 20,
+): ProbebRow[] {
+  const rows = listRecentProbeb(db, limit * 4);
+  const seen = new Set<number>();
+  const out: ProbebRow[] = [];
+  for (const r of rows) {
+    const flo = m5FloorMs(r.barTime);
+    if (seen.has(flo)) continue;
+    seen.add(flo);
+    out.push({ ...r, barTime: flo });
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 export function getPendingProbeb(db: Database.Database): ProbebRow | null {

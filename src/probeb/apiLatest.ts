@@ -4,7 +4,7 @@
 import { fetchMultiTimeframe } from "../services/marketData";
 import {
   backtestProbebAccuracy,
-  generateProbebPrediction,
+  diagnoseProbeb,
 } from "../strategies/probebEngine";
 import { karachiYmd } from "../history/apiHistory";
 import {
@@ -12,7 +12,7 @@ import {
   getLatestProbeb,
   getLiveProbebDb,
   lifetimeAccuracy,
-  listRecentProbeb,
+  listRecentProbebDeduped,
 } from "./store";
 
 export async function buildProbebLatestPayload() {
@@ -21,7 +21,7 @@ export async function buildProbebLatestPayload() {
   const todayKey = karachiYmd(Date.now());
   const today = dayAccuracy(db, todayKey);
   const lifetime = lifetimeAccuracy(db);
-  const recent = listRecentProbeb(db, 15);
+  const recent = listRecentProbebDeduped(db, 20);
 
   let live: {
     side: "BUY" | "SELL";
@@ -43,19 +43,19 @@ export async function buildProbebLatestPayload() {
     const frames = await fetchMultiTimeframe("XAUUSD", "scalping", undefined, {
       rebaseToLive: true,
     });
-    const pred = generateProbebPrediction(frames);
-    if (pred) {
+    const diag = diagnoseProbeb(frames);
+    if (diag.signal) {
       live = {
-        side: pred.side,
-        probabilityPct: pred.probabilityPct,
-        confidencePct: pred.confidencePct,
-        bucket: pred.bucket,
-        sampleN: pred.sampleN,
-        barTime: pred.barTime,
-        reason: pred.reason,
+        side: diag.signal.side,
+        probabilityPct: diag.signal.probabilityPct,
+        confidencePct: diag.signal.confidencePct,
+        bucket: diag.signal.bucket,
+        sampleN: diag.signal.sampleN,
+        barTime: diag.signal.barTime,
+        reason: diag.signal.reason,
       };
     } else {
-      waitReason = "Probeb: history short — M5 bars kam hain";
+      waitReason = diag.waitReason || "Probeb: no clear next-candle edge";
     }
     walkAccuracy = backtestProbebAccuracy(frames);
   } catch (e) {
@@ -71,6 +71,6 @@ export async function buildProbebLatestPayload() {
     lifetime,
     walkAccuracy,
     recent,
-    waitReason: live ? null : waitReason,
+    waitReason,
   };
 }

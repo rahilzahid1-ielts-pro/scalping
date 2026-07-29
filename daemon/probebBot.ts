@@ -1,12 +1,10 @@
 /**
- * Probeb worker — one prediction per closed M5, resolve SAHI/GALAT, strong-conf alert.
- *
- * Local:  npm run probeb
- * Auto:   ENABLE_PROBEB_WORKER=1 (or auto on Railway)
+ * Probeb worker — one call per closed M5 slot, HTF-gated, resolve SAHI/GALAT.
  */
 import { fetchMultiTimeframe } from "../src/services/marketData";
 import {
-  generateProbebPrediction,
+  closedM5Bars,
+  diagnoseProbeb,
   m5FloorMs,
   nextCandleSide,
 } from "../src/strategies/probebEngine";
@@ -24,7 +22,6 @@ import { dispatchTradeAlert } from "../src/services/notify";
 
 const TICK_MS = Number(process.env.PROBEB_TICK_MS) || 20_000;
 const ASSET = "XAUUSD" as const;
-/** Strong call: win-prob + confidence both clear the bar. */
 const ALERT_PROB_MIN = Number(process.env.PROBEB_ALERT_PROB_MIN) || 60;
 const ALERT_CONF_MIN = Number(process.env.PROBEB_ALERT_CONF_MIN) || 40;
 
@@ -36,32 +33,22 @@ function log(...args: unknown[]) {
   console.log(`[probeb ${new Date().toLocaleTimeString()}]`, ...args);
 }
 
-function findBarIndex(
-  primary: { time: number }[],
-  barTime: number,
-): number {
-  const want = m5FloorMs(barTime);
-  for (let i = primary.length - 1; i >= 0; i--) {
-    if (m5FloorMs(primary[i].time) === want) return i;
-  }
-  return -1;
-}
-
 function resolvePending(
   db: ReturnType<typeof getLiveProbebDb>,
-  primary: Parameters<typeof nextCandleSide>[0],
+  primary: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
 ): void {
-  // Forming bar = last; need next candle after pending to be fully closed
-  // → pendingIdx + 1 < primary.length - 1, OR pendingIdx + 1 === length - 2
-  const formingIdx = primary.length - 1;
+  const closed = closedM5Bars(primary);
   for (const pending of listPendingProbeb(db)) {
-    const idx = findBarIndex(primary, pending.barTime);
-    if (idx < 0) continue;
-    const nextIdx = idx + 1;
-    // Next bar must exist and not be the still-forming tip (or tip already
-    // past — if nextIdx < formingIdx then next is closed).
-    if (nextIdx >= formingIdx) continue;
-    const actual = nextCandleSide(primary, idx);
+    const want = m5FloorMs(pending.barTime);
+    let idx = -1;
+    for (let i = 0; i < closed.length; i++) {
+      if (closed[i].time === want) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx < 0 || idx + 1 >= closed.length) continue;
+    const actual = nextCandleSide(closed, idx);
     if (!actual) continue;
     resolveProbeb(db, pending.id, actual);
     const ok = actual === pending.predictedSide;
@@ -95,7 +82,7 @@ async function maybeAlertStrong(pred: {
     `Agli M5 candle: ${pred.side}`,
     `Winning probability ${pred.probabilityPct.toFixed(1)}%`,
     `Confidence ${pred.confidencePct}%`,
-    `Strong Probeb call — chart pe confirm karke dekho.`,
+    `Strong Probeb call — HTF+edge cleared.`,
   ].join("\n");
   log("STRONG ALERT", pred.side, `${pred.probabilityPct}%`, `conf ${pred.confidencePct}%`);
   await dispatchTradeAlert({
@@ -121,17 +108,17 @@ async function tick(): Promise<void> {
   const db = getLiveProbebDb();
   resolvePending(db, frames.primary);
 
-  const pred = generateProbebPrediction(frames);
-  if (!pred) {
-    log("no prediction");
+  const diag = diagnoseProbeb(frames);
+  if (!diag.signal) {
+    if (diag.waitReason) log("wait:", diag.waitReason);
     return;
   }
+  const pred = diag.signal;
 
   if (lastPredictedBar === pred.barTime) return;
   lastPredictedBar = pred.barTime;
 
-  const row = predictionToRow(pred, "live");
-  insertProbebRow(db, row);
+  insertProbebRow(db, predictionToRow(pred, "live"));
   log(
     "predict next M5",
     pred.side,
@@ -149,8 +136,14 @@ export function startProbebWorker(): void {
   }
   workerRunning = true;
   log(
-    `started — Probeb M5 SAHI/GALAT · strong alert ≥${ALERT_PROB_MIN}% win + ≥${ALERT_CONF_MIN}% conf`,
+    `started — Probeb accuracy gates · strong alert ≥${ALERT_PROB_MIN}% + conf ≥${ALERT_CONF_MIN}%`,
   );
+  try {
+    const n = purgeUnstablePending(getLiveProbebDb());
+    if (n > 0) log("purged unstable rows:", n);
+  } catch (e) {
+    log("purge skip:", e instanceof Error ? e.message : e);
+  }
   void (async () => {
     for (;;) {
       try {

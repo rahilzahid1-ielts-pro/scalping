@@ -115,14 +115,15 @@ export function ProbebCard() {
       <div className="card-head">
         <h2>Probeb</h2>
         <p className="muted">
-          Har band M5 ke baad: agli candle BUY ya SELL? Winning % · confidence ·
-          aaj sahi/galat
+          Sirf clear edge + HTF agree pe call · warna wait · aaj sahi/galat %
         </p>
       </div>
 
       {error && <p className="error">{error}</p>}
       {!data && !error && <p className="muted">Loading…</p>}
-      {data?.waitReason && !live && <p className="muted">{data.waitReason}</p>}
+      {data?.waitReason && (
+        <p className={live ? "muted" : "probeb-wait"}>{data.waitReason}</p>
+      )}
 
       {live && (
         <div

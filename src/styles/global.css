@@ -2278,6 +2278,15 @@ html[data-theme="light"] .cmd-box {
 .probeb-day-cell.pct strong { color: var(--text); }
 .probeb-sahi { color: var(--buy); font-weight: 800; }
 .probeb-galat { color: var(--sell); font-weight: 800; }
+.probeb-wait {
+  margin: 0.75rem 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: 10px;
+  border: 1px dashed var(--mod-line);
+  background: var(--chip);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
 
 @media (max-width: 720px) {
   .probeb-hero-metrics,
