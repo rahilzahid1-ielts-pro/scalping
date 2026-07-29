@@ -42,11 +42,11 @@ import {
 } from "../src/calibration/resolveOutcomes";
 import { isLiquiditySweepAgainst } from "../src/utils/liquidityWarning";
 import {
-  evaluateTrendConfirm,
   markTrendConsumed,
   newTrendTracker,
   type TrendTracker,
 } from "../src/utils/trendConfirm";
+import { diagnoseShortScalp } from "../src/strategies/shortScalpEngine";
 import { makePlanKey } from "../src/calibration/signalStore";
 import {
   alertChannelsStatus,
@@ -181,7 +181,10 @@ async function lockPlan(
     sideOk &&
     primaryCandles.length > 0 &&
     isExtendedChase(signal.side, primaryCandles);
+  // Scalping: only ShortScalp (trend EVENT + SMC + impulse ±$2.50) — no fat ATR fallback.
+  const scalpShortOk = mode !== "scalping" || trendConfirmed;
   if (
+    scalpShortOk &&
     canAutoLockPlan(mode, signal, currentForLock, assetId) &&
     signal.levels &&
     !isTooLateToEnter(
@@ -251,7 +254,7 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
     frames.bias.length ? computeRegime(frames.bias) : null,
   ];
 
-  // ── SCALPING-ONLY: trend-confirmation early trigger + trend-duration tracking.
+  // ── SCALPING-ONLY: ShortScalp (strong-trend ±$2.50) + trend-duration tracking.
   // Intraday never enters this branch, so its session-lock path is untouched.
   const dkey = planKey(assetId, mode);
   let trendConfirmedNow = false;
@@ -260,14 +263,30 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
     : Date.now();
   if (mode === "scalping") {
     const tracker = getTrendTracker(dkey);
-    const res = evaluateTrendConfirm(
-      tracker,
-      signal.diagnostics.regime,
-      frames.primary,
-      htfRegimes,
-      primaryBarTime,
-    );
-    trendConfirmedNow = res.armed && res.dir === signal.side;
+    const shortDiag = diagnoseShortScalp(frames, tracker, live, {
+      assetId,
+      mode: "scalping",
+      barTime: primaryBarTime,
+    });
+    if (shortDiag.signal) {
+      const s = shortDiag.signal;
+      signal.side = s.direction;
+      signal.confidence = s.confidence;
+      signal.levels = {
+        entry: s.entry,
+        stopLoss: s.sl,
+        takeProfit1: s.tp,
+        takeProfit2: s.tp,
+        takeProfit3: s.tp,
+        riskReward: 1,
+        invalidation: s.sl,
+      };
+      signal.confluence = [s.reason, ...signal.confluence.slice(0, 4)];
+      trendConfirmedNow = true;
+      log("ShortScalp ready", s.direction, s.entry, s.reason);
+    } else if (shortDiag.waitReason) {
+      log("ShortScalp wait:", shortDiag.waitReason);
+    }
 
     // Advance / finalize the confirmed-trend duration counter on new closed bars.
     const run = trendRuns.get(dkey);
@@ -449,10 +468,58 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
 
     state.plans[planKey(assetId, mode)] = null;
     plan = null;
+
+    // Scalping re-lock: ShortScalp only (no fat ATR). Intraday keeps generateSignal.
+    if (mode === "scalping") {
+      if (
+        !trendConfirmedNow ||
+        (signal.side !== "BUY" && signal.side !== "SELL") ||
+        !signal.levels
+      ) {
+        now = computeNowAction(signal, null, live, asset, quote);
+        return { signal, plan: null, now, quote };
+      }
+      const gate = await gateNewLock("scalp", signal.side, {
+        entry: signal.levels.entry,
+        sl: signal.levels.stopLoss,
+        tp1: signal.levels.takeProfit1,
+      });
+      if (!gate.ok) {
+        log("skip regime re-lock", mode, gate.reason);
+        now = computeNowAction(signal, null, live, asset, quote);
+        return { signal, plan: null, now, quote };
+      }
+      const extras = buildSessionExtras(
+        assetId,
+        mode,
+        signal.side,
+        signal.levels,
+        signal,
+      );
+      plan = createFrozenPlan(
+        assetId,
+        mode,
+        signal.side,
+        signal.levels,
+        signal.confidence,
+        signal.rangePrediction.winProbability,
+        extras,
+      );
+      if (plan.status !== "INVALIDATED") {
+        plan.trendConfirmed = true;
+        plan.trendConfirmedAt = Date.now();
+      } else {
+        plan = null;
+      }
+      state.plans[planKey(assetId, mode)] = plan;
+      now = computeNowAction(signal, plan, live, asset, quote);
+      return { signal, plan, now, quote };
+    }
+
     const fresh = generateSignal(assetId, mode, frames);
     fresh.price = roundPrice(live, asset.decimals);
     if (canAutoLockPlan(mode, fresh, null, assetId)) {
-      const regimeMod = mode === "intraday" ? "intraday" : "scalp";
+      const regimeMod = "intraday";
       if (fresh.side === "BUY" || fresh.side === "SELL") {
         const gate = await gateNewLock(regimeMod, fresh.side, {
           entry: fresh.levels!.entry,
@@ -481,15 +548,6 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
         fresh.rangePrediction.winProbability,
         extras,
       );
-      if (
-        plan.status !== "INVALIDATED" &&
-        mode === "scalping" &&
-        trendConfirmedNow &&
-        fresh.side === signal.side
-      ) {
-        plan.trendConfirmed = true;
-        plan.trendConfirmedAt = Date.now();
-      }
       if (plan.status === "INVALIDATED") plan = null;
       state.plans[planKey(assetId, mode)] = plan;
     }

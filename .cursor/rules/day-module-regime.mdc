@@ -27,7 +27,8 @@ Do **not** remove `src/regime/dayModuleRules.ts` or `positiveDayDesk.ts` without
 
 ## Cut losers (not silence everything)
 
-- Demote Scalp always; Quick Scalp until proven green
+- Cut Scalp fat-ATR noise: **ShortScalp** only (strong-trend ±$2.50); **no demo follow**
+- Demote Quick Scalp until proven green
 - Fractal: live OK, **no demo follow** (same-print double)
 - Lean family correlation cooldown
 - Sell-lean day: block Scalp BUY

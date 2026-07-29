@@ -108,8 +108,8 @@ const ALL_MODULES: RegimeModule[] = [
  *  Fractal stays out of prefer (same-print with QS Pro). QS stays demoted (fat SL). */
 const PREFER_BASE = new Set<RegimeModule>(["qs_pro", "cipher_b", "pro"]);
 
-/** Noise / fat SL desks — demoted unless env override. */
-const DEMOTE_BASE = new Set<RegimeModule>(["scalp", "quick_scalp"]);
+/** Noise desks — Quick Scalp demoted until proven. Scalp uses ShortScalp locks (not demoted). */
+const DEMOTE_BASE = new Set<RegimeModule>(["quick_scalp"]);
 
 /**
  * Same-side post-TP / chase family — after a win, don't stack another
@@ -378,12 +378,12 @@ export function evaluateDayRegimeFromScores(
       cooldownMs = THROTTLE_COOLDOWN_MS;
       reasons.push(`net ${score.netR}R on ${score.executed} fills → throttle`);
     } else if (score.netR > 0 && score.wins >= MIN_SAMPLE) {
-      if (module === "scalp") {
-        tier = "demote";
-        reasons.push("scalp stays demoted even if green");
-      } else if (module === "quick_scalp") {
+      if (module === "quick_scalp") {
         tier = "normal";
         reasons.push("quick scalp proven green → escape demote");
+      } else if (module === "scalp") {
+        tier = "normal";
+        reasons.push(`short-scalp winning day ${score.wins}W → keep normal`);
       } else {
         tier = "prefer";
         reasons.push(`winning day ${score.wins}W net ${score.netR}R → boost`);
