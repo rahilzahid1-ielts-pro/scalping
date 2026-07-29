@@ -10,6 +10,7 @@ import { QuickScalpCard } from "./components/QuickScalpCard";
 import { ProCard } from "./components/ProCard";
 import { Intra30Card } from "./components/Intra30Card";
 import { PulseCard } from "./components/PulseCard";
+import { ProbebCard } from "./components/ProbebCard";
 import { HistoryCard } from "./components/HistoryCard";
 import { DemoAccountCard } from "./components/DemoAccountCard";
 import { LearnStatusCard } from "./components/LearnStatusCard";
@@ -44,6 +45,7 @@ export default function App() {
     | "pro"
     | "intra30"
     | "pulse"
+    | "probeb"
     | "cipher_b"
     | "fractal"
     | "history"
@@ -520,6 +522,13 @@ export default function App() {
           </button>
           <button
             type="button"
+            className={deskView === "probeb" ? "active" : ""}
+            onClick={() => setDeskView("probeb")}
+          >
+            Probeb
+          </button>
+          <button
+            type="button"
             className={deskView === "pro" ? "active" : ""}
             onClick={() => setDeskView("pro")}
           >
@@ -581,6 +590,8 @@ export default function App() {
             <Intra30Card />
           ) : deskView === "pulse" ? (
             <PulseCard />
+          ) : deskView === "probeb" ? (
+            <ProbebCard />
           ) : deskView === "cipher_b" ? (
             <StrategyCompareCard
               title="CIPHER B"

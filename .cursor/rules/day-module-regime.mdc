@@ -29,6 +29,7 @@ Do **not** remove `src/regime/dayModuleRules.ts` or `positiveDayDesk.ts` without
 
 - Cut Scalp fat-ATR noise: **ShortScalp** only (strong-trend ±$2.50); **no demo follow**
 - Demote Quick Scalp until proven green
+- **Probeb** (`probeb`): next-M5 candle probability desk — local empirical buckets, day accuracy %; **no demo follow / no trade locks**
 - Fractal: live OK, **no demo follow** (same-print double)
 - Lean family correlation cooldown
 - Sell-lean day: block Scalp BUY

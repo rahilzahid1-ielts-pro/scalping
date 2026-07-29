@@ -347,6 +347,12 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (path === "/api/probeb/latest" && req.method === "GET") {
+      const { buildProbebLatestPayload } = await import("../src/probeb/apiLatest");
+      sendJson(res, 200, await buildProbebLatestPayload());
+      return;
+    }
+
     if (path === "/api/history" && req.method === "GET") {
       const { buildHistoryPayload } = await import("../src/history/apiHistory");
       const u = new URL(req.url || "/api/history", "http://localhost");
@@ -646,6 +652,20 @@ server.listen(PORT, "0.0.0.0", () => {
     },
   ).catch((e) => {
     console.error("[prodServer] Failed to start Pulse worker:", e);
+  });
+
+  void import("../daemon/probebBot").then(
+    ({ startProbebWorker, shouldAutoStartProbebWorker }) => {
+      if (shouldAutoStartProbebWorker()) {
+        startProbebWorker();
+      } else {
+        console.log(
+          "[prodServer] Probeb worker OFF — set ENABLE_PROBEB_WORKER=1 to enable",
+        );
+      }
+    },
+  ).catch((e) => {
+    console.error("[prodServer] Failed to start Probeb worker:", e);
   });
 
   void import("../daemon/cipherBBot").then(
