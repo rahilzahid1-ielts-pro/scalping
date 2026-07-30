@@ -136,12 +136,38 @@ export function computeNowAction(
     const tp1Reached =
       (plan.side === "BUY" && p >= plan.levels.takeProfit1) ||
       (plan.side === "SELL" && p <= plan.levels.takeProfit1);
+    // Intraday: bank at TP1 and free the desk for the next daily-aligned setup.
+    if (plan.mode === "intraday" && tp1Reached) {
+      return {
+        action: "PLAN_DEAD",
+        headline: "TP1 COMPLETE",
+        headlineUr: "TP1 HIT — NEXT SETUP OK",
+        detail: `TP1 ${plan.levels.takeProfit1} hit. Intraday TP ke baad naya daily-agree setup auto lock ho sakta hai.`,
+        confidence: conf,
+        winProbability: winProb,
+        side: plan.side,
+        entry: plan.levels.entry,
+        entryZoneLow: plan.entryZoneLow ?? null,
+        entryZoneHigh: plan.entryZoneHigh ?? null,
+        safeZoneLow: plan.safeZoneLow ?? null,
+        safeZoneHigh: plan.safeZoneHigh ?? null,
+        stopLoss: plan.levels.stopLoss,
+        takeProfit: plan.levels.takeProfit1,
+        takeProfit2: plan.levels.takeProfit2,
+        livePrice: p,
+        distanceToEntry: roundPrice(p - plan.levels.entry, decimals),
+        inEntryZone: false,
+        conflictingSignals: conflict,
+        sessionLocked: false,
+        liquidityWarning: liqWarn,
+      };
+    }
     if (tp2Reached) {
       return {
         action: "PLAN_DEAD",
         headline: "TP2 COMPLETE",
         headlineUr: "TP2 HIT — PLAN COMPLETE",
-        detail: `TP2 ${tp2} hit. Intraday = 1 zone / din — aaj naya auto lock nahi; Scalp / dusre tabs check karo ya kal wait.`,
+        detail: `TP2 ${tp2} hit. Plan complete — naya daily-agree setup auto lock ho sakta hai.`,
         confidence: conf,
         winProbability: winProb,
         side: plan.side,

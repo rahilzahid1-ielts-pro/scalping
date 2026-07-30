@@ -23,7 +23,7 @@ import {
   REGIME_FLIP_NOTE,
   type FrozenPlan,
 } from "../src/services/tradePlan";
-import { buildSessionExtras, canAutoLockPlan } from "../src/utils/sessionPlan";
+import { buildSessionExtras, canAutoLockPlan, INTRADAY_DAY_STOP_NOTE } from "../src/utils/sessionPlan";
 import { isTooLateToEnter } from "../src/utils/tradeSafety";
 import { isExtendedChase } from "../src/utils/entryFilters";
 import { gateNewLock, noteModuleTp } from "../src/regime/dayModuleRules";
@@ -454,22 +454,30 @@ async function checkOne(state: DaemonState, assetId: AssetId, mode: TradeMode) {
     }
 
     if (mode === "intraday" && plan) {
-      const dead = {
-        ...plan,
-        status: "INVALIDATED" as const,
-        note:
-          plan.note ||
-          "Intraday zone miss/SL — aaj naya auto plan nahi. Kal / New plan.",
-      };
-      state.plans[planKey(assetId, mode)] = dead;
-      now = computeNowAction(signal, dead, live, asset, quote);
-      return { signal, plan: dead, now, quote };
+      const isTpComplete =
+        now.headline === "TP1 COMPLETE" || now.headline === "TP2 COMPLETE";
+      if (isTpComplete) {
+        // Winner — clear slot so canAutoLockPlan can take the next daily-agree setup.
+        state.plans[planKey(assetId, mode)] = null;
+        plan = null;
+      } else {
+        const dead = {
+          ...plan,
+          status: "INVALIDATED" as const,
+          note:
+            plan.note ||
+            `${INTRADAY_DAY_STOP_NOTE}. Kal / New plan.`,
+        };
+        state.plans[planKey(assetId, mode)] = dead;
+        now = computeNowAction(signal, dead, live, asset, quote);
+        return { signal, plan: dead, now, quote };
+      }
+    } else {
+      state.plans[planKey(assetId, mode)] = null;
+      plan = null;
     }
 
-    state.plans[planKey(assetId, mode)] = null;
-    plan = null;
-
-    // Scalping re-lock: ShortScalp only (no fat ATR). Intraday keeps generateSignal.
+    // Scalping re-lock: ShortScalp only (no fat ATR). Intraday re-locks after TP.
     if (mode === "scalping") {
       if (
         !trendConfirmedNow ||

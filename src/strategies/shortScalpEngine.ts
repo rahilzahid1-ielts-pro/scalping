@@ -1,16 +1,14 @@
 /**
  * Short Scalp — Main Scalp live path.
  *
- * Strong one-direction impulse only: fresh trendConfirm EVENT + SMC agree +
- * impulse body bar + chase/bounce clear. Fixed ±$2.50 TP/SL (~25 pips under
- * this repo's gold convention where $3 ≈ 30 pips). Bank at TP1 (fixed_tp1).
+ * Strong one-direction impulse: fresh trendConfirm arm (M=3) + SMC agree +
+ * impulse body + chase/bounce clear. Fixed ±$2.50 TP/SL. Bank at TP1.
  *
  * Does not modify shared buildLevels / QS Pro / Pro / Cipher.
  */
 import type { AssetId, Candle, TradeMode } from "../types";
 import { leanDeskEntryBlock } from "../utils/entryFilters";
 import {
-  TREND_CONFIRM_BARS,
   evaluateTrendConfirm,
   type TrendTracker,
 } from "../utils/trendConfirm";
@@ -21,7 +19,10 @@ import { computeRegime, generateSignal } from "./signalEngine";
 export const SHORT_SCALP_DISTANCE = 2.5;
 
 /** Last closed bar body must be at least this fraction of its range. */
-export const SHORT_SCALP_IMPULSE_BODY_FRAC = 0.55;
+export const SHORT_SCALP_IMPULSE_BODY_FRAC = 0.48;
+
+/** Slightly faster arm than global M=4 so more clean impulses qualify. */
+export const SHORT_SCALP_CONFIRM_BARS = 3;
 
 export type ShortScalpFrames = {
   primary: Candle[];
@@ -105,7 +106,7 @@ export function diagnoseShortScalp(
 
   const assetId = opts?.assetId ?? "XAUUSD";
   const mode: TradeMode = opts?.mode ?? "scalping";
-  const confirmBars = opts?.confirmBars ?? TREND_CONFIRM_BARS;
+  const confirmBars = opts?.confirmBars ?? SHORT_SCALP_CONFIRM_BARS;
   const barTime =
     opts?.barTime ??
     frames.primary[frames.primary.length - 1]?.time ??
@@ -113,7 +114,7 @@ export function diagnoseShortScalp(
 
   const regime = computeRegime(frames.primary);
   const htf = htfRegimesFrom(frames);
-  const { newEvent, dir } = evaluateTrendConfirm(
+  const { newEvent, armed, dir } = evaluateTrendConfirm(
     tracker,
     regime,
     frames.primary,
@@ -129,10 +130,11 @@ export function diagnoseShortScalp(
       signal: null,
     };
   }
-  if (!newEvent) {
+  // Accept fresh EVENT or still-armed window (first bar that clears SMC+impulse).
+  if (!armed && !newEvent) {
     return {
       pass: false,
-      waitReason: `ShortScalp: waiting fresh ${dir} trend EVENT (quiet / mid-run)`,
+      waitReason: `ShortScalp: waiting fresh ${dir} trend arm (quiet / mid-run)`,
       signal: null,
     };
   }

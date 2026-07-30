@@ -59,10 +59,11 @@ function buildLevels(
   const atrFloor = price * minPct;
   const atrVal = Math.max(atrRaw, atrFloor);
 
-  const multSL = mode === "scalping" ? 1.25 : 1.8;
-  const tp1m = mode === "scalping" ? 1.5 : 2.2;
-  const tp2m = mode === "scalping" ? 2.4 : 3.5;
-  const tp3m = mode === "scalping" ? 3.5 : 5.0;
+  // Intraday SL slightly tighter (1.8→1.55) — less late-zone giveback; TP1 still ~1.4R.
+  const multSL = mode === "scalping" ? 1.25 : 1.55;
+  const tp1m = mode === "scalping" ? 1.5 : 2.15;
+  const tp2m = mode === "scalping" ? 2.4 : 3.4;
+  const tp3m = mode === "scalping" ? 3.5 : 4.8;
 
   // Limit entry: BUY below / SELL above live — never same as chasing mid
   let entry = price;
@@ -323,11 +324,13 @@ export function generateSignal(
 
   let side: Side = "WAIT";
   const edge = Math.abs(bullPts - bearPts);
-  // Same edge for scalp + intraday so clear trends lock on 15m (was 22 → often WAIT while scalp fired).
-  const minEdge = 18;
+  // Intraday: slightly lower edge so daily-aligned M15 setups fire more often.
+  // Scalping path still uses 18 (ShortScalp overlays its own gate).
+  const minEdge = mode === "intraday" ? 14 : 18;
+  const minPts = mode === "intraday" ? 40 : 45;
 
-  if (bullPts > bearPts + minEdge && htfAlignedBull && bullPts >= 45) side = "BUY";
-  else if (bearPts > bullPts + minEdge && htfAlignedBear && bearPts >= 45) side = "SELL";
+  if (bullPts > bearPts + minEdge && htfAlignedBull && bullPts >= minPts) side = "BUY";
+  else if (bearPts > bullPts + minEdge && htfAlignedBear && bearPts >= minPts) side = "SELL";
 
   const rawConf =
     Math.max(bullPts, bearPts) /
@@ -416,6 +419,17 @@ export function generateSignal(
     side = "WAIT";
     confidence = Math.min(confidence, 55);
     confluence.push("⛔ Blocked: fighting strong bullish daily bias");
+  }
+
+  // Intraday accuracy: boost when daily structure agrees with the call
+  if (
+    mode === "intraday" &&
+    side !== "WAIT" &&
+    ((side === "BUY" && dailyBias.bias === "BULLISH") ||
+      (side === "SELL" && dailyBias.bias === "BEARISH"))
+  ) {
+    confidence = Math.min(97, confidence + 6);
+    confluence.push("▲ Daily bias agrees — intraday lock quality");
   }
 
   // Recompute conflict after possible WAIT downgrade — cap confidence first

@@ -4,7 +4,7 @@
  * Reuses the EXISTING regime classifier (computeRegime → deriveRegimeTag, the same
  * TREND_UP/TREND_DOWN/RANGE tagging used in calibration and the disabled regime-flip
  * trigger) plus the existing ATR indicator. It does NOT build a new trend detector,
- * and it is never wired into intraday's session-lock ("1 zone/day") path.
+ * and it is never wired into intraday's daily-agree session-lock path.
  *
  * A "fresh trend confirmation" fires once per trend run when ALL of:
  *   1. Regime has JUST transitioned into TREND_UP / TREND_DOWN (previous bars were

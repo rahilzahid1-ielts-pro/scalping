@@ -369,7 +369,7 @@ export default function App() {
           <span className="brand-mark">GO</span>
           <div>
             <h1>Trade Alert</h1>
-            <p>Intraday = 1 lock / din · live mid updates · naya setup alag watch box</p>
+            <p>Intraday = daily-agree locks · TP ke baad naya setup · SL pe day-stop</p>
           </div>
         </div>
         <div className="topbar-meta">

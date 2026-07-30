@@ -2,10 +2,15 @@ import { ASSETS } from "../config/assets";
 import type { AssetId, LiveSignal, Side, TradeLevels, TradeMode } from "../types";
 import { roundPrice } from "../strategies/indicators";
 import type { FrozenPlan } from "../services/tradePlan";
+import { dailyAgreesWithSide } from "./entryFilters";
 import { entryTolerance } from "./tradeSafety";
 
 export const SCALP_LOCK_MIN_CONF = 68;
-export const INTRADAY_LOCK_MIN_CONF = 72;
+/** Was 72 — daily-agree gate carries accuracy; lower bar = more aligned locks. */
+export const INTRADAY_LOCK_MIN_CONF = 68;
+
+/** Note marker: SL / zone-miss keeps the day blocked for auto re-lock. */
+export const INTRADAY_DAY_STOP_NOTE = "Intraday SL/miss — aaj auto re-lock band";
 
 /** UTC calendar day key — live uses wall clock; backtest passes bar-close Date. */
 export function sessionDayKey(d: Date = new Date()): string {
@@ -70,7 +75,10 @@ export function buildSessionExtras(
   return extras;
 }
 
-/** Intraday: one auto-lock per UTC day; higher bar; no re-lock after invalidate without New plan. */
+/**
+ * Intraday: HTF + no conflict + daily bias agree.
+ * Re-lock allowed after TP (plan cleared). SL/zone-miss keeps a day-stop marker.
+ */
 export function canAutoLockPlan(
   mode: TradeMode,
   signal: LiveSignal,
@@ -86,6 +94,12 @@ export function canAutoLockPlan(
   if (mode === "intraday") {
     if (signal.diagnostics.conflictingSignals) return false;
     if (!signal.diagnostics.htfAligned) return false;
+    if (
+      (signal.side === "BUY" || signal.side === "SELL") &&
+      !dailyAgreesWithSide(signal.side, signal.dailyBias.bias)
+    ) {
+      return false;
+    }
 
     const today = sessionDayKey(asOf);
     if (
@@ -94,7 +108,16 @@ export function canAutoLockPlan(
       current.assetId === assetId &&
       current.sessionDate === today
     ) {
-      return false;
+      // Active / waiting zone still owns the day slot.
+      if (current.status !== "INVALIDATED") return false;
+      // SL or zone-miss day-stop — no auto re-lock until next UTC day.
+      if (
+        current.note?.includes(INTRADAY_DAY_STOP_NOTE) ||
+        current.note?.includes("aaj naya auto plan nahi")
+      ) {
+        return false;
+      }
+      // Spent TP marker (legacy) — treat as clear for re-lock.
     }
   }
 

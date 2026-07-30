@@ -308,7 +308,7 @@ export function createFrozenPlan(
     lockedAt: lockedAtMs,
     status: "WAITING_ENTRY",
     note: isSession
-      ? `Intraday zone LOCKED (${extras!.sessionDate}). Din bhar entry/SL/TP same — sirf New plan se badlega.`
+      ? `Intraday zone LOCKED (${extras!.sessionDate}). Daily-agree setup — TP ke baad naya auto lock; SL pe day-stop.`
       : "Limit entry LOCKED. Jab price entry pe aaye tab lo — chart se confirm.",
     lockedConfidence,
     lockedWinProbability,

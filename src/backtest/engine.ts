@@ -23,6 +23,7 @@ import {
 import {
   buildSessionExtras,
   canAutoLockPlan,
+  INTRADAY_DAY_STOP_NOTE,
   sessionDayKey,
 } from "../utils/sessionPlan";
 import { isTooLateToEnter } from "../utils/tradeSafety";
@@ -270,14 +271,22 @@ function barTouchesZone(
   return bar.low <= zHi && bar.high >= zLo;
 }
 
-function idleAfterResolve(mode: TradeMode, plan: FrozenPlan): ModeState {
+function idleAfterResolve(
+  mode: TradeMode,
+  plan: FrozenPlan,
+  tp1Outcome?: "WIN" | "LOSS" | null,
+): ModeState {
   if (mode === "intraday" && plan.sessionDate) {
+    // TP win → clear slot so the next daily-agree setup can auto-lock same day.
+    if (tp1Outcome === "WIN") {
+      return { phase: "IDLE", plan: null, row: null };
+    }
     return {
       phase: "IDLE",
       plan: {
         ...plan,
         status: "INVALIDATED",
-        note: "Session plan resolved — no auto re-lock until next UTC day",
+        note: `${INTRADAY_DAY_STOP_NOTE}. Kal / New plan.`,
       },
       row: null,
     };
@@ -597,7 +606,7 @@ export function runWalkForward(
               const r = next.realizedRFull ?? next.realizedR ?? 0;
               equity += r;
               stats.equityR.push(equity);
-              state = idleAfterResolve(mode, activePlan);
+              state = idleAfterResolve(mode, activePlan, next.outcomeTp1);
             } else {
               state = { phase: "ENTRY_HIT", plan: activePlan, row: next };
             }
@@ -675,7 +684,7 @@ export function runWalkForward(
             const r = next.realizedRFull ?? next.realizedR ?? 0;
             equity += r;
             stats.equityR.push(equity);
-            state = idleAfterResolve(mode, state.plan);
+            state = idleAfterResolve(mode, state.plan, next.outcomeTp1);
           } else {
             state = { phase: "ENTRY_HIT", plan: state.plan, row: next };
           }
