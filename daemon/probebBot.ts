@@ -1,6 +1,5 @@
 /**
- * Probeb worker — every tick: live-M5 ingest + resolve + one predict / slot.
- * STRONG → demo auto ±$2 + alert.
+ * Probeb worker — live M5 sync + STRONG auto ±$2 (1 SL/day pause).
  */
 import { syncProbebLive } from "../src/probeb/syncLive";
 import {
@@ -8,14 +7,17 @@ import {
   purgeUnstablePending,
   dayAccuracy,
 } from "../src/probeb/store";
-import { PROBEB_AUTO_DISTANCE, PROBEB_AUTO_WIN_MIN } from "../src/probeb/autoTrade";
+import {
+  isProbebAutoTradeSetup,
+  PROBEB_AUTO_DISTANCE,
+  PROBEB_AUTO_MAX_SL_TODAY,
+  PROBEB_AUTO_WIN_MIN,
+} from "../src/probeb/autoTrade";
 import { karachiYmd } from "../src/history/apiHistory";
 import { dispatchTradeAlert } from "../src/services/notify";
 
 const TICK_MS = Number(process.env.PROBEB_TICK_MS) || 10_000;
 const ASSET = "XAUUSD" as const;
-const ALERT_PROB_MIN = Number(process.env.PROBEB_ALERT_PROB_MIN) || 60;
-const ALERT_CONF_MIN = Number(process.env.PROBEB_ALERT_CONF_MIN) || 40;
 
 let workerRunning = false;
 let lastAlertBar: number | null = null;
@@ -29,12 +31,16 @@ async function maybeAlertAuto(pred: {
   probabilityPct: number;
   confidencePct: number;
   barTime: number;
+  quality?: string;
   entry?: number;
   sl?: number;
   tp1?: number;
   autoOpened?: boolean;
 }): Promise<void> {
-  if (pred.probabilityPct <= PROBEB_AUTO_WIN_MIN) return;
+  // Alert only when we actually opened, or when full STRONG gate clears.
+  if (!pred.autoOpened && !isProbebAutoTradeSetup(pred as Parameters<typeof isProbebAutoTradeSetup>[0])) {
+    return;
+  }
   if (lastAlertBar === pred.barTime) return;
   lastAlertBar = pred.barTime;
   const levels =
@@ -43,17 +49,16 @@ async function maybeAlertAuto(pred: {
       : `\nLevels ±$${PROBEB_AUTO_DISTANCE} from live`;
   const body = [
     `Agli M5 candle: ${pred.side}`,
-    `Winning probability ${pred.probabilityPct.toFixed(1)}% (>${PROBEB_AUTO_WIN_MIN}%)`,
-    `Confidence ${pred.confidencePct}%`,
+    `Winning ${pred.probabilityPct.toFixed(1)}% · conf ${pred.confidencePct}% · ${pred.quality ?? ""}`,
     pred.autoOpened
       ? `Demo AUTO OPENED${levels}`
-      : `Win >${PROBEB_AUTO_WIN_MIN}% — demo auto ±$${PROBEB_AUTO_DISTANCE} (agar auto-follow ON)`,
+      : `STRONG setup — demo ±$${PROBEB_AUTO_DISTANCE} (1 SL/day pause)`,
   ].join("\n");
   log(
     "AUTO ALERT",
     pred.side,
     `${pred.probabilityPct}%`,
-    pred.autoOpened ? "DEMO OPEN" : "",
+    pred.autoOpened ? "DEMO OPEN" : "STRONG",
   );
   await dispatchTradeAlert({
     kind: "PLAN_LOCK",
@@ -61,8 +66,8 @@ async function maybeAlertAuto(pred: {
     mode: "probeb",
     side: pred.side,
     title: pred.autoOpened
-      ? "PROBEB — DEMO ±$2 OPEN"
-      : "PROBEB — WIN>60% SETUP",
+      ? "PROBEB STRONG — DEMO ±$2 OPEN"
+      : "PROBEB STRONG SETUP",
     body,
     tagPrefix: "[Probeb]",
   });
@@ -89,8 +94,9 @@ async function tick(): Promise<void> {
     );
   } else if (synced.autoTrade && !synced.autoTrade.ok) {
     if (
-      synced.signal?.quality === "strong" &&
-      !/already opened|not STRONG/i.test(synced.autoTrade.reason)
+      synced.signal &&
+      isProbebAutoTradeSetup(synced.signal) &&
+      !/already opened/i.test(synced.autoTrade.reason)
     ) {
       log("auto skip:", synced.autoTrade.reason);
     }
@@ -105,7 +111,7 @@ async function tick(): Promise<void> {
       `conf ${pred.confidencePct}%`,
       pred.quality,
     );
-    await maybeAlertStrong({
+    await maybeAlertAuto({
       ...pred,
       entry: synced.autoTrade?.ok ? synced.autoTrade.entry : undefined,
       sl: synced.autoTrade?.ok ? synced.autoTrade.sl : undefined,
@@ -117,7 +123,7 @@ async function tick(): Promise<void> {
     synced.signal &&
     lastAlertBar !== synced.signal.barTime
   ) {
-    await maybeAlertStrong({
+    await maybeAlertAuto({
       ...synced.signal,
       entry: synced.autoTrade.entry,
       sl: synced.autoTrade.sl,
@@ -136,7 +142,7 @@ export function startProbebWorker(): void {
   }
   workerRunning = true;
   log(
-    `started — live M5 · STRONG auto demo ±$${PROBEB_AUTO_DISTANCE} · alert ≥${ALERT_PROB_MIN}% + conf ≥${ALERT_CONF_MIN}%`,
+    `started — STRONG+win>${PROBEB_AUTO_WIN_MIN} → demo ±$${PROBEB_AUTO_DISTANCE} · pause after ${PROBEB_AUTO_MAX_SL_TODAY} SL/day`,
   );
   try {
     const n = purgeUnstablePending(getLiveProbebDb());
