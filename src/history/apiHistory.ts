@@ -136,6 +136,7 @@ function outcomeLabel(outcome: string, outcomeTp1?: string | null): string {
   if (outcome === "OPEN") return "OPEN";
   if (outcome === "INVALIDATED") return "INVALIDATED";
   if (outcome === "REGIME_FLIP_INVALIDATED") return "REGIME FLIP";
+  if (outcome === "MANUAL") return "VOID";
   return outcome || "—";
 }
 

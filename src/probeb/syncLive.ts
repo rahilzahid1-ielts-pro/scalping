@@ -119,7 +119,8 @@ function maybeInsert(pred: ProbebPrediction): boolean {
 export async function syncProbebLive(): Promise<ProbebSyncResult> {
   const { primary, livePrice } = await refreshProbebLiveM5();
   try {
-    voidProbebQuoteSpikeTrades();
+    const ref = primary.length ? primary[primary.length - 1]?.close : null;
+    voidProbebQuoteSpikeTrades(ref ?? livePrice);
   } catch {
     /* demo repair optional */
   }
