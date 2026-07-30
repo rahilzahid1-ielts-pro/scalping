@@ -24,7 +24,9 @@ import {
   ensureDemoAccount,
   findDemoBySourceId,
   insertDemoPosition,
+  listDemoPositions,
   listOpenDemoPositions,
+  rewriteClosedDemoPosition,
   updateDemoRunnerState,
   type DemoAccountRow,
   type DemoOutcome,
@@ -264,6 +266,13 @@ function runnerOutcome(
 }
 
 /**
+ * Ignore TV quote spikes when resolving exits (e.g. 4156 print then snap to 4100
+ * falsely hits ±$2 SL). Keep last sane mid across ticks.
+ */
+let lastSaneResolvePrice = 0;
+const RESOLVE_SPIKE_USD = 20;
+
+/**
  * Resolve OPEN positions against the latest polled price.
  *
  * Runner positions bank legs as they fill (crediting the balance each time) and
@@ -279,7 +288,33 @@ export function resolveOpenAgainstPrice(live: number): {
     return { closed, account: ensureDemoAccount() };
   }
 
+  if (
+    lastSaneResolvePrice > 0 &&
+    Math.abs(live - lastSaneResolvePrice) > RESOLVE_SPIKE_USD
+  ) {
+    return { closed, account: ensureDemoAccount() };
+  }
+  lastSaneResolvePrice = live;
+
   for (const pos of listOpenDemoPositions()) {
+    if (
+      pos.module === "probeb" &&
+      Math.abs(live - pos.entry) > RESOLVE_SPIKE_USD
+    ) {
+      const now = Date.now();
+      closeDemoPositionInDb(pos.id, "MANUAL", 0, 0, now);
+      closed.push({
+        ...pos,
+        status: "CLOSED",
+        outcome: "MANUAL",
+        realizedR: 0,
+        pnlUsd: 0,
+        closedAt: now,
+        note: `${pos.note} · VOID quote-spike entry ${pos.entry} vs live ${live.toFixed(2)}`,
+      });
+      continue;
+    }
+
     const plan = planForPosition(pos);
     const step = advanceRunnerOnPrice(plan, runnerStateOf(pos), live);
     const now = Date.now();
@@ -408,4 +443,50 @@ export function closeFromSourceOutcome(
           : null,
     note: `Synced from ${pos.module} ${demoOutcome}`,
   });
+}
+
+const SPIKE_PEER_USD = 25;
+
+/**
+ * Void Probeb fills opened on quote spikes (entry far from same-day peer median).
+ * Refunds booked P&L so History no longer shows fake SL at e.g. 4154.
+ */
+export function voidProbebQuoteSpikeTrades(): number {
+  ensureDemoAccount();
+  const rows = listDemoPositions(150).filter((p) => p.module === "probeb");
+  if (rows.length < 2) return 0;
+  const sorted = [...rows].map((p) => p.entry).sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)]!;
+  let n = 0;
+  const now = Date.now();
+  for (const p of rows) {
+    if (Math.abs(p.entry - median) <= SPIKE_PEER_USD) continue;
+    if (p.note?.includes("VOID quote-spike")) continue;
+
+    if (p.status === "OPEN") {
+      closeDemoPositionInDb(p.id, "MANUAL", 0, 0, now);
+      n += 1;
+      continue;
+    }
+
+    const priorPnl = p.pnlUsd ?? 0;
+    if (p.outcome === "MANUAL" && priorPnl === 0) continue;
+    rewriteClosedDemoPosition(p.id, {
+      outcome: "MANUAL",
+      realizedR: 0,
+      pnlUsd: 0,
+      note: `${p.note} · VOID quote-spike (entry ${p.entry} vs day mid ${median.toFixed(2)})`,
+    });
+    if (priorPnl !== 0) {
+      applyPnlToBalance(
+        p.id,
+        -priorPnl,
+        `Probeb VOID spike refund · was ${p.outcome} P&L $${priorPnl}`,
+        now,
+        "VOID_SPIKE",
+      );
+    }
+    n += 1;
+  }
+  return n;
 }

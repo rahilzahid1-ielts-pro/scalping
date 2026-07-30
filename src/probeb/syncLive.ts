@@ -11,6 +11,7 @@ import {
   M5_MS,
   type ProbebPrediction,
 } from "../strategies/probebEngine";
+import { voidProbebQuoteSpikeTrades } from "../demoAccount/engine";
 import { refreshProbebLiveM5 } from "./liveM5";
 import {
   isProbebAutoTradeSetup,
@@ -117,6 +118,11 @@ function maybeInsert(pred: ProbebPrediction): boolean {
 
 export async function syncProbebLive(): Promise<ProbebSyncResult> {
   const { primary, livePrice } = await refreshProbebLiveM5();
+  try {
+    voidProbebQuoteSpikeTrades();
+  } catch {
+    /* demo repair optional */
+  }
   const resolved = resolvePendingOn(primary);
   const repaired = repairSettledOn(primary);
 

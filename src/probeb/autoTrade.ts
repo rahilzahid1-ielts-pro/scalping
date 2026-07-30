@@ -56,13 +56,16 @@ export type ProbebAutoTradeOpts = {
   primary?: Candle[];
 };
 
+/** Max $ away from last M5 close — TV quote spikes (e.g. 4156 vs ~4100) caused fake SL. */
+export const PROBEB_QUOTE_SPIKE_USD = Number(process.env.PROBEB_QUOTE_SPIKE_USD) || 15;
+
 /**
  * Open demo ±$2 on STRONG lean.
  */
 export function tryProbebAutoTrade(
   pred: ProbebPrediction,
   livePrice: number,
-  _opts?: ProbebAutoTradeOpts,
+  opts?: ProbebAutoTradeOpts,
 ): ProbebAutoTradeResult {
   if (!probebAutoTradeEnabled()) {
     return { ok: false, reason: "ENABLE_PROBEB_AUTO_TRADE off" };
@@ -75,6 +78,20 @@ export function tryProbebAutoTrade(
   }
   if (!(Number.isFinite(livePrice) && livePrice > 0)) {
     return { ok: false, reason: "no live price" };
+  }
+
+  const refClose = opts?.primary?.length
+    ? opts.primary[opts.primary.length - 1]?.close
+    : null;
+  if (
+    refClose != null &&
+    Number.isFinite(refClose) &&
+    Math.abs(livePrice - refClose) > PROBEB_QUOTE_SPIKE_USD
+  ) {
+    return {
+      ok: false,
+      reason: `quote spike blocked — live ${livePrice.toFixed(2)} vs M5 ${refClose.toFixed(2)} (>$${PROBEB_QUOTE_SPIKE_USD})`,
+    };
   }
 
   const sourceId = `probeb-auto-${pred.barTime}`;

@@ -469,6 +469,24 @@ export function closeDemoPositionInDb(
   ).run(outcome, realizedR, pnlUsd, closedAt, id);
 }
 
+/** Rewrite an already-closed row (quote-spike void / repair). */
+export function rewriteClosedDemoPosition(
+  id: string,
+  opts: {
+    outcome: DemoOutcome;
+    realizedR: number;
+    pnlUsd: number;
+    note: string;
+  },
+): void {
+  const db = getDemoDb();
+  db.prepare(
+    `UPDATE demo_positions
+        SET outcome = ?, realized_r = ?, pnl_usd = ?, note = ?
+      WHERE id = ? AND status = 'CLOSED'`,
+  ).run(opts.outcome, opts.realizedR, opts.pnlUsd, opts.note, id);
+}
+
 /**
  * Credit / debit the balance and log it. `tag` distinguishes the ledger rows a
  * single position writes when a runner banks legs separately.
