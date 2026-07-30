@@ -13,6 +13,10 @@ import {
 } from "../strategies/probebEngine";
 import { refreshProbebLiveM5 } from "./liveM5";
 import {
+  tryProbebAutoTrade,
+  type ProbebAutoTradeResult,
+} from "./autoTrade";
+import {
   getLatestProbeb,
   getLiveProbebDb,
   insertProbebRow,
@@ -29,6 +33,7 @@ export type ProbebSyncResult = {
   inserted: ProbebPrediction | null;
   signal: ProbebPrediction | null;
   waitReason: string;
+  autoTrade: ProbebAutoTradeResult | null;
 };
 
 function resolvePendingOn(primary: Candle[], now = Date.now()): number {
@@ -105,6 +110,12 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
     inserted = diag.signal;
   }
 
+  let autoTrade: ProbebAutoTradeResult | null = null;
+  const tradePred = inserted ?? diag.signal;
+  if (tradePred && tradePred.quality === "strong") {
+    autoTrade = tryProbebAutoTrade(tradePred, livePrice);
+  }
+
   return {
     primary,
     livePrice,
@@ -112,5 +123,6 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
     inserted,
     signal: diag.signal,
     waitReason: diag.waitReason,
+    autoTrade,
   };
 }

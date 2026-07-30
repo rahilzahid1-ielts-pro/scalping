@@ -116,8 +116,8 @@ export function ProbebCard() {
       <div className="card-head">
         <h2>Probeb</h2>
         <p className="muted">
-          Har M5 close pe: upar agli candle predict · 5 min baad niche SAHI/GALAT
-          (live TV price se M5 clock — Yahoo lag pe atka nahi)
+          Har M5 close pe predict · STRONG (win≥60% + conf≥40%) → demo auto ±$2
+          · 5 min baad SAHI/GALAT
         </p>
       </div>
 
@@ -153,10 +153,10 @@ export function ProbebCard() {
           </div>
           <p className="probeb-strong-note">
             {live.quality === "strong"
-              ? "STRONG — alert on (Push/Telegram agar enabled)."
+              ? `STRONG — demo auto ±$2 (SL/TP) jab Demo auto-follow ON ho.`
               : live.quality === "normal"
-                ? "Normal lean — 5 min baad result table mein SAHI/GALAT aayega."
-                : "Weak lean (thin/edge) — phir bhi predict dikhaya; result track hoga."}
+                ? "Normal lean — 5 min baad result; auto trade nahi."
+                : "Weak lean — predict track; auto trade nahi."}
           </p>
         </div>
       )}
