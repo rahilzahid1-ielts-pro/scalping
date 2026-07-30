@@ -93,9 +93,9 @@ async function tick(): Promise<void> {
     );
   } else if (synced.autoTrade && !synced.autoTrade.ok) {
     if (
-      synced.signal &&
-      isProbebAutoTradeSetup(synced.signal) &&
-      !/already opened/i.test(synced.autoTrade.reason)
+      synced.inserted &&
+      isProbebAutoTradeSetup(synced.inserted) &&
+      !/already opened|locked /i.test(synced.autoTrade.reason)
     ) {
       log("auto skip:", synced.autoTrade.reason);
     }

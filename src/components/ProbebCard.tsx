@@ -169,6 +169,8 @@ export function ProbebCard() {
                 : live.quality === "normal"
                   ? "Normal lean — track only; auto trade nahi."
                   : "Weak lean — predict track; auto trade nahi."}
+            {" "}
+            M5 lock — side is M5 close pe freeze; poll pe flip nahi.
           </p>
           {data?.autoTrade?.ok === true && (
             <p className="probeb-strong-note">

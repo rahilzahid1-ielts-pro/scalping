@@ -26,6 +26,7 @@ import {
   predictionToRow,
   resolveProbeb,
   forceResolveProbeb,
+  type ProbebRow,
 } from "./store";
 import type { Candle } from "../types";
 
@@ -36,6 +37,8 @@ export type ProbebSyncResult = {
   repaired: number;
   inserted: ProbebPrediction | null;
   signal: ProbebPrediction | null;
+  /** DB-locked lean for the current closed M5 — UI must prefer this (no flip). */
+  locked: ProbebRow | null;
   waitReason: string;
   autoTrade: ProbebAutoTradeResult | null;
 };
@@ -145,10 +148,25 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
     inserted = diag.signal;
   }
 
+  const latest = getLatestProbeb(getLiveProbebDb());
+  const locked =
+    diag.signal &&
+    latest &&
+    m5FloorMs(latest.barTime) === m5FloorMs(diag.signal.barTime)
+      ? latest
+      : null;
+
+  // Auto only on the first lock of this M5 — re-diagnose must not flip-fire.
   let autoTrade: ProbebAutoTradeResult | null = null;
-  const tradePred = inserted ?? diag.signal;
-  if (tradePred) {
-    autoTrade = tryProbebAutoTrade(tradePred, livePrice, { primary });
+  if (inserted) {
+    autoTrade = tryProbebAutoTrade(inserted, livePrice, { primary });
+  } else if (locked) {
+    autoTrade = {
+      ok: false,
+      reason: `locked ${locked.predictedSide} this M5 · win ${locked.probabilityPct}% · conf ${locked.confidencePct}%`,
+    };
+  } else if (diag.signal) {
+    autoTrade = tryProbebAutoTrade(diag.signal, livePrice, { primary });
   }
 
   return {
@@ -158,6 +176,7 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
     repaired,
     inserted,
     signal: diag.signal,
+    locked,
     waitReason: diag.waitReason,
     autoTrade,
   };
