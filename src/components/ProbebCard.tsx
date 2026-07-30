@@ -57,6 +57,16 @@ interface ProbebPayload {
     targetBarTime?: number;
   }>;
   waitReason: string | null;
+  autoTrade?:
+    | {
+        ok: true;
+        entry: number;
+        sl: number;
+        tp1: number;
+        positionId: string;
+      }
+    | { ok: false; reason: string }
+    | null;
 }
 
 function pct(v: number | null | undefined): string {
@@ -160,6 +170,15 @@ export function ProbebCard() {
                   ? "Normal lean — track only; auto trade nahi."
                   : "Weak lean — predict track; auto trade nahi."}
           </p>
+          {data?.autoTrade?.ok === true && (
+            <p className="probeb-strong-note">
+              Demo OPEN {data.autoTrade.entry} · SL {data.autoTrade.sl} · TP{" "}
+              {data.autoTrade.tp1}
+            </p>
+          )}
+          {data?.autoTrade && data.autoTrade.ok === false && (
+            <p className="probeb-wait">Auto skip: {data.autoTrade.reason}</p>
+          )}
         </div>
       )}
 

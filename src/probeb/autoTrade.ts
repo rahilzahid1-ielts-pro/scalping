@@ -1,10 +1,11 @@
 /**
- * Probeb → demo auto ±$2 — protected after 2 SL autopsy (30 Jul).
+ * Probeb → demo auto ±$2.
  *
- * Failure mode: next-candle CLOSE lean was opened as immediate ±$2 scalp;
- * gold M5 noise + wrong direction → fast SL.
- *
- * Gate: win%>60 + quality strong + conf≥40 + no chase.
+ * Gate: win%>60 + quality strong + conf≥40.
+ * No chase block — STRONG impulse near extremes is the setup (chase was
+ * skipping the exact strong candles the desk wants filled).
+ * Day stop (−3R) does not apply here — Probeb is its own ±$2 desk; day lock
+ * (+5R) still banks a green day.
  */
 import { takeDemoTrade } from "../demoAccount/engine";
 import {
@@ -14,10 +15,8 @@ import {
 } from "../demoAccount/store";
 import {
   DEMO_DAY_LOCK_R,
-  DEMO_DAY_STOP_R,
   demoDayClosedPnl,
 } from "../regime/positiveDayDesk";
-import { isExtendedChase } from "../utils/entryFilters";
 import type { Candle } from "../types";
 import type { ProbebPrediction } from "../strategies/probebEngine";
 
@@ -34,7 +33,7 @@ export function probebAutoTradeEnabled(): boolean {
   return !(v === "0" || v === "false" || v === "off");
 }
 
-/** Full gate — not win% alone (that caused the 2 quick BUY SLs). */
+/** Full gate — STRONG only. */
 export function isProbebAutoTradeSetup(pred: ProbebPrediction): boolean {
   return (
     pred.probabilityPct > PROBEB_AUTO_WIN_MIN &&
@@ -58,12 +57,12 @@ export type ProbebAutoTradeOpts = {
 };
 
 /**
- * Open demo ±$2 only on STRONG lean, with chase block.
+ * Open demo ±$2 on STRONG lean.
  */
 export function tryProbebAutoTrade(
   pred: ProbebPrediction,
   livePrice: number,
-  opts?: ProbebAutoTradeOpts,
+  _opts?: ProbebAutoTradeOpts,
 ): ProbebAutoTradeResult {
   if (!probebAutoTradeEnabled()) {
     return { ok: false, reason: "ENABLE_PROBEB_AUTO_TRADE off" };
@@ -83,16 +82,6 @@ export function tryProbebAutoTrade(
     return { ok: false, reason: "already opened this M5" };
   }
 
-  const primary = opts?.primary;
-  if (primary && primary.length >= 12) {
-    if (isExtendedChase(pred.side, primary)) {
-      return {
-        ok: false,
-        reason: `chase block — ${pred.side} near 2h extreme, ±$2 too tight`,
-      };
-    }
-  }
-
   const acct = ensureDemoAccount();
   if (!acct.autoFollow) {
     return { ok: false, reason: "Demo auto-follow OFF" };
@@ -103,12 +92,6 @@ export function tryProbebAutoTrade(
   const unit = Math.round(((bank * acct.riskPct) / 100) * 100) / 100;
   const { pnlUsd } = demoDayClosedPnl();
   const dayNetR = unit > 0 ? pnlUsd / unit : 0;
-  if (dayNetR <= DEMO_DAY_STOP_R) {
-    return {
-      ok: false,
-      reason: `day stop ${dayNetR.toFixed(2)}R — no new Probeb auto`,
-    };
-  }
   if (dayNetR >= DEMO_DAY_LOCK_R) {
     return {
       ok: false,

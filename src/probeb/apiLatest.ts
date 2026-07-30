@@ -87,5 +87,6 @@ export async function buildProbebLatestPayload() {
       livePrice: synced.livePrice,
       closedBars: synced.primary.length,
     },
+    autoTrade: synced.autoTrade,
   };
 }
