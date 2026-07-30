@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { probebAlertTier, type ProbebAlertTier } from "../probeb/alertTier";
 
 type Side = "BUY" | "SELL";
 type Quality = "strong" | "normal" | "weak";
@@ -87,9 +88,77 @@ function pkt(ms: number): string {
   }
 }
 
+function playTierBeep(tier: "yellow" | "green") {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext })
+        .webkitAudioContext;
+    const ctx = new Ctx();
+    const freq = tier === "green" ? 988 : 740;
+    const times = tier === "green" ? 5 : 3;
+    let t = ctx.currentTime;
+    for (let i = 0; i < times; i++) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.28);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.32);
+      t += 0.38;
+    }
+    window.setTimeout(() => void ctx.close(), 2500);
+  } catch {
+    /* autoplay blocked until gesture */
+  }
+}
+
+function firePageAlert(
+  tier: "yellow" | "green",
+  side: Side,
+  win: number,
+  conf: number,
+  barTime: number,
+) {
+  playTierBeep(tier);
+  const title =
+    tier === "green" ? `PROBEB GREEN · ${side}` : `PROBEB HOT · ${side}`;
+  const body = `Win ${win.toFixed(1)}% · conf ${conf}% · agli candle ${side}`;
+  try {
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(title, {
+        body,
+        tag: `probeb-${barTime}`,
+        requireInteraction: false,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const sw = navigator.serviceWorker?.controller;
+    if (sw) {
+      sw.postMessage({
+        type: "PLAN_LOCK_ALERT",
+        title,
+        body,
+        tag: `probeb-${barTime}`,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export function ProbebCard() {
   const [data, setData] = useState<ProbebPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const alertedBar = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -115,6 +184,23 @@ export function ProbebCard() {
   }, []);
 
   const live = data?.live;
+  const tier: ProbebAlertTier = live
+    ? probebAlertTier(live.probabilityPct, live.confidencePct)
+    : null;
+
+  useEffect(() => {
+    if (!live || !tier) return;
+    if (alertedBar.current === live.barTime) return;
+    alertedBar.current = live.barTime;
+    firePageAlert(
+      tier,
+      live.side,
+      live.probabilityPct,
+      live.confidencePct,
+      live.barTime,
+    );
+  }, [live, tier]);
+
   const today = data?.today;
   const wrongLifetime =
     (data?.lifetime.resolved ?? 0) - (data?.lifetime.correct ?? 0);
@@ -126,8 +212,8 @@ export function ProbebCard() {
       <div className="card-head">
         <h2>Probeb</h2>
         <p className="muted">
-          Har M5 close pe predict · STRONG (win&gt;60 + conf≥40) → demo ±$2 ·
-          5 min baad SAHI/GALAT
+          Har M5 close pe predict · win&amp;conf &gt;60 yellow alert · ≥70 green ·
+          demo ±$2 · 5 min baad SAHI/GALAT
         </p>
       </div>
 
@@ -140,11 +226,28 @@ export function ProbebCard() {
       {live && (
         <div
           className={`probeb-hero ${live.side === "BUY" ? "buy" : "sell"}${
-            live.quality === "strong" ? " strong" : ""
+            tier === "green"
+              ? " lite-green"
+              : tier === "yellow"
+                ? " lite-yellow"
+                : ""
           }`}
         >
-          <div className="probeb-hero-label">
-            Agli candle kya banegi? · {pkt(live.targetBarTime)} PKT slot
+          <div className="probeb-hero-top">
+            <div className="probeb-hero-label">
+              Agli candle kya banegi? · {pkt(live.targetBarTime)} PKT slot
+            </div>
+            <div
+              className={`probeb-lite ${tier ?? "off"}`}
+              title={
+                tier === "green"
+                  ? "GREEN · win & conf ≥70"
+                  : tier === "yellow"
+                    ? "YELLOW · win & conf >60"
+                    : "Light off · win/conf below alert"
+              }
+              aria-label={tier ? `Probeb ${tier} light` : "Probeb light off"}
+            />
           </div>
           <div className="probeb-hero-side">{live.side}</div>
           <div className="probeb-hero-metrics">
@@ -161,15 +264,23 @@ export function ProbebCard() {
               <strong>{live.quality.toUpperCase()}</strong>
             </div>
           </div>
+          {tier && (
+            <p className={`probeb-lite-banner ${tier}`}>
+              {tier === "green"
+                ? `GREEN ALERT · win ${live.probabilityPct.toFixed(1)}% · conf ${live.confidencePct}%`
+                : `YELLOW ALERT · win ${live.probabilityPct.toFixed(1)}% · conf ${live.confidencePct}%`}
+            </p>
+          )}
           <p className="probeb-strong-note">
-            {live.probabilityPct > 60 && live.confidencePct >= 40 && live.quality !== "weak"
+            {live.probabilityPct > 60 &&
+            live.confidencePct >= 40 &&
+            live.quality !== "weak"
               ? `Desk gate OK win ${live.probabilityPct.toFixed(1)}% conf ${live.confidencePct}% — demo auto ±$2.`
               : live.probabilityPct > 60
                 ? `Win ${live.probabilityPct.toFixed(1)}% — auto nahi (conf≥40 + non-weak chahiye).`
                 : live.quality === "normal"
                   ? "Normal lean — track only; auto trade nahi."
-                  : "Weak lean — predict track; auto trade nahi."}
-            {" "}
+                  : "Weak lean — predict track; auto trade nahi."}{" "}
             M5 lock — side is M5 close pe freeze; poll pe flip nahi.
           </p>
           {data?.autoTrade?.ok === true && (

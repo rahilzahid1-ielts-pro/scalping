@@ -2215,6 +2215,70 @@ html[data-theme="light"] .cmd-box {
 .probeb-hero.strong {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #c9a227) 50%, transparent);
 }
+.probeb-hero.lite-yellow {
+  border-color: #e6b422;
+  box-shadow: 0 0 0 1px #e6b422, 0 0 18px color-mix(in srgb, #e6b422 35%, transparent);
+}
+.probeb-hero.lite-green {
+  border-color: #2ecc71;
+  box-shadow: 0 0 0 1px #2ecc71, 0 0 22px color-mix(in srgb, #2ecc71 40%, transparent);
+}
+.probeb-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.probeb-lite {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, var(--mod-line) 80%, #888);
+  background: #3a3a3a;
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.45);
+}
+.probeb-lite.yellow {
+  background: #f5c518;
+  border-color: #fff3a0;
+  box-shadow: 0 0 10px #f5c518, 0 0 18px color-mix(in srgb, #f5c518 55%, transparent);
+  animation: probeb-pulse 1.2s ease-in-out infinite;
+}
+.probeb-lite.green {
+  background: #2ecc71;
+  border-color: #b8f5d0;
+  box-shadow: 0 0 12px #2ecc71, 0 0 22px color-mix(in srgb, #2ecc71 60%, transparent);
+  animation: probeb-pulse 0.9s ease-in-out infinite;
+}
+.probeb-lite.off {
+  opacity: 0.55;
+}
+.probeb-lite-banner {
+  margin: 0.7rem 0 0;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+.probeb-lite-banner.yellow {
+  color: #3d2e00;
+  background: color-mix(in srgb, #f5c518 78%, #fff);
+}
+.probeb-lite-banner.green {
+  color: #06351c;
+  background: color-mix(in srgb, #2ecc71 72%, #fff);
+}
+@keyframes probeb-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.12);
+    filter: brightness(1.2);
+  }
+}
 .probeb-hero-label {
   font-size: 0.78rem;
   color: var(--muted);
