@@ -24,7 +24,9 @@ import {
   ensureDemoAccount,
   findDemoBySourceId,
   insertDemoPosition,
+  listDemoPositions,
   listOpenDemoPositions,
+  rewriteClosedDemoPosition,
   updateDemoRunnerState,
   type DemoAccountRow,
   type DemoOutcome,
@@ -463,21 +465,47 @@ export function closeFromSourceOutcome(
 const SPIKE_PEER_USD = 25;
 
 /**
- * Void *open* Probeb fills whose entry is still a clear TV spike vs the live
- * M5 close. Never rewrites already-closed TP1/SL rows — peer-median rewrites
- * were turning real wins into MANUAL on trend days (e.g. 4111 vs afternoon ~4080).
+ * Void Probeb fills opened on TV spikes (entry far from sane gold mid).
+ * Open: flat close. Closed today: rewrite to VOID + refund booked P&L so
+ * History stops showing fake 4144/4177 TP1 wins.
  */
 export function voidProbebQuoteSpikeTrades(refClose?: number | null): number {
   if (refClose == null || !Number.isFinite(refClose) || refClose <= 0) return 0;
   ensureDemoAccount();
   let n = 0;
   const now = Date.now();
+  const dayAgo = now - 36 * 60 * 60 * 1000;
+
   for (const p of listOpenDemoPositions()) {
     if (p.module !== "probeb") continue;
-    if (now - p.openedAt > 90_000) continue;
     if (Math.abs(p.entry - refClose) <= SPIKE_PEER_USD) continue;
     if (p.note?.includes("VOID quote-spike")) continue;
     closeDemoPositionInDb(p.id, "MANUAL", 0, 0, now);
+    n += 1;
+  }
+
+  for (const p of listDemoPositions(80)) {
+    if (p.module !== "probeb" || p.status !== "CLOSED") continue;
+    if (p.closedAt != null && p.closedAt < dayAgo) continue;
+    if (Math.abs(p.entry - refClose) <= SPIKE_PEER_USD) continue;
+    if (p.note?.includes("VOID quote-spike")) continue;
+    const priorPnl = p.pnlUsd ?? 0;
+    if (p.outcome === "MANUAL" && priorPnl === 0) continue;
+    rewriteClosedDemoPosition(p.id, {
+      outcome: "MANUAL",
+      realizedR: 0,
+      pnlUsd: 0,
+      note: `${p.note} · VOID quote-spike (entry ${p.entry} vs sane ${refClose.toFixed(2)})`,
+    });
+    if (priorPnl !== 0) {
+      applyPnlToBalance(
+        p.id,
+        -priorPnl,
+        `Probeb VOID spike refund · was ${p.outcome} P&L $${priorPnl}`,
+        now,
+        "VOID_SPIKE",
+      );
+    }
     n += 1;
   }
   return n;

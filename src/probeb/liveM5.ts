@@ -9,6 +9,7 @@ import type { Candle } from "../types";
 import { fetchCandles } from "../services/marketData";
 import { fetchLiveQuote } from "../services/liveQuotes";
 import { m5FloorMs, M5_MS } from "../strategies/probebEngine";
+import { isSpikeVsAnchor, robustPriceMid } from "./sanePrice";
 
 const MAX_BARS = 2500;
 const SPIKE_USD = 25;
@@ -308,18 +309,28 @@ export function probebClosedM5(): Candle[] {
 }
 
 let lastResyncAt = 0;
+/** Last Yahoo/1m-resync close — cross-check TV spikes (4144 vs ~4100). */
+let lastFeedClose = 0;
+
+export function probebSaneMid(): number | null {
+  const closes = closed.slice(-24).map((c) => c.close);
+  if (lastFeedClose > 0) closes.push(lastFeedClose);
+  return robustPriceMid(closes, 30);
+}
 
 export async function refreshProbebLiveM5(): Promise<{
   primary: Candle[];
   livePrice: number;
+  saneMid: number | null;
 }> {
   await ensureProbebM5Seeded();
   advanceProbebClock(Date.now());
 
-  // Re-pull Yahoo/1m often so SAHI/GALAT + clock stay on real OHLC.
   if (Date.now() - lastResyncAt > 20_000) {
     await resyncRecentClosedFromFeed();
     lastResyncAt = Date.now();
+    const last = closed[closed.length - 1];
+    if (last && last.close > 0) lastFeedClose = last.close;
   }
 
   let livePrice = lastGoodPx();
@@ -331,5 +342,13 @@ export async function refreshProbebLiveM5(): Promise<{
     /* keep last good */
   }
   scrubSpikedClosedBars(livePrice);
-  return { primary: probebClosedM5(), livePrice };
+  const primary = probebClosedM5();
+  const closes = primary.slice(-24).map((c) => c.close);
+  if (lastFeedClose > 0) closes.push(lastFeedClose);
+  const saneMid = robustPriceMid(closes, 30);
+  // Prefer sane mid for downstream entry if TV live is spiked.
+  const usePrice = isSpikeVsAnchor(livePrice, saneMid, 20)
+    ? (saneMid ?? livePrice)
+    : livePrice;
+  return { primary, livePrice: usePrice, saneMid };
 }

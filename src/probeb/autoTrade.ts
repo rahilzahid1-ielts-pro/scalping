@@ -19,6 +19,7 @@ import type { Candle } from "../types";
 import type { ProbebPrediction } from "../strategies/probebEngine";
 import { M5_MS } from "../strategies/probebEngine";
 import type { ProbebRow } from "./store";
+import { isSpikeVsAnchor, robustPriceMid } from "./sanePrice";
 
 /** Price distance for SL and TP1 (XAUUSD $). */
 export const PROBEB_AUTO_DISTANCE = 2;
@@ -86,10 +87,12 @@ export type ProbebAutoTradeResult =
 
 export type ProbebAutoTradeOpts = {
   primary?: Candle[];
+  /** Robust tape mid (outlier-trimmed) — preferred over raw last close. */
+  saneMid?: number | null;
 };
 
-/** Max $ away from last M5 close — TV quote spikes (e.g. 4156 vs ~4100) caused fake SL. */
-export const PROBEB_QUOTE_SPIKE_USD = Number(process.env.PROBEB_QUOTE_SPIKE_USD) || 15;
+/** Max $ away from sane gold mid — TV spikes (4144/4177) caused fake fills. */
+export const PROBEB_QUOTE_SPIKE_USD = Number(process.env.PROBEB_QUOTE_SPIKE_USD) || 20;
 
 /**
  * Open demo ±$2 on STRONG lean.
@@ -113,18 +116,16 @@ export function tryProbebAutoTrade(
   }
 
   const primary = opts?.primary ?? [];
-  const closes = primary.slice(-8).map((c) => c.close).filter((x) => x > 0);
-  const sorted = [...closes].sort((a, b) => a - b);
-  const mid = sorted.length ? sorted[Math.floor(sorted.length / 2)]! : null;
-  const refClose = mid ?? (primary.length ? primary[primary.length - 1]?.close : null);
-  if (
-    refClose != null &&
-    Number.isFinite(refClose) &&
-    Math.abs(livePrice - refClose) > PROBEB_QUOTE_SPIKE_USD
-  ) {
+  const closes = primary.slice(-24).map((c) => c.close).filter((x) => x > 0);
+  const tapeMid = robustPriceMid(closes, 30);
+  const saneMid =
+    opts?.saneMid != null && Number.isFinite(opts.saneMid)
+      ? opts.saneMid
+      : tapeMid;
+  if (isSpikeVsAnchor(livePrice, saneMid, PROBEB_QUOTE_SPIKE_USD)) {
     return {
       ok: false,
-      reason: `quote spike blocked — live ${livePrice.toFixed(2)} vs M5 mid ${refClose.toFixed(2)} (>$${PROBEB_QUOTE_SPIKE_USD})`,
+      reason: `quote spike blocked — live ${livePrice.toFixed(2)} vs sane ${saneMid?.toFixed(2)} (>$${PROBEB_QUOTE_SPIKE_USD})`,
     };
   }
 

@@ -131,10 +131,9 @@ function maybeInsert(pred: ProbebPrediction): boolean {
 }
 
 export async function syncProbebLive(): Promise<ProbebSyncResult> {
-  const { primary, livePrice } = await refreshProbebLiveM5();
+  const { primary, livePrice, saneMid } = await refreshProbebLiveM5();
   try {
-    const ref = primary.length ? primary[primary.length - 1]?.close : null;
-    voidProbebQuoteSpikeTrades(ref ?? livePrice);
+    voidProbebQuoteSpikeTrades(saneMid ?? livePrice);
   } catch {
     /* demo repair optional */
   }
@@ -260,7 +259,7 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
         reason: `live ${formSide} body — lean updated, auto wait next M5 lock`,
       };
     } else {
-      autoTrade = tryProbebAutoTrade(tradePred, livePrice, { primary });
+      autoTrade = tryProbebAutoTrade(tradePred, livePrice, { primary, saneMid });
     }
   }
 
