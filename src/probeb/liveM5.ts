@@ -294,6 +294,12 @@ async function resyncRecentClosedFromFeed(): Promise<void> {
   }
 }
 
+/** Forming (open) M5 slot — used to correct a locked lean if live body flips. */
+export function probebFormingM5(): Candle | null {
+  advanceProbebClock(Date.now());
+  return forming ? { ...forming } : null;
+}
+
 /** Closed M5 only (forming slot excluded) — Probeb identity. */
 export function probebClosedM5(): Candle[] {
   advanceProbebClock(Date.now());

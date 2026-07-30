@@ -12,7 +12,7 @@ import {
   type ProbebPrediction,
 } from "../strategies/probebEngine";
 import { voidProbebQuoteSpikeTrades } from "../demoAccount/engine";
-import { refreshProbebLiveM5 } from "./liveM5";
+import { probebFormingM5, refreshProbebLiveM5 } from "./liveM5";
 import {
   predictionFromLockedRow,
   tryProbebAutoTrade,
@@ -44,6 +44,16 @@ export type ProbebSyncResult = {
   waitReason: string;
   autoTrade: ProbebAutoTradeResult | null;
 };
+
+/** Clear live body on the forming (target) M5 — ignore tiny doji/noise. */
+function formingBodySide(f: Candle): ProbebPrediction["side"] | null {
+  const range = f.high - f.low;
+  const body = f.close - f.open;
+  if (!(range > 0) || !Number.isFinite(body)) return null;
+  if (Math.abs(body) < 1.0) return null;
+  if (Math.abs(body) / range < 0.25) return null;
+  return body < 0 ? "SELL" : "BUY";
+}
 
 function resolvePendingOn(primary: Candle[], now = Date.now()): number {
   const db = getLiveProbebDb();
@@ -186,12 +196,54 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
       ? latest
       : null;
 
+  // Live forming target candle already has a clear red/green body — don't keep
+  // the opposite locked lean on the hero (BUY while red dumps).
+  const forming = probebFormingM5();
+  const formSide = forming ? formingBodySide(forming) : null;
+  if (
+    formSide &&
+    latest &&
+    latest.actualSide == null &&
+    forming &&
+    latest.barTime + M5_MS === forming.time &&
+    latest.predictedSide !== formSide
+  ) {
+    const fixed: ProbebPrediction = {
+      side: formSide,
+      probabilityPct: 58,
+      confidencePct: 45,
+      bucket: diag.signal?.bucket ?? latest.bucket,
+      sampleN: diag.signal?.sampleN ?? latest.sampleN,
+      barTime: latest.barTime,
+      targetBarTime: latest.barTime + M5_MS,
+      quality: "normal",
+      reason: [
+        `Agli candle → ${formSide}`,
+        `Live ${formSide === "SELL" ? "red" : "green"} body — flipped from ${latest.predictedSide}`,
+        `Forming M5 body vs locked lean`,
+      ],
+    };
+    if (replacePendingProbeb(db, predictionToRow(fixed, "live"))) {
+      latest = getLatestProbeb(db);
+      inserted = fixed;
+    }
+  }
+
+  const lockedNow =
+    latest &&
+    diag.signal &&
+    m5FloorMs(latest.barTime) === m5FloorMs(diag.signal.barTime)
+      ? latest
+      : latest && !diag.signal
+        ? latest
+        : locked;
+
   const tradePred = spikeVsLive
     ? null
     : inserted
       ? inserted
-      : locked
-        ? predictionFromLockedRow(locked)
+      : lockedNow
+        ? predictionFromLockedRow(lockedNow)
         : diag.signal;
 
   let autoTrade: ProbebAutoTradeResult | null = null;
@@ -201,8 +253,18 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
       reason: `M5 OHLC spike vs live ${livePrice.toFixed(2)} — signal scrub, no auto`,
     };
   } else if (tradePred) {
-    autoTrade = tryProbebAutoTrade(tradePred, livePrice, { primary });
+    // Mid-candle body flip is informational — don't auto off a live rewrite.
+    if (formSide && tradePred.reason.some((r) => /flipped from/i.test(r))) {
+      autoTrade = {
+        ok: false,
+        reason: `live ${formSide} body — lean updated, auto wait next M5 lock`,
+      };
+    } else {
+      autoTrade = tryProbebAutoTrade(tradePred, livePrice, { primary });
+    }
   }
+
+  const displayLocked = spikeVsLive ? null : lockedNow;
 
   return {
     primary,
@@ -221,8 +283,8 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
             `Scrub: last M5 ${lastClose?.toFixed(2)} vs live ${livePrice.toFixed(2)} — not trusted`,
           ],
         }
-      : diag.signal,
-    locked: spikeVsLive ? null : locked,
+      : inserted ?? diag.signal,
+    locked: displayLocked,
     waitReason: diag.waitReason,
     autoTrade,
   };

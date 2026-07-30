@@ -290,25 +290,24 @@ export function diagnoseProbeb(
   const lastBd = bodyDir(closed[i]);
   const impulse = impulseScore(closed[i]);
   const atrOn = atrExp[i] === true;
-  const localBear =
-    lastBd === "dn" && (localTrend === "dn" || streak === "dn");
-  const localBull =
-    lastBd === "up" && (localTrend === "up" || streak === "up");
 
-  // Soft HTF nudge — never when local M5 is clearly the other way (red dump / green spike).
-  if (htf === "dn" && !localBull) pUp = Math.min(pUp, 0.48);
-  if (htf === "up" && !localBear) pUp = Math.max(pUp, 0.52);
+  // Soft HTF nudge — never against a clear local body color.
+  if (htf === "dn" && lastBd !== "up") pUp = Math.min(pUp, 0.48);
+  if (htf === "up" && lastBd !== "dn") pUp = Math.max(pUp, 0.52);
+
+  // Chart body wins: red closed M5 must not print BUY (HTF-up used to force weak BUY).
+  if (lastBd === "dn") pUp = Math.min(pUp, 0.42);
+  if (lastBd === "up") pUp = Math.max(pUp, 0.58);
 
   let side: ProbebSide = pUp >= 0.5 ? "BUY" : "SELL";
   let rawP = side === "BUY" ? pUp : 1 - pUp;
 
-  // Respect live M5 color+trend: don't keep BUY while red/down prints (30 Jul autopsy).
-  if (localBear && side === "BUY") {
+  if (lastBd === "dn" && side === "BUY") {
     side = "SELL";
-    rawP = Math.max(0.55, 1 - pUp);
-  } else if (localBull && side === "SELL") {
+    rawP = Math.max(0.58, 1 - pUp);
+  } else if (lastBd === "up" && side === "SELL") {
     side = "BUY";
-    rawP = Math.max(0.55, pUp);
+    rawP = Math.max(0.58, pUp);
   }
 
   // Strong candle in lean direction → lift win% / conf (was stuck ~52% / 6%).
@@ -336,7 +335,6 @@ export function diagnoseProbeb(
 
   const htfAgree =
     (side === "BUY" && htf === "up") || (side === "SELL" && htf === "dn");
-  // Local momentum only — HTF alone used to mark STRONG BUY on red bars.
   const momOk =
     (side === "BUY" && (streak === "up" || localTrend === "up" || lastBd === "up")) ||
     (side === "SELL" && (streak === "dn" || localTrend === "dn" || lastBd === "dn"));
