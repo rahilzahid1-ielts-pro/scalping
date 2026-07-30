@@ -13,6 +13,8 @@ import {
 } from "../strategies/probebEngine";
 import { refreshProbebLiveM5 } from "./liveM5";
 import {
+  PROBEB_AUTO_DISTANCE,
+  PROBEB_AUTO_WIN_MIN,
   tryProbebAutoTrade,
   type ProbebAutoTradeResult,
 } from "./autoTrade";
@@ -112,7 +114,7 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
 
   let autoTrade: ProbebAutoTradeResult | null = null;
   const tradePred = inserted ?? diag.signal;
-  if (tradePred && tradePred.quality === "strong") {
+  if (tradePred && tradePred.probabilityPct > PROBEB_AUTO_WIN_MIN) {
     autoTrade = tryProbebAutoTrade(tradePred, livePrice);
   }
 

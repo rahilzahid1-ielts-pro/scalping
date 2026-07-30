@@ -1,6 +1,6 @@
 /**
- * Probeb STRONG → demo auto trade ±$2 (1R).
- * Only when quality=strong, win%≥60, conf≥40. One fill per M5 barTime.
+ * Probeb → demo auto trade ±$2 when Winning % > 60.
+ * One fill per M5 barTime. Demo auto-follow + day stop/lock still apply.
  */
 import { takeDemoTrade } from "../demoAccount/engine";
 import {
@@ -18,20 +18,17 @@ import type { ProbebPrediction } from "../strategies/probebEngine";
 /** Price distance for SL and TP1 (XAUUSD $). */
 export const PROBEB_AUTO_DISTANCE = 2;
 
-const ALERT_PROB_MIN = Number(process.env.PROBEB_ALERT_PROB_MIN) || 60;
-const ALERT_CONF_MIN = Number(process.env.PROBEB_ALERT_CONF_MIN) || 40;
+/** Win% must be strictly above this (user: "60% se zyda"). */
+export const PROBEB_AUTO_WIN_MIN = Number(process.env.PROBEB_AUTO_WIN_MIN) || 60;
 
 export function probebAutoTradeEnabled(): boolean {
   const v = (process.env.ENABLE_PROBEB_AUTO_TRADE ?? "1").toLowerCase();
   return !(v === "0" || v === "false" || v === "off");
 }
 
-export function isProbebStrongTrade(pred: ProbebPrediction): boolean {
-  return (
-    pred.quality === "strong" &&
-    pred.probabilityPct >= ALERT_PROB_MIN &&
-    pred.confidencePct >= ALERT_CONF_MIN
-  );
+/** Auto-trade gate: winning probability above 60%. */
+export function isProbebAutoTradeSetup(pred: ProbebPrediction): boolean {
+  return pred.probabilityPct > PROBEB_AUTO_WIN_MIN;
 }
 
 export type ProbebAutoTradeResult =
@@ -45,7 +42,7 @@ export type ProbebAutoTradeResult =
   | { ok: false; reason: string };
 
 /**
- * Open a demo position at live mid with ±$2 SL/TP when STRONG.
+ * Open a demo position at live mid with ±$2 SL/TP when win% > 60.
  */
 export function tryProbebAutoTrade(
   pred: ProbebPrediction,
@@ -54,8 +51,11 @@ export function tryProbebAutoTrade(
   if (!probebAutoTradeEnabled()) {
     return { ok: false, reason: "ENABLE_PROBEB_AUTO_TRADE off" };
   }
-  if (!isProbebStrongTrade(pred)) {
-    return { ok: false, reason: "not STRONG (need quality+win≥60+conf≥40)" };
+  if (!isProbebAutoTradeSetup(pred)) {
+    return {
+      ok: false,
+      reason: `win ${pred.probabilityPct}% ≤ ${PROBEB_AUTO_WIN_MIN}% — skip`,
+    };
   }
   if (!(Number.isFinite(livePrice) && livePrice > 0)) {
     return { ok: false, reason: "no live price" };
@@ -108,7 +108,7 @@ export function tryProbebAutoTrade(
     tp2: tp1,
     module: "probeb",
     sourceId,
-    note: `Probeb STRONG auto ±$${d} · win ${pred.probabilityPct}% · conf ${pred.confidencePct}%`,
+    note: `Probeb auto ±$${d} · win ${pred.probabilityPct}% · conf ${pred.confidencePct}%`,
     regime: null,
   });
 

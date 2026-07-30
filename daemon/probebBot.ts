@@ -8,7 +8,7 @@ import {
   purgeUnstablePending,
   dayAccuracy,
 } from "../src/probeb/store";
-import { PROBEB_AUTO_DISTANCE } from "../src/probeb/autoTrade";
+import { PROBEB_AUTO_DISTANCE, PROBEB_AUTO_WIN_MIN } from "../src/probeb/autoTrade";
 import { karachiYmd } from "../src/history/apiHistory";
 import { dispatchTradeAlert } from "../src/services/notify";
 
@@ -24,20 +24,17 @@ function log(...args: unknown[]) {
   console.log(`[probeb ${new Date().toLocaleTimeString()}]`, ...args);
 }
 
-async function maybeAlertStrong(pred: {
+async function maybeAlertAuto(pred: {
   side: "BUY" | "SELL";
   probabilityPct: number;
   confidencePct: number;
   barTime: number;
-  quality?: string;
   entry?: number;
   sl?: number;
   tp1?: number;
   autoOpened?: boolean;
 }): Promise<void> {
-  if (pred.quality && pred.quality !== "strong") return;
-  if (pred.probabilityPct < ALERT_PROB_MIN) return;
-  if (pred.confidencePct < ALERT_CONF_MIN) return;
+  if (pred.probabilityPct <= PROBEB_AUTO_WIN_MIN) return;
   if (lastAlertBar === pred.barTime) return;
   lastAlertBar = pred.barTime;
   const levels =
@@ -46,18 +43,16 @@ async function maybeAlertStrong(pred: {
       : `\nLevels ±$${PROBEB_AUTO_DISTANCE} from live`;
   const body = [
     `Agli M5 candle: ${pred.side}`,
-    `Winning probability ${pred.probabilityPct.toFixed(1)}%`,
+    `Winning probability ${pred.probabilityPct.toFixed(1)}% (>${PROBEB_AUTO_WIN_MIN}%)`,
     `Confidence ${pred.confidencePct}%`,
     pred.autoOpened
       ? `Demo AUTO OPENED${levels}`
-      : `STRONG — demo auto ±$${PROBEB_AUTO_DISTANCE} (agar auto-follow ON)`,
-    `HTF+edge cleared.`,
+      : `Win >${PROBEB_AUTO_WIN_MIN}% — demo auto ±$${PROBEB_AUTO_DISTANCE} (agar auto-follow ON)`,
   ].join("\n");
   log(
-    "STRONG ALERT",
+    "AUTO ALERT",
     pred.side,
     `${pred.probabilityPct}%`,
-    `conf ${pred.confidencePct}%`,
     pred.autoOpened ? "DEMO OPEN" : "",
   );
   await dispatchTradeAlert({
@@ -66,8 +61,8 @@ async function maybeAlertStrong(pred: {
     mode: "probeb",
     side: pred.side,
     title: pred.autoOpened
-      ? "PROBEB STRONG — DEMO ±$2 OPEN"
-      : "PROBEB STRONG — NEXT CANDLE",
+      ? "PROBEB — DEMO ±$2 OPEN"
+      : "PROBEB — WIN>60% SETUP",
     body,
     tagPrefix: "[Probeb]",
   });
