@@ -162,10 +162,15 @@ export function nextCandleSide(
   i: number,
 ): ProbebSide | null {
   if (i + 1 >= primary.length) return null;
-  const a = primary[i].close;
-  const b = primary[i + 1].close;
-  if (!(Number.isFinite(a) && Number.isFinite(b)) || a === b) return null;
-  return b > a ? "BUY" : "SELL";
+  const a = primary[i];
+  const b = primary[i + 1];
+  if (!(Number.isFinite(a.close) && Number.isFinite(b.close))) return null;
+  if (b.close > a.close) return "BUY";
+  if (b.close < a.close) return "SELL";
+  if (b.close > b.open) return "BUY";
+  if (b.close < b.open) return "SELL";
+  // Flat doji — still label so live resolve never sticks.
+  return b.high - b.close >= b.close - b.low ? "SELL" : "BUY";
 }
 
 type BucketStat = { up: number; dn: number };

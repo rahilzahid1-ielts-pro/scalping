@@ -1,72 +1,25 @@
 /**
- * Probeb worker — one call per closed M5 slot, HTF-gated, resolve SAHI/GALAT.
+ * Probeb worker — every tick: live-M5 ingest + resolve + one predict / slot.
  */
-import { fetchMultiTimeframe } from "../src/services/marketData";
-import {
-  closedM5Bars,
-  diagnoseProbeb,
-  m5FloorMs,
-  nextCandleSide,
-} from "../src/strategies/probebEngine";
+import { syncProbebLive } from "../src/probeb/syncLive";
 import {
   getLiveProbebDb,
-  getLatestProbeb,
-  insertProbebRow,
-  listPendingProbeb,
-  predictionToRow,
   purgeUnstablePending,
-  resolveProbeb,
   dayAccuracy,
 } from "../src/probeb/store";
 import { karachiYmd } from "../src/history/apiHistory";
 import { dispatchTradeAlert } from "../src/services/notify";
 
-const TICK_MS = Number(process.env.PROBEB_TICK_MS) || 20_000;
+const TICK_MS = Number(process.env.PROBEB_TICK_MS) || 10_000;
 const ASSET = "XAUUSD" as const;
 const ALERT_PROB_MIN = Number(process.env.PROBEB_ALERT_PROB_MIN) || 60;
 const ALERT_CONF_MIN = Number(process.env.PROBEB_ALERT_CONF_MIN) || 40;
 
 let workerRunning = false;
-let lastPredictedBar: number | null = null;
 let lastAlertBar: number | null = null;
 
 function log(...args: unknown[]) {
   console.log(`[probeb ${new Date().toLocaleTimeString()}]`, ...args);
-}
-
-function resolvePending(
-  db: ReturnType<typeof getLiveProbebDb>,
-  primary: { time: number; open: number; high: number; low: number; close: number; volume: number }[],
-): void {
-  const closed = closedM5Bars(primary);
-  for (const pending of listPendingProbeb(db)) {
-    const want = m5FloorMs(pending.barTime);
-    let idx = -1;
-    for (let i = 0; i < closed.length; i++) {
-      if (closed[i].time === want) {
-        idx = i;
-        break;
-      }
-    }
-    if (idx < 0 || idx + 1 >= closed.length) continue;
-    const actual = nextCandleSide(closed, idx);
-    if (!actual) continue;
-    resolveProbeb(db, pending.id, actual);
-    const ok = actual === pending.predictedSide;
-    log(
-      ok ? "SAHI" : "GALAT",
-      pending.predictedSide,
-      "→",
-      actual,
-      `win ${pending.probabilityPct}% conf ${pending.confidencePct}%`,
-    );
-  }
-  const today = dayAccuracy(db, karachiYmd(Date.now()));
-  if (today.resolved > 0) {
-    log(
-      `aaj ${today.dayKey}: sahi ${today.correct} · galat ${today.wrong} · ${today.accuracyPct}%`,
-    );
-  }
 }
 
 async function maybeAlertStrong(pred: {
@@ -74,7 +27,9 @@ async function maybeAlertStrong(pred: {
   probabilityPct: number;
   confidencePct: number;
   barTime: number;
+  quality?: string;
 }): Promise<void> {
+  if (pred.quality && pred.quality !== "strong") return;
   if (pred.probabilityPct < ALERT_PROB_MIN) return;
   if (pred.confidencePct < ALERT_CONF_MIN) return;
   if (lastAlertBar === pred.barTime) return;
@@ -98,43 +53,30 @@ async function maybeAlertStrong(pred: {
 }
 
 async function tick(): Promise<void> {
-  const frames = await fetchMultiTimeframe(ASSET, "scalping", undefined, {
-    rebaseToLive: true,
-  });
-  if (!frames.primary || frames.primary.length < 100) {
-    log("no candles");
-    return;
+  const synced = await syncProbebLive();
+  if (synced.resolved > 0) {
+    log("resolved", synced.resolved);
+    const today = dayAccuracy(getLiveProbebDb(), karachiYmd(Date.now()));
+    if (today.resolved > 0) {
+      log(
+        `aaj ${today.dayKey}: sahi ${today.correct} · galat ${today.wrong} · ${today.accuracyPct}%`,
+      );
+    }
   }
-
-  const db = getLiveProbebDb();
-  resolvePending(db, frames.primary);
-
-  const diag = diagnoseProbeb(frames);
-  if (!diag.signal) {
-    if (diag.waitReason) log("wait:", diag.waitReason);
-    return;
+  if (synced.inserted) {
+    const pred = synced.inserted;
+    log(
+      "predict agli candle",
+      pred.side,
+      `target=${new Date(pred.targetBarTime).toISOString().slice(11, 16)}Z`,
+      `win ${pred.probabilityPct}%`,
+      `conf ${pred.confidencePct}%`,
+      pred.quality,
+    );
+    await maybeAlertStrong(pred);
+  } else if (!synced.signal && synced.waitReason) {
+    log("wait:", synced.waitReason);
   }
-  const pred = diag.signal;
-
-  if (lastPredictedBar === pred.barTime) return;
-  const latest = getLatestProbeb(db);
-  if (latest && m5FloorMs(latest.barTime) === pred.barTime) {
-    lastPredictedBar = pred.barTime;
-    return;
-  }
-
-  lastPredictedBar = pred.barTime;
-
-  insertProbebRow(db, predictionToRow(pred, "live"));
-  log(
-    "predict agli candle",
-    pred.side,
-    `target=${new Date(pred.targetBarTime).toISOString().slice(11, 16)}Z`,
-    `win ${pred.probabilityPct}%`,
-    `conf ${pred.confidencePct}%`,
-    pred.quality,
-  );
-  if (pred.quality === "strong") await maybeAlertStrong(pred);
 }
 
 export function startProbebWorker(): void {
@@ -144,7 +86,7 @@ export function startProbebWorker(): void {
   }
   workerRunning = true;
   log(
-    `started — Probeb every closed M5 · strong alert ≥${ALERT_PROB_MIN}% + conf ≥${ALERT_CONF_MIN}%`,
+    `started — live M5 clock · every closed M5 · strong alert ≥${ALERT_PROB_MIN}% + conf ≥${ALERT_CONF_MIN}%`,
   );
   try {
     const n = purgeUnstablePending(getLiveProbebDb());
@@ -168,7 +110,9 @@ export function shouldAutoStartProbebWorker(): boolean {
   const flag = (process.env.ENABLE_PROBEB_WORKER ?? "auto").toLowerCase();
   if (flag === "0" || flag === "false" || flag === "off") return false;
   if (flag === "1" || flag === "true" || flag === "on") return true;
-  return Boolean(process.env.RAILWAY_ENVIRONMENT);
+  // Default ON in prod / Railway; also ON when not explicitly disabled locally
+  // so /api sync + worker both keep the desk live.
+  return true;
 }
 
 async function main() {

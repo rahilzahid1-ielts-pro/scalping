@@ -97,7 +97,7 @@ export function ProbebCard() {
         });
     };
     load();
-    const t = setInterval(load, 12_000);
+    const t = setInterval(load, 5_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -117,6 +117,7 @@ export function ProbebCard() {
         <h2>Probeb</h2>
         <p className="muted">
           Har M5 close pe: upar agli candle predict · 5 min baad niche SAHI/GALAT
+          (live TV price se M5 clock — Yahoo lag pe atka nahi)
         </p>
       </div>
 
