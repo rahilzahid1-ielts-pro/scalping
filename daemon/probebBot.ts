@@ -10,6 +10,7 @@ import {
 } from "../src/strategies/probebEngine";
 import {
   getLiveProbebDb,
+  getLatestProbeb,
   insertProbebRow,
   listPendingProbeb,
   predictionToRow,
@@ -116,17 +117,24 @@ async function tick(): Promise<void> {
   const pred = diag.signal;
 
   if (lastPredictedBar === pred.barTime) return;
+  const latest = getLatestProbeb(db);
+  if (latest && m5FloorMs(latest.barTime) === pred.barTime) {
+    lastPredictedBar = pred.barTime;
+    return;
+  }
+
   lastPredictedBar = pred.barTime;
 
   insertProbebRow(db, predictionToRow(pred, "live"));
   log(
-    "predict next M5",
+    "predict agli candle",
     pred.side,
+    `target=${new Date(pred.targetBarTime).toISOString().slice(11, 16)}Z`,
     `win ${pred.probabilityPct}%`,
     `conf ${pred.confidencePct}%`,
-    `n=${pred.sampleN}`,
+    pred.quality,
   );
-  await maybeAlertStrong(pred);
+  if (pred.quality === "strong") await maybeAlertStrong(pred);
 }
 
 export function startProbebWorker(): void {
@@ -136,7 +144,7 @@ export function startProbebWorker(): void {
   }
   workerRunning = true;
   log(
-    `started — Probeb accuracy gates · strong alert ≥${ALERT_PROB_MIN}% + conf ≥${ALERT_CONF_MIN}%`,
+    `started — Probeb every closed M5 · strong alert ≥${ALERT_PROB_MIN}% + conf ≥${ALERT_CONF_MIN}%`,
   );
   try {
     const n = purgeUnstablePending(getLiveProbebDb());

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 type Side = "BUY" | "SELL";
+type Quality = "strong" | "normal" | "weak";
 
 interface DayAcc {
   dayKey: string;
@@ -23,6 +24,8 @@ interface ProbebPayload {
     bucket: string;
     sampleN: number;
     barTime: number;
+    targetBarTime: number;
+    quality: Quality;
     reason: string[];
   } | null;
   latest: {
@@ -51,6 +54,7 @@ interface ProbebPayload {
     actualSide: Side | null;
     correct: number | null;
     barTime: number;
+    targetBarTime?: number;
   }>;
   waitReason: string | null;
 }
@@ -73,10 +77,6 @@ function pkt(ms: number): string {
   }
 }
 
-function isStrong(prob: number, conf: number): boolean {
-  return prob >= 60 && conf >= 40;
-}
-
 export function ProbebCard() {
   const [data, setData] = useState<ProbebPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,7 +97,7 @@ export function ProbebCard() {
         });
     };
     load();
-    const t = setInterval(load, 15_000);
+    const t = setInterval(load, 12_000);
     return () => {
       cancelled = true;
       clearInterval(t);
@@ -106,31 +106,34 @@ export function ProbebCard() {
 
   const live = data?.live;
   const today = data?.today;
-  const strong = live ? isStrong(live.probabilityPct, live.confidencePct) : false;
   const wrongLifetime =
     (data?.lifetime.resolved ?? 0) - (data?.lifetime.correct ?? 0);
+  const pending = (data?.recent ?? []).filter((r) => r.correct == null);
+  const settled = (data?.recent ?? []).filter((r) => r.correct != null);
 
   return (
     <div className="card strategy-card probeb-card">
       <div className="card-head">
         <h2>Probeb</h2>
         <p className="muted">
-          Sirf clear edge + HTF agree pe call · warna wait · aaj sahi/galat %
+          Har M5 close pe: upar agli candle predict · 5 min baad niche SAHI/GALAT
         </p>
       </div>
 
       {error && <p className="error">{error}</p>}
       {!data && !error && <p className="muted">Loading…</p>}
-      {data?.waitReason && (
-        <p className={live ? "muted" : "probeb-wait"}>{data.waitReason}</p>
+      {data?.waitReason && !live && (
+        <p className="probeb-wait">{data.waitReason}</p>
       )}
 
       {live && (
         <div
-          className={`probeb-hero ${live.side === "BUY" ? "buy" : "sell"}${strong ? " strong" : ""}`}
+          className={`probeb-hero ${live.side === "BUY" ? "buy" : "sell"}${
+            live.quality === "strong" ? " strong" : ""
+          }`}
         >
           <div className="probeb-hero-label">
-            {strong ? "STRONG — agli M5 candle" : "Agli M5 candle lean"}
+            Agli candle kya banegi? · {pkt(live.targetBarTime)} PKT slot
           </div>
           <div className="probeb-hero-side">{live.side}</div>
           <div className="probeb-hero-metrics">
@@ -143,15 +146,17 @@ export function ProbebCard() {
               <strong>{live.confidencePct}%</strong>
             </div>
             <div>
-              <span className="muted">Sample</span>
-              <strong>n={live.sampleN}</strong>
+              <span className="muted">Quality</span>
+              <strong>{live.quality.toUpperCase()}</strong>
             </div>
           </div>
-          {strong && (
-            <p className="probeb-strong-note">
-              Strong call — alert bhi jayega (Push/Telegram agar on ho).
-            </p>
-          )}
+          <p className="probeb-strong-note">
+            {live.quality === "strong"
+              ? "STRONG — alert on (Push/Telegram agar enabled)."
+              : live.quality === "normal"
+                ? "Normal lean — 5 min baad result table mein SAHI/GALAT aayega."
+                : "Weak lean (thin/edge) — phir bhi predict dikhaya; result track hoga."}
+          </p>
         </div>
       )}
 
@@ -177,8 +182,8 @@ export function ProbebCard() {
             </div>
           </div>
           <p className="muted" style={{ marginTop: "0.5rem" }}>
-            Strong calls (conf≥40): sahi {today.hiCorrect} · galat {today.hiWrong}{" "}
-            · {pct(today.hiAccuracyPct)}
+            Strong: sahi {today.hiCorrect} · galat {today.hiWrong} ·{" "}
+            {pct(today.hiAccuracyPct)}
             {" · "}
             Lifetime sahi {data?.lifetime.correct ?? 0} / galat {wrongLifetime} (
             {pct(data?.lifetime.accuracyPct)})
@@ -189,31 +194,59 @@ export function ProbebCard() {
         </div>
       )}
 
-      {data?.recent && data.recent.length > 0 && (
-        <div style={{ marginTop: "1.25rem" }}>
-          <h3>Har 5 min — result</h3>
+      {pending.length > 0 && (
+        <div style={{ marginTop: "1.1rem" }}>
+          <h3>Pending — agli candle close ka wait</h3>
           <table className="history-table">
             <thead>
               <tr>
-                <th>M5 (PKT)</th>
+                <th>Target M5</th>
                 <th>Predict</th>
                 <th>Win %</th>
                 <th>Conf</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pending.slice(0, 6).map((r) => (
+                <tr key={`p-${r.barTime}`}>
+                  <td>{pkt(r.targetBarTime ?? r.barTime + 5 * 60 * 1000)}</td>
+                  <td
+                    className={
+                      r.predictedSide === "BUY" ? "side-buy" : "side-sell"
+                    }
+                  >
+                    {r.predictedSide}
+                  </td>
+                  <td>{r.probabilityPct.toFixed(1)}%</td>
+                  <td>{r.confidencePct}%</td>
+                  <td className="muted">waiting…</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {settled.length > 0 && (
+        <div style={{ marginTop: "1.25rem" }}>
+          <h3>Result (5 min baad) — SAHI / GALAT</h3>
+          <table className="history-table">
+            <thead>
+              <tr>
+                <th>Target M5</th>
+                <th>Predict</th>
+                <th>Win %</th>
                 <th>Actual</th>
                 <th>Result</th>
               </tr>
             </thead>
             <tbody>
-              {data.recent.map((r) => {
-                const result =
-                  r.correct == null
-                    ? "pending"
-                    : r.correct === 1
-                      ? "SAHI"
-                      : "GALAT";
+              {settled.slice(0, 20).map((r) => {
+                const result = r.correct === 1 ? "SAHI" : "GALAT";
                 return (
-                  <tr key={r.barTime}>
-                    <td>{pkt(r.barTime)}</td>
+                  <tr key={`s-${r.barTime}`}>
+                    <td>{pkt(r.targetBarTime ?? r.barTime + 5 * 60 * 1000)}</td>
                     <td
                       className={
                         r.predictedSide === "BUY" ? "side-buy" : "side-sell"
@@ -222,7 +255,6 @@ export function ProbebCard() {
                       {r.predictedSide}
                     </td>
                     <td>{r.probabilityPct.toFixed(1)}%</td>
-                    <td>{r.confidencePct}%</td>
                     <td>
                       {r.actualSide ? (
                         <span
@@ -233,17 +265,13 @@ export function ProbebCard() {
                           {r.actualSide}
                         </span>
                       ) : (
-                        "…"
+                        "—"
                       )}
                     </td>
                     <td>
                       <span
                         className={
-                          result === "SAHI"
-                            ? "probeb-sahi"
-                            : result === "GALAT"
-                              ? "probeb-galat"
-                              : "muted"
+                          result === "SAHI" ? "probeb-sahi" : "probeb-galat"
                         }
                       >
                         {result}

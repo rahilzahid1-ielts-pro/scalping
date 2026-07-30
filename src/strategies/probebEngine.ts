@@ -1,8 +1,9 @@
 /**
  * Probeb — next M5 candle direction (local, $0 API).
  *
- * Accuracy-first: only emit when empirical edge is real AND HTF does not fight.
- * Bar identity = floored M5 open (never live-rebase wall-clock pollution).
+ * Every closed M5 emits a lean for the *next* candle (always visible).
+ * Quality tags strong/normal/weak; strong calls can alert.
+ * Bar identity = floored M5 open (no live-rebase spam).
  */
 import type { Candle } from "../types";
 import { atr } from "./indicators";
@@ -10,6 +11,7 @@ import { computeRegime } from "./signalEngine";
 import type { RegimeTag } from "../calibration/types";
 
 export type ProbebSide = "BUY" | "SELL";
+export type ProbebQuality = "strong" | "normal" | "weak";
 
 export type ProbebPrediction = {
   side: ProbebSide;
@@ -17,7 +19,11 @@ export type ProbebPrediction = {
   confidencePct: number;
   bucket: string;
   sampleN: number;
+  /** Closed M5 this call is based on. */
   barTime: number;
+  /** The candle being predicted (barTime + 5m). */
+  targetBarTime: number;
+  quality: ProbebQuality;
   reason: string[];
 };
 
@@ -33,12 +39,12 @@ export type ProbebDiagnose = {
   signal: ProbebPrediction | null;
 };
 
-const MIN_TRAIN = 120;
+const MIN_TRAIN = 80;
 const LOOKBACK = 2000;
-const MIN_BUCKET_N = 20;
-/** Don't publish coin-flip leans. */
-const MIN_EDGE_P = 0.56;
-const M5_MS = 5 * 60 * 1000;
+const MIN_BUCKET_N = 12;
+const STRONG_EDGE_P = 0.58;
+const STRONG_CONF = 40;
+export const M5_MS = 5 * 60 * 1000;
 
 /** Stable M5 open timestamp (ms). */
 export function m5FloorMs(t: number): number {
@@ -48,7 +54,6 @@ export function m5FloorMs(t: number): number {
 
 /**
  * Bars whose M5 slot is fully closed (strictly before the current wall-clock slot).
- * Avoids live-rebase timestamps stuck on the forming candle.
  */
 export function closedM5Bars(primary: Candle[], now = Date.now()): Candle[] {
   const slot = m5FloorMs(now);
@@ -56,7 +61,6 @@ export function closedM5Bars(primary: Candle[], now = Date.now()): Candle[] {
   for (const c of primary) {
     const flo = m5FloorMs(c.time);
     if (flo >= slot) continue;
-    // Keep last print for that slot (stable OHLC if duplicates).
     bySlot.set(flo, { ...c, time: flo });
   }
   return [...bySlot.entries()]
@@ -195,6 +199,25 @@ function confidenceFrom(n: number, edge: number): number {
   return Math.round(100 * (0.45 * nScore + 0.55 * eScore));
 }
 
+function momentumSide(
+  streak: "up" | "dn" | "mix",
+  localTrend: "up" | "dn" | "flat",
+  htf: "up" | "dn" | "flat",
+): { side: ProbebSide; p: number } {
+  if (htf === "dn" || (htf === "flat" && (streak === "dn" || localTrend === "dn"))) {
+    return { side: "SELL", p: 0.54 };
+  }
+  if (htf === "up" || (htf === "flat" && (streak === "up" || localTrend === "up"))) {
+    return { side: "BUY", p: 0.54 };
+  }
+  if (streak === "dn") return { side: "SELL", p: 0.52 };
+  if (streak === "up") return { side: "BUY", p: 0.52 };
+  return { side: "BUY", p: 0.5 };
+}
+
+/**
+ * Always returns a next-candle lean when enough closed M5 exists.
+ */
 export function diagnoseProbeb(
   frames: ProbebFrames,
   now = Date.now(),
@@ -218,57 +241,70 @@ export function diagnoseProbeb(
   const streak = streakDir(closed, i);
   const localTrend = cheapTrend(closed, i);
 
-  if (n < MIN_BUCKET_N) {
-    return {
-      pass: false,
-      waitReason: `Probeb: thin bucket n=${n} < ${MIN_BUCKET_N} — wait clear setup`,
-      signal: null,
-    };
+  let pUp: number;
+  if (n >= MIN_BUCKET_N) {
+    pUp = stat.up / n;
+  } else {
+    let gUp = 0;
+    let gN = 0;
+    for (const s of buckets.values()) {
+      gUp += s.up;
+      gN += s.up + s.dn;
+    }
+    const base = gN > 0 ? gUp / gN : 0.5;
+    const mom = momentumSide(streak, localTrend, htf);
+    const momUp = mom.side === "BUY" ? mom.p : 1 - mom.p;
+    const w = n / MIN_BUCKET_N;
+    const bucketP = n > 0 ? stat.up / n : base;
+    pUp = w * bucketP + (1 - w) * 0.5 * (base + momUp);
   }
 
-  const pUp = stat.up / n;
+  if (htf === "dn") pUp = Math.min(pUp, 0.48);
+  if (htf === "up") pUp = Math.max(pUp, 0.52);
+
   let side: ProbebSide = pUp >= 0.5 ? "BUY" : "SELL";
   let rawP = side === "BUY" ? pUp : 1 - pUp;
 
-  // HTF hard veto — don't fade M15/H1 trend (today's BUY-into-dump failure mode).
   if (htf === "dn" && side === "BUY") {
-    return {
-      pass: false,
-      waitReason: "Probeb: HTF TREND_DOWN — BUY fade band",
-      signal: null,
-    };
-  }
-  if (htf === "up" && side === "SELL") {
-    return {
-      pass: false,
-      waitReason: "Probeb: HTF TREND_UP — SELL fade band",
-      signal: null,
-    };
-  }
-
-  // Momentum agree: need streak or local trend with the call.
-  const momOk =
-    (side === "BUY" && (streak === "up" || localTrend === "up" || htf === "up")) ||
-    (side === "SELL" && (streak === "dn" || localTrend === "dn" || htf === "dn"));
-  if (!momOk) {
-    return {
-      pass: false,
-      waitReason: `Probeb: ${side} vs momentum ${streak}/${localTrend} — agree nahi`,
-      signal: null,
-    };
-  }
-
-  if (rawP < MIN_EDGE_P) {
-    return {
-      pass: false,
-      waitReason: `Probeb: edge weak (${(rawP * 100).toFixed(1)}% < ${MIN_EDGE_P * 100}%) — no call`,
-      signal: null,
-    };
+    side = "SELL";
+    rawP = Math.max(0.52, 1 - pUp);
+  } else if (htf === "up" && side === "SELL") {
+    side = "BUY";
+    rawP = Math.max(0.52, pUp);
   }
 
   const probabilityPct = Math.round(rawP * 1000) / 10;
-  const confidencePct = confidenceFrom(n, Math.abs(pUp - 0.5));
-  const barTime = closed[i].time; // already floored in closedM5Bars
+  const confidencePct = confidenceFrom(Math.max(n, 1), Math.abs(pUp - 0.5));
+  const barTime = closed[i].time;
+  const targetBarTime = barTime + M5_MS;
+
+  const htfAgree =
+    (side === "BUY" && htf === "up") || (side === "SELL" && htf === "dn");
+  const momOk =
+    (side === "BUY" && (streak === "up" || localTrend === "up" || htf === "up")) ||
+    (side === "SELL" && (streak === "dn" || localTrend === "dn" || htf === "dn"));
+
+  let quality: ProbebQuality = "weak";
+  if (
+    n >= MIN_BUCKET_N &&
+    rawP >= STRONG_EDGE_P &&
+    confidencePct >= STRONG_CONF &&
+    htfAgree &&
+    momOk
+  ) {
+    quality = "strong";
+  } else if (n >= 8 && rawP >= 0.53 && momOk) {
+    quality = "normal";
+  }
+
+  const note =
+    quality === "strong"
+      ? "STRONG call"
+      : quality === "normal"
+        ? "Normal call"
+        : n < MIN_BUCKET_N
+          ? `Weak (thin n=${n})`
+          : `Weak (edge ${probabilityPct}%)`;
 
   return {
     pass: true,
@@ -280,10 +316,12 @@ export function diagnoseProbeb(
       bucket,
       sampleN: n,
       barTime,
+      targetBarTime,
+      quality,
       reason: [
-        `Bucket ${bucket} · n=${n}`,
-        `HTF ${htf} · streak ${streak} · trend ${localTrend}`,
-        `Agli M5 ${side} · win ${probabilityPct}% · conf ${confidencePct}%`,
+        `Agli candle → ${side}`,
+        `${note} · win ${probabilityPct}% · conf ${confidencePct}%`,
+        `HTF ${htf} · streak ${streak} · n=${n}`,
       ],
     },
   };
@@ -305,35 +343,21 @@ export function backtestProbebAccuracy(frames: ProbebFrames): {
   if (closed.length < MIN_TRAIN + 10) {
     return { resolved: 0, correct: 0, accuracyPct: null };
   }
-  const atrExp = precomputeAtrExpand(closed);
-  const htf = htfLean(frames.confirmation, frames.bias);
-  const end = closed.length - 1;
-  const testStart = Math.max(MIN_TRAIN, end - 400);
-  const buckets = trainBuckets(closed.slice(0, testStart + 1), atrExp, htf);
-
   let resolved = 0;
   let correct = 0;
-  for (let i = testStart; i < end; i++) {
-    const key = bucketAt(closed, i, atrExp, htf);
-    const stat = buckets.get(key) ?? { up: 0, dn: 0 };
-    const n = stat.up + stat.dn;
-    if (n < MIN_BUCKET_N) continue;
-    const pUp = stat.up / n;
-    const side: ProbebSide = pUp >= 0.5 ? "BUY" : "SELL";
-    const rawP = side === "BUY" ? pUp : 1 - pUp;
-    if (rawP < MIN_EDGE_P) continue;
-    if (htf === "dn" && side === "BUY") continue;
-    if (htf === "up" && side === "SELL") continue;
-    const streak = streakDir(closed, i);
-    const localTrend = cheapTrend(closed, i);
-    const momOk =
-      (side === "BUY" && (streak === "up" || localTrend === "up" || htf === "up")) ||
-      (side === "SELL" && (streak === "dn" || localTrend === "dn" || htf === "dn"));
-    if (!momOk) continue;
+  const end = closed.length - 1;
+  const start = Math.max(MIN_TRAIN, end - 300);
+  for (let i = start; i < end; i++) {
+    const slice: ProbebFrames = {
+      primary: closed.slice(0, i + 1),
+      confirmation: frames.confirmation,
+      bias: frames.bias,
+    };
+    const diag = diagnoseProbeb(slice, closed[i].time + M5_MS + 1000);
     const actual = nextCandleSide(closed, i);
-    if (!actual) continue;
+    if (!diag.signal || !actual) continue;
     resolved += 1;
-    if (side === actual) correct += 1;
+    if (diag.signal.side === actual) correct += 1;
   }
   return {
     resolved,

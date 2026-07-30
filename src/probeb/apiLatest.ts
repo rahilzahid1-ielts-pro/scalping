@@ -5,6 +5,7 @@ import { fetchMultiTimeframe } from "../services/marketData";
 import {
   backtestProbebAccuracy,
   diagnoseProbeb,
+  M5_MS,
 } from "../strategies/probebEngine";
 import { karachiYmd } from "../history/apiHistory";
 import {
@@ -21,7 +22,10 @@ export async function buildProbebLatestPayload() {
   const todayKey = karachiYmd(Date.now());
   const today = dayAccuracy(db, todayKey);
   const lifetime = lifetimeAccuracy(db);
-  const recent = listRecentProbebDeduped(db, 20);
+  const recent = listRecentProbebDeduped(db, 24).map((r) => ({
+    ...r,
+    targetBarTime: r.barTime + M5_MS,
+  }));
 
   let live: {
     side: "BUY" | "SELL";
@@ -30,6 +34,8 @@ export async function buildProbebLatestPayload() {
     bucket: string;
     sampleN: number;
     barTime: number;
+    targetBarTime: number;
+    quality: "strong" | "normal" | "weak";
     reason: string[];
   } | null = null;
   let walkAccuracy: {
@@ -52,10 +58,12 @@ export async function buildProbebLatestPayload() {
         bucket: diag.signal.bucket,
         sampleN: diag.signal.sampleN,
         barTime: diag.signal.barTime,
+        targetBarTime: diag.signal.targetBarTime,
+        quality: diag.signal.quality,
         reason: diag.signal.reason,
       };
     } else {
-      waitReason = diag.waitReason || "Probeb: no clear next-candle edge";
+      waitReason = diag.waitReason || "Probeb: history loading…";
     }
     walkAccuracy = backtestProbebAccuracy(frames);
   } catch (e) {
