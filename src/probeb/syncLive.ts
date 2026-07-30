@@ -25,6 +25,7 @@ import {
   listPendingProbeb,
   listRecentProbeb,
   predictionToRow,
+  replacePendingProbeb,
   resolveProbeb,
   forceResolveProbeb,
   type ProbebRow,
@@ -144,12 +145,40 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
   }
 
   const diag = diagnoseProbeb({ primary, confirmation, bias });
+  // Last closed still miles from live after scrub → never lock STRONG / auto off garbage.
+  const lastClose = primary.length ? primary[primary.length - 1]?.close : null;
+  const spikeVsLive =
+    lastClose != null &&
+    Number.isFinite(livePrice) &&
+    Math.abs(livePrice - lastClose) > 20;
+
   let inserted: ProbebPrediction | null = null;
-  if (diag.signal && maybeInsert(diag.signal)) {
+  if (diag.signal && !spikeVsLive && maybeInsert(diag.signal)) {
     inserted = diag.signal;
   }
 
-  const latest = getLatestProbeb(getLiveProbebDb());
+  const db = getLiveProbebDb();
+  let latest = getLatestProbeb(db);
+
+  // Spike scrub can flip the real lean — rewrite still-pending lock so hero
+  // doesn't keep a fake STRONG BUY while gold dumps on the live tape.
+  if (
+    diag.signal &&
+    !spikeVsLive &&
+    latest &&
+    latest.actualSide == null &&
+    m5FloorMs(latest.barTime) === m5FloorMs(diag.signal.barTime) &&
+    (latest.predictedSide !== diag.signal.side ||
+      (latest.probabilityPct >= 60 && diag.signal.quality === "weak") ||
+      Math.abs(latest.probabilityPct - diag.signal.probabilityPct) >= 12)
+  ) {
+    const row = predictionToRow(diag.signal, "live");
+    if (replacePendingProbeb(db, row)) {
+      latest = getLatestProbeb(db);
+      inserted = diag.signal;
+    }
+  }
+
   const locked =
     diag.signal &&
     latest &&
@@ -157,19 +186,22 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
       ? latest
       : null;
 
-  // Auto on fresh insert; also retry locked row if no demo fill yet (e.g. was
-  // locked as Normal before deskStrong rule — still in the same M5 slot).
+  const tradePred = spikeVsLive
+    ? null
+    : inserted
+      ? inserted
+      : locked
+        ? predictionFromLockedRow(locked)
+        : diag.signal;
+
   let autoTrade: ProbebAutoTradeResult | null = null;
-  if (inserted) {
-    autoTrade = tryProbebAutoTrade(inserted, livePrice, { primary });
-  } else if (locked) {
-    autoTrade = tryProbebAutoTrade(
-      predictionFromLockedRow(locked),
-      livePrice,
-      { primary },
-    );
-  } else if (diag.signal) {
-    autoTrade = tryProbebAutoTrade(diag.signal, livePrice, { primary });
+  if (spikeVsLive) {
+    autoTrade = {
+      ok: false,
+      reason: `M5 OHLC spike vs live ${livePrice.toFixed(2)} — signal scrub, no auto`,
+    };
+  } else if (tradePred) {
+    autoTrade = tryProbebAutoTrade(tradePred, livePrice, { primary });
   }
 
   return {
@@ -178,8 +210,19 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
     resolved,
     repaired,
     inserted,
-    signal: diag.signal,
-    locked,
+    signal: spikeVsLive && diag.signal
+      ? {
+          ...diag.signal,
+          quality: "weak",
+          probabilityPct: Math.min(diag.signal.probabilityPct, 52),
+          confidencePct: Math.min(diag.signal.confidencePct, 20),
+          reason: [
+            ...diag.signal.reason,
+            `Scrub: last M5 ${lastClose?.toFixed(2)} vs live ${livePrice.toFixed(2)} — not trusted`,
+          ],
+        }
+      : diag.signal,
+    locked: spikeVsLive ? null : locked,
     waitReason: diag.waitReason,
     autoTrade,
   };

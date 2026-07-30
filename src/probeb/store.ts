@@ -129,6 +129,27 @@ export function insertProbebRow(db: Database.Database, row: ProbebRow): void {
   ).run(row);
 }
 
+/** Replace a still-pending live prediction (spike scrub / wrong lock repair). */
+export function replacePendingProbeb(
+  db: Database.Database,
+  row: ProbebRow,
+): boolean {
+  const info = db
+    .prepare(
+      `UPDATE probeb_predictions
+       SET predicted_side = @predictedSide,
+           probability_pct = @probabilityPct,
+           confidence_pct = @confidencePct,
+           bucket = @bucket,
+           sample_n = @sampleN,
+           reason = @reason,
+           created_at = @createdAt
+       WHERE id = @id AND source = 'live' AND actual_side IS NULL`,
+    )
+    .run(row);
+  return Number(info.changes) > 0;
+}
+
 export function listPendingProbeb(db: Database.Database): ProbebRow[] {
   const rows = db
     .prepare(

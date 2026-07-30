@@ -169,6 +169,39 @@ export function aggregateM1ToM5(m1: Candle[]): Candle[] {
     }));
 }
 
+/** Collapse spiked OHLC onto a sane anchor (live or peer median). */
+export function scrubSpikedClosedBars(livePrice: number): void {
+  if (!(Number.isFinite(livePrice) && livePrice > 0)) return;
+  const mid = recentCloseMedian(12);
+  // Prefer live when it's near the peer mid; otherwise mid; else live.
+  let anchor = livePrice;
+  if (mid != null) {
+    if (Math.abs(livePrice - mid) <= SPIKE_USD) anchor = livePrice;
+    else anchor = mid;
+  }
+
+  const scrubOne = (b: Bucket): Bucket => {
+    const farClose = Math.abs(b.close - anchor) > SPIKE_USD;
+    const farHigh = Math.abs(b.high - anchor) > SPIKE_USD * 1.5;
+    const farLow = Math.abs(b.low - anchor) > SPIKE_USD * 1.5;
+    if (!farClose && !farHigh && !farLow) return b;
+    // Fake green/red impulse from a TV spike — flatten to anchor so diagnose
+    // cannot print STRONG BUY/SELL against the real tape.
+    return {
+      ...b,
+      open: anchor,
+      high: anchor,
+      low: anchor,
+      close: anchor,
+    };
+  };
+
+  for (let i = Math.max(0, closed.length - 8); i < closed.length; i++) {
+    closed[i] = scrubOne(closed[i]!);
+  }
+  if (forming) forming = scrubOne(forming);
+}
+
 /**
  * Ingest live price into the forming M5. Slot roll happens first (always).
  * Spike quotes are ignored for OHLC, but the clock still advances.
@@ -176,6 +209,7 @@ export function aggregateM1ToM5(m1: Candle[]): Candle[] {
 export function ingestProbebLivePrice(price: number, now = Date.now()): void {
   if (!Number.isFinite(price) || price <= 0) return;
   advanceProbebClock(now);
+  scrubSpikedClosedBars(price);
 
   const ref = forming?.close ?? closed[closed.length - 1]?.close;
   const mid = recentCloseMedian(8);
@@ -203,11 +237,12 @@ export function ingestProbebLivePrice(price: number, now = Date.now()): void {
   }
 
   if (lastIsOutlier) {
-    // Reset forming OHLC off the bad path onto the live print.
     forming.open = price;
     forming.high = price;
     forming.low = price;
     forming.close = price;
+    // Also flatten the last closed spike so diagnose cannot STRONG off it.
+    scrubSpikedClosedBars(price);
     return;
   }
 
@@ -289,5 +324,6 @@ export async function refreshProbebLiveM5(): Promise<{
   } catch {
     /* keep last good */
   }
+  scrubSpikedClosedBars(livePrice);
   return { primary: probebClosedM5(), livePrice };
 }
