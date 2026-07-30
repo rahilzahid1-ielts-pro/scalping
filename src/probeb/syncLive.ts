@@ -22,8 +22,10 @@ import {
   getLiveProbebDb,
   insertProbebRow,
   listPendingProbeb,
+  listRecentProbeb,
   predictionToRow,
   resolveProbeb,
+  forceResolveProbeb,
 } from "./store";
 import type { Candle } from "../types";
 
@@ -31,6 +33,7 @@ export type ProbebSyncResult = {
   primary: Candle[];
   livePrice: number;
   resolved: number;
+  repaired: number;
   inserted: ProbebPrediction | null;
   signal: ProbebPrediction | null;
   waitReason: string;
@@ -69,15 +72,39 @@ function resolvePendingOn(primary: Candle[], now = Date.now()): number {
 }
 
 function sideFromCloses(
-  a: Candle,
+  _a: Candle,
   b: Candle,
 ): "BUY" | "SELL" | null {
-  if (b.close > a.close) return "BUY";
-  if (b.close < a.close) return "SELL";
+  // Target candle body = chart green/red (same as nextCandleSide).
+  if (!(Number.isFinite(b.close) && Number.isFinite(b.open))) return null;
   if (b.close > b.open) return "BUY";
   if (b.close < b.open) return "SELL";
-  // True flat doji — still settle so UI never sticks forever.
+  if (Number.isFinite(_a.close)) {
+    if (b.close > _a.close) return "BUY";
+    if (b.close < _a.close) return "SELL";
+  }
   return b.high - b.close >= b.close - b.low ? "SELL" : "BUY";
+}
+
+function repairSettledOn(primary: Candle[], now = Date.now()): number {
+  const db = getLiveProbebDb();
+  const byTime = new Map(primary.map((c) => [c.time, c]));
+  const slot = m5FloorMs(now);
+  let n = 0;
+  for (const row of listRecentProbeb(db, 48)) {
+    if (row.actualSide == null) continue;
+    const predBar = m5FloorMs(row.barTime);
+    const targetBar = predBar + M5_MS;
+    if (targetBar >= slot) continue;
+    const a = byTime.get(predBar);
+    const b = byTime.get(targetBar);
+    if (!a || !b) continue;
+    const actual = sideFromCloses(a, b);
+    if (!actual || actual === row.actualSide) continue;
+    forceResolveProbeb(db, row.id, actual);
+    n += 1;
+  }
+  return n;
 }
 
 function maybeInsert(pred: ProbebPrediction): boolean {
@@ -91,6 +118,7 @@ function maybeInsert(pred: ProbebPrediction): boolean {
 export async function syncProbebLive(): Promise<ProbebSyncResult> {
   const { primary, livePrice } = await refreshProbebLiveM5();
   const resolved = resolvePendingOn(primary);
+  const repaired = repairSettledOn(primary);
 
   // HTF frames from Yahoo (lag OK for bias); primary = live M5 clock.
   let confirmation: Candle[] = [];
@@ -121,6 +149,7 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
     primary,
     livePrice,
     resolved,
+    repaired,
     inserted,
     signal: diag.signal,
     waitReason: diag.waitReason,

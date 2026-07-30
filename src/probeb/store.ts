@@ -202,6 +202,25 @@ export function resolveProbeb(
   ).run({ id, actualSide, correct, resolvedAt });
 }
 
+/** Re-write ACTUAL/correct even if already settled (body-color fix repair). */
+export function forceResolveProbeb(
+  db: Database.Database,
+  id: string,
+  actualSide: ProbebSide,
+  resolvedAt = Date.now(),
+): void {
+  const row = db
+    .prepare(`SELECT predicted_side FROM probeb_predictions WHERE id = ?`)
+    .get(id) as { predicted_side: string } | undefined;
+  if (!row) return;
+  const correct = row.predicted_side === actualSide ? 1 : 0;
+  db.prepare(
+    `UPDATE probeb_predictions
+     SET actual_side = @actualSide, correct = @correct, resolved_at = @resolvedAt
+     WHERE id = @id`,
+  ).run({ id, actualSide, correct, resolvedAt });
+}
+
 export type DayAccuracy = {
   dayKey: string;
   resolved: number;

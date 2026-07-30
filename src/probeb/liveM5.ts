@@ -109,22 +109,20 @@ export function aggregateM1ToM5(m1: Candle[]): Candle[] {
 
 /**
  * Ingest live price into the forming M5; roll closed buckets on slot change.
+ * Rejects quotes that diverge wildly from the last close (bad TV tick / wrong symbol).
  */
 export function ingestProbebLivePrice(price: number, now = Date.now()): void {
   if (!Number.isFinite(price) || price <= 0) return;
+  const ref = forming?.close ?? closed[closed.length - 1]?.close;
+  if (ref && Math.abs(price - ref) > 25) {
+    // Ignore spike (e.g. 4140 vs ~4078) — keep last good path.
+    return;
+  }
   const slot = m5FloorMs(now);
 
   if (forming && forming.time < slot) {
     pushClosed(forming);
     forming = null;
-  }
-  // Close any gap slots we skipped (weekend / downtime) — no synthetic OHLC;
-  // just start fresh at current slot.
-  while (closed.length && forming == null) {
-    const lastT = closed[closed.length - 1].time;
-    if (lastT + M5_MS >= slot) break;
-    // Missing bars between last closed and now — leave gap; diagnose tolerates it.
-    break;
   }
 
   if (!forming || forming.time !== slot) {
@@ -143,6 +141,48 @@ export function ingestProbebLivePrice(price: number, now = Date.now()): void {
   forming.close = price;
 }
 
+/** Overwrite recent closed slots with Yahoo/1m OHLC so body color matches the chart. */
+async function resyncRecentClosedFromFeed(): Promise<void> {
+  try {
+    let raw: Candle[] = [];
+    try {
+      raw = await fetchCandles("XAUUSD", "5m");
+    } catch {
+      raw = [];
+    }
+    try {
+      const m1 = aggregateM1ToM5(await fetchCandles("XAUUSD", "1m"));
+      const map = new Map<number, Candle>();
+      for (const c of raw) map.set(m5FloorMs(c.time), { ...c, time: m5FloorMs(c.time) });
+      for (const c of m1) map.set(c.time, c);
+      raw = [...map.values()].sort((a, b) => a.time - b.time);
+    } catch {
+      /* keep 5m */
+    }
+    if (raw.length < 10) return;
+    const nowSlot = m5FloorMs(Date.now());
+    const cutoff = nowSlot - 12 * 60 * 60 * 1000; // last 12h
+    for (const c of raw) {
+      const flo = m5FloorMs(c.time);
+      if (flo < cutoff || flo >= nowSlot) continue;
+      const bar: Bucket = {
+        time: flo,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+        volume: c.volume ?? 0,
+      };
+      const idx = closed.findIndex((x) => x.time === flo);
+      if (idx >= 0) closed[idx] = bar;
+      else pushClosed(bar);
+    }
+    closed.sort((a, b) => a.time - b.time);
+  } catch {
+    /* keep in-memory clock */
+  }
+}
+
 /** Closed M5 only (forming slot excluded) — Probeb identity. */
 export function probebClosedM5(): Candle[] {
   const slot = m5FloorMs(Date.now());
@@ -153,11 +193,18 @@ export function probebClosedM5(): Candle[] {
   return closed.filter((c) => c.time < slot).map((c) => ({ ...c }));
 }
 
+let lastResyncAt = 0;
+
 export async function refreshProbebLiveM5(): Promise<{
   primary: Candle[];
   livePrice: number;
 }> {
   await ensureProbebM5Seeded();
+  // Re-pull Yahoo/1m OHLC often so SAHI/GALAT uses real green/red bodies.
+  if (Date.now() - lastResyncAt > 60_000) {
+    await resyncRecentClosedFromFeed();
+    lastResyncAt = Date.now();
+  }
   let livePrice = closed[closed.length - 1]?.close ?? 0;
   try {
     const q = await fetchLiveQuote("XAUUSD");

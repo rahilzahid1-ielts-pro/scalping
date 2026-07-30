@@ -157,19 +157,26 @@ function bucketAt(
   return `${bd}|${cz}|${ax}|${st}|${tr}|${agree}`;
 }
 
+/**
+ * Direction of the *next* M5 candle = that candle's body (green/red),
+ * matching what the chart shows — NOT close-vs-prior-close (that marked
+ * green bars as SELL / red as BUY and confused SAHI/GALAT).
+ */
 export function nextCandleSide(
   primary: Candle[],
   i: number,
 ): ProbebSide | null {
   if (i + 1 >= primary.length) return null;
-  const a = primary[i];
   const b = primary[i + 1];
-  if (!(Number.isFinite(a.close) && Number.isFinite(b.close))) return null;
-  if (b.close > a.close) return "BUY";
-  if (b.close < a.close) return "SELL";
+  if (!(Number.isFinite(b.close) && Number.isFinite(b.open))) return null;
   if (b.close > b.open) return "BUY";
   if (b.close < b.open) return "SELL";
-  // Flat doji — still label so live resolve never sticks.
+  // Doji: fall back to close vs prior close.
+  const a = primary[i];
+  if (Number.isFinite(a.close)) {
+    if (b.close > a.close) return "BUY";
+    if (b.close < a.close) return "SELL";
+  }
   return b.high - b.close >= b.close - b.low ? "SELL" : "BUY";
 }
 
