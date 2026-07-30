@@ -176,7 +176,7 @@ export function ProbebCard() {
         });
     };
     load();
-    const t = setInterval(load, 5_000);
+    const t = setInterval(load, 2_000);
     return () => {
       cancelled = true;
       clearInterval(t);
