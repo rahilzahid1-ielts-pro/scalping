@@ -13,7 +13,6 @@ import {
 } from "../strategies/probebEngine";
 import { refreshProbebLiveM5 } from "./liveM5";
 import {
-  PROBEB_AUTO_DISTANCE,
   PROBEB_AUTO_WIN_MIN,
   tryProbebAutoTrade,
   type ProbebAutoTradeResult,
