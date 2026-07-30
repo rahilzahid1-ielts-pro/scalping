@@ -264,16 +264,24 @@ export function diagnoseProbeb(
     pUp = w * bucketP + (1 - w) * 0.5 * (base + momUp);
   }
 
-  if (htf === "dn") pUp = Math.min(pUp, 0.48);
-  if (htf === "up") pUp = Math.max(pUp, 0.52);
+  const lastBd = bodyDir(closed[i]);
+  const localBear =
+    lastBd === "dn" && (localTrend === "dn" || streak === "dn");
+  const localBull =
+    lastBd === "up" && (localTrend === "up" || streak === "up");
+
+  // Soft HTF nudge — never when local M5 is clearly the other way (red dump / green spike).
+  if (htf === "dn" && !localBull) pUp = Math.min(pUp, 0.48);
+  if (htf === "up" && !localBear) pUp = Math.max(pUp, 0.52);
 
   let side: ProbebSide = pUp >= 0.5 ? "BUY" : "SELL";
   let rawP = side === "BUY" ? pUp : 1 - pUp;
 
-  if (htf === "dn" && side === "BUY") {
+  // Respect live M5 color+trend: don't keep BUY while red/down prints (30 Jul autopsy).
+  if (localBear && side === "BUY") {
     side = "SELL";
     rawP = Math.max(0.52, 1 - pUp);
-  } else if (htf === "up" && side === "SELL") {
+  } else if (localBull && side === "SELL") {
     side = "BUY";
     rawP = Math.max(0.52, pUp);
   }
@@ -285,12 +293,16 @@ export function diagnoseProbeb(
 
   const htfAgree =
     (side === "BUY" && htf === "up") || (side === "SELL" && htf === "dn");
+  // Local momentum only — HTF alone used to mark STRONG BUY on red bars.
   const momOk =
-    (side === "BUY" && (streak === "up" || localTrend === "up" || htf === "up")) ||
-    (side === "SELL" && (streak === "dn" || localTrend === "dn" || htf === "dn"));
+    (side === "BUY" && (streak === "up" || localTrend === "up")) ||
+    (side === "SELL" && (streak === "dn" || localTrend === "dn"));
+  const fading =
+    (side === "BUY" && lastBd === "dn") || (side === "SELL" && lastBd === "up");
 
   let quality: ProbebQuality = "weak";
   if (
+    !fading &&
     n >= MIN_BUCKET_N &&
     rawP >= STRONG_EDGE_P &&
     confidencePct >= STRONG_CONF &&
@@ -298,7 +310,7 @@ export function diagnoseProbeb(
     momOk
   ) {
     quality = "strong";
-  } else if (n >= 8 && rawP >= 0.53 && momOk) {
+  } else if (n >= 8 && rawP >= 0.53 && momOk && !fading) {
     quality = "normal";
   }
 
@@ -307,9 +319,11 @@ export function diagnoseProbeb(
       ? "STRONG call"
       : quality === "normal"
         ? "Normal call"
-        : n < MIN_BUCKET_N
-          ? `Weak (thin n=${n})`
-          : `Weak (edge ${probabilityPct}%)`;
+        : fading
+          ? `Weak (fade ${lastBd} bar)`
+          : n < MIN_BUCKET_N
+            ? `Weak (thin n=${n})`
+            : `Weak (edge ${probabilityPct}%)`;
 
   return {
     pass: true,
@@ -326,7 +340,7 @@ export function diagnoseProbeb(
       reason: [
         `Agli candle → ${side}`,
         `${note} · win ${probabilityPct}% · conf ${confidencePct}%`,
-        `HTF ${htf} · streak ${streak} · n=${n}`,
+        `HTF ${htf} · body ${lastBd} · streak ${streak} · trend ${localTrend} · n=${n}`,
       ],
     },
   };
