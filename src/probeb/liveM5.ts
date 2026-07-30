@@ -1,13 +1,17 @@
 /**
  * Probeb M5 clock — Yahoo GC=F 5m lags / gaps, so we seed once then advance
  * buckets from TradingView live quotes. Closed bars roll every wall-clock M5.
+ *
+ * Critical: wall-clock slot roll must NEVER depend on accepting a live quote.
+ * Spike rejects used to early-return before roll → predictions lagged 1–2 slots.
  */
 import type { Candle } from "../types";
 import { fetchCandles } from "../services/marketData";
 import { fetchLiveQuote } from "../services/liveQuotes";
-import { m5FloorMs } from "../strategies/probebEngine";
+import { m5FloorMs, M5_MS } from "../strategies/probebEngine";
 
 const MAX_BARS = 2500;
+const SPIKE_USD = 25;
 
 type Bucket = Candle;
 
@@ -27,6 +31,64 @@ function pushClosed(b: Bucket): void {
   if (last && last.time > b.time) return;
   closed.push(b);
   if (closed.length > MAX_BARS) closed.splice(0, closed.length - MAX_BARS);
+}
+
+function lastGoodPx(): number {
+  return forming?.close ?? closed[closed.length - 1]?.close ?? 0;
+}
+
+/** Median of recent closed closes — resists a single spiked bar freezing the clock. */
+function recentCloseMedian(n = 8): number | null {
+  if (closed.length === 0) return null;
+  const sample = closed.slice(-n).map((c) => c.close).sort((a, b) => a - b);
+  return sample[Math.floor(sample.length / 2)] ?? null;
+}
+
+/**
+ * Advance closed/forming buckets to wall-clock `now` even with no quote.
+ * Fills skipped M5 slots so diagnose never sits on a stale last closed bar.
+ */
+export function advanceProbebClock(now = Date.now()): void {
+  const slot = m5FloorMs(now);
+
+  if (forming && forming.time < slot) {
+    pushClosed(forming);
+    forming = null;
+  }
+
+  const fillPx = lastGoodPx();
+  let lastT = closed[closed.length - 1]?.time;
+  if (lastT != null && fillPx > 0) {
+    // Cap catch-up so a huge gap doesn't invent hours of flat bars.
+    const maxFill = slot - 12 * M5_MS;
+    let t = lastT + M5_MS;
+    if (t < maxFill) t = maxFill;
+    for (; t < slot; t += M5_MS) {
+      if (closed.some((c) => c.time === t)) continue;
+      pushClosed({
+        time: t,
+        open: fillPx,
+        high: fillPx,
+        low: fillPx,
+        close: fillPx,
+        volume: 0,
+      });
+    }
+  }
+
+  if (!forming || forming.time !== slot) {
+    const px = fillPx > 0 ? fillPx : 0;
+    if (px > 0) {
+      forming = {
+        time: slot,
+        open: px,
+        high: px,
+        low: px,
+        close: px,
+        volume: 0,
+      };
+    }
+  }
 }
 
 function seedFromYahoo(raw: Candle[]): void {
@@ -52,6 +114,7 @@ function seedFromYahoo(raw: Candle[]): void {
     }
     pushClosed(b);
   }
+  advanceProbebClock(Date.now());
 }
 
 export async function ensureProbebM5Seeded(): Promise<void> {
@@ -65,7 +128,6 @@ export async function ensureProbebM5Seeded(): Promise<void> {
       } catch {
         raw = [];
       }
-      // Overlay recent 1m→M5 so the last few hours are less gappy than Yahoo 5m alone.
       try {
         const m1 = aggregateM1ToM5(await fetchCandles("XAUUSD", "1m"));
         const map = new Map<number, Candle>();
@@ -108,26 +170,29 @@ export function aggregateM1ToM5(m1: Candle[]): Candle[] {
 }
 
 /**
- * Ingest live price into the forming M5; roll closed buckets on slot change.
- * Rejects quotes that diverge wildly from the last close (bad TV tick / wrong symbol).
+ * Ingest live price into the forming M5. Slot roll happens first (always).
+ * Spike quotes are ignored for OHLC, but the clock still advances.
  */
 export function ingestProbebLivePrice(price: number, now = Date.now()): void {
   if (!Number.isFinite(price) || price <= 0) return;
+  advanceProbebClock(now);
+
   const ref = forming?.close ?? closed[closed.length - 1]?.close;
-  if (ref && Math.abs(price - ref) > 25) {
-    // Ignore spike (e.g. 4140 vs ~4078) — keep last good path.
+  const mid = recentCloseMedian(8);
+  const vsRef = ref != null ? Math.abs(price - ref) : 0;
+  const vsMid = mid != null ? Math.abs(price - mid) : 0;
+
+  // Last bar spiked (e.g. 4160) while live + peer mid are sane (~4100) → trust live.
+  const lastIsOutlier =
+    ref != null && mid != null && Math.abs(ref - mid) > SPIKE_USD && vsMid <= SPIKE_USD;
+
+  if (ref && vsRef > SPIKE_USD && !lastIsOutlier) {
     return;
   }
-  const slot = m5FloorMs(now);
 
-  if (forming && forming.time < slot) {
-    pushClosed(forming);
-    forming = null;
-  }
-
-  if (!forming || forming.time !== slot) {
+  if (!forming) {
     forming = {
-      time: slot,
+      time: m5FloorMs(now),
       open: price,
       high: price,
       low: price,
@@ -136,6 +201,16 @@ export function ingestProbebLivePrice(price: number, now = Date.now()): void {
     };
     return;
   }
+
+  if (lastIsOutlier) {
+    // Reset forming OHLC off the bad path onto the live print.
+    forming.open = price;
+    forming.high = price;
+    forming.low = price;
+    forming.close = price;
+    return;
+  }
+
   forming.high = Math.max(forming.high, price);
   forming.low = Math.min(forming.low, price);
   forming.close = price;
@@ -161,7 +236,7 @@ async function resyncRecentClosedFromFeed(): Promise<void> {
     }
     if (raw.length < 10) return;
     const nowSlot = m5FloorMs(Date.now());
-    const cutoff = nowSlot - 12 * 60 * 60 * 1000; // last 12h
+    const cutoff = nowSlot - 12 * 60 * 60 * 1000;
     for (const c of raw) {
       const flo = m5FloorMs(c.time);
       if (flo < cutoff || flo >= nowSlot) continue;
@@ -178,6 +253,7 @@ async function resyncRecentClosedFromFeed(): Promise<void> {
       else pushClosed(bar);
     }
     closed.sort((a, b) => a.time - b.time);
+    advanceProbebClock(Date.now());
   } catch {
     /* keep in-memory clock */
   }
@@ -185,11 +261,8 @@ async function resyncRecentClosedFromFeed(): Promise<void> {
 
 /** Closed M5 only (forming slot excluded) — Probeb identity. */
 export function probebClosedM5(): Candle[] {
+  advanceProbebClock(Date.now());
   const slot = m5FloorMs(Date.now());
-  if (forming && forming.time < slot) {
-    pushClosed(forming);
-    forming = null;
-  }
   return closed.filter((c) => c.time < slot).map((c) => ({ ...c }));
 }
 
@@ -200,18 +273,21 @@ export async function refreshProbebLiveM5(): Promise<{
   livePrice: number;
 }> {
   await ensureProbebM5Seeded();
-  // Re-pull Yahoo/1m OHLC often so SAHI/GALAT uses real green/red bodies.
-  if (Date.now() - lastResyncAt > 60_000) {
+  advanceProbebClock(Date.now());
+
+  // Re-pull Yahoo/1m often so SAHI/GALAT + clock stay on real OHLC.
+  if (Date.now() - lastResyncAt > 20_000) {
     await resyncRecentClosedFromFeed();
     lastResyncAt = Date.now();
   }
-  let livePrice = closed[closed.length - 1]?.close ?? 0;
+
+  let livePrice = lastGoodPx();
   try {
     const q = await fetchLiveQuote("XAUUSD");
     livePrice = q.price;
     ingestProbebLivePrice(livePrice);
   } catch {
-    if (forming) livePrice = forming.close;
+    /* keep last good */
   }
   return { primary: probebClosedM5(), livePrice };
 }

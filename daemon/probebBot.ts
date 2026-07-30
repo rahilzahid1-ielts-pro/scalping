@@ -149,7 +149,7 @@ export function startProbebWorker(): void {
   }
   workerRunning = true;
   log(
-    `started — STRONG+win>${PROBEB_AUTO_WIN_MIN} → demo ±$${PROBEB_AUTO_DISTANCE}`,
+    `started — win>${PROBEB_AUTO_WIN_MIN} + clock catch-up → demo ±$${PROBEB_AUTO_DISTANCE}`,
   );
   try {
     const n = purgeUnstablePending(getLiveProbebDb());

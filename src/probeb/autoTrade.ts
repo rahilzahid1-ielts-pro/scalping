@@ -112,9 +112,11 @@ export function tryProbebAutoTrade(
     return { ok: false, reason: "no live price" };
   }
 
-  const refClose = opts?.primary?.length
-    ? opts.primary[opts.primary.length - 1]?.close
-    : null;
+  const primary = opts?.primary ?? [];
+  const closes = primary.slice(-8).map((c) => c.close).filter((x) => x > 0);
+  const sorted = [...closes].sort((a, b) => a - b);
+  const mid = sorted.length ? sorted[Math.floor(sorted.length / 2)]! : null;
+  const refClose = mid ?? (primary.length ? primary[primary.length - 1]?.close : null);
   if (
     refClose != null &&
     Number.isFinite(refClose) &&
@@ -122,7 +124,7 @@ export function tryProbebAutoTrade(
   ) {
     return {
       ok: false,
-      reason: `quote spike blocked — live ${livePrice.toFixed(2)} vs M5 ${refClose.toFixed(2)} (>$${PROBEB_QUOTE_SPIKE_USD})`,
+      reason: `quote spike blocked — live ${livePrice.toFixed(2)} vs M5 mid ${refClose.toFixed(2)} (>$${PROBEB_QUOTE_SPIKE_USD})`,
     };
   }
 
