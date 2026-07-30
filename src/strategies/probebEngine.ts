@@ -84,6 +84,22 @@ function bodyDir(c: Candle): "up" | "dn" | "doji" {
   return body > 0 ? "up" : "dn";
 }
 
+/** 0..1 — big body + dollar range = chart "strong candle". */
+function impulseScore(c: Candle): number {
+  const range = c.high - c.low;
+  if (!(range > 0) || !Number.isFinite(range)) return 0;
+  const body = Math.abs(c.close - c.open);
+  const frac = body / range;
+  let s = 0;
+  if (frac >= 0.5) s += 0.35;
+  if (frac >= 0.65) s += 0.2;
+  if (frac >= 0.8) s += 0.1;
+  if (body >= 1.5) s += 0.15;
+  if (body >= 3) s += 0.15;
+  if (body >= 5) s += 0.1;
+  return Math.min(1, s);
+}
+
 function streakDir(primary: Candle[], i: number): "up" | "dn" | "mix" {
   if (i < 2) return "mix";
   const a = primary[i].close > primary[i - 1].close;
@@ -272,6 +288,8 @@ export function diagnoseProbeb(
   }
 
   const lastBd = bodyDir(closed[i]);
+  const impulse = impulseScore(closed[i]);
+  const atrOn = atrExp[i] === true;
   const localBear =
     lastBd === "dn" && (localTrend === "dn" || streak === "dn");
   const localBull =
@@ -287,14 +305,32 @@ export function diagnoseProbeb(
   // Respect live M5 color+trend: don't keep BUY while red/down prints (30 Jul autopsy).
   if (localBear && side === "BUY") {
     side = "SELL";
-    rawP = Math.max(0.52, 1 - pUp);
+    rawP = Math.max(0.55, 1 - pUp);
   } else if (localBull && side === "SELL") {
     side = "BUY";
-    rawP = Math.max(0.52, pUp);
+    rawP = Math.max(0.55, pUp);
   }
 
+  // Strong candle in lean direction → lift win% / conf (was stuck ~52% / 6%).
+  const impulseWithSide =
+    (side === "BUY" && lastBd === "up") || (side === "SELL" && lastBd === "dn");
+  if (impulseWithSide && impulse >= 0.35) {
+    rawP = Math.max(rawP, 0.58 + 0.14 * impulse);
+    if (atrOn && impulse >= 0.55) rawP = Math.max(rawP, 0.68);
+    if (impulse >= 0.75) rawP = Math.max(rawP, 0.72);
+  }
+
+  const edge = Math.abs(rawP - 0.5);
+  let confidencePct = confidenceFrom(Math.max(n, 1), edge);
+  if (impulseWithSide && impulse >= 0.35) {
+    confidencePct = Math.max(
+      confidencePct,
+      Math.round(28 + 50 * impulse + (atrOn ? 8 : 0)),
+    );
+  }
+  confidencePct = Math.min(95, confidencePct);
+
   const probabilityPct = Math.round(rawP * 1000) / 10;
-  const confidencePct = confidenceFrom(Math.max(n, 1), Math.abs(pUp - 0.5));
   const barTime = closed[i].time;
   const targetBarTime = barTime + M5_MS;
 
@@ -302,28 +338,37 @@ export function diagnoseProbeb(
     (side === "BUY" && htf === "up") || (side === "SELL" && htf === "dn");
   // Local momentum only — HTF alone used to mark STRONG BUY on red bars.
   const momOk =
-    (side === "BUY" && (streak === "up" || localTrend === "up")) ||
-    (side === "SELL" && (streak === "dn" || localTrend === "dn"));
+    (side === "BUY" && (streak === "up" || localTrend === "up" || lastBd === "up")) ||
+    (side === "SELL" && (streak === "dn" || localTrend === "dn" || lastBd === "dn"));
   const fading =
     (side === "BUY" && lastBd === "dn") || (side === "SELL" && lastBd === "up");
 
   let quality: ProbebQuality = "weak";
+  const strongImpulse =
+    impulseWithSide && impulse >= 0.55 && atrOn && rawP >= 0.62 && confidencePct >= 40;
   if (
     !fading &&
-    n >= MIN_BUCKET_N &&
-    rawP >= STRONG_EDGE_P &&
-    confidencePct >= STRONG_CONF &&
-    htfAgree &&
-    momOk
+    ((n >= MIN_BUCKET_N &&
+      rawP >= STRONG_EDGE_P &&
+      confidencePct >= STRONG_CONF &&
+      htfAgree &&
+      momOk) ||
+      (strongImpulse && (htfAgree || htf === "flat") && momOk))
   ) {
     quality = "strong";
-  } else if (n >= 8 && rawP >= 0.53 && momOk && !fading) {
+  } else if (
+    !fading &&
+    momOk &&
+    ((n >= 8 && rawP >= 0.53) || (impulseWithSide && impulse >= 0.4 && rawP >= 0.58))
+  ) {
     quality = "normal";
   }
 
   const note =
     quality === "strong"
-      ? "STRONG call"
+      ? impulseWithSide && impulse >= 0.55
+        ? "STRONG impulse candle"
+        : "STRONG call"
       : quality === "normal"
         ? "Normal call"
         : fading
@@ -347,7 +392,7 @@ export function diagnoseProbeb(
       reason: [
         `Agli candle → ${side}`,
         `${note} · win ${probabilityPct}% · conf ${confidencePct}%`,
-        `HTF ${htf} · body ${lastBd} · streak ${streak} · trend ${localTrend} · n=${n}`,
+        `HTF ${htf} · body ${lastBd} · impulse ${(impulse * 100).toFixed(0)}% · streak ${streak} · n=${n}`,
       ],
     },
   };
