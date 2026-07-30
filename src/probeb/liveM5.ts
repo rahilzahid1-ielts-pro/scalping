@@ -5,7 +5,7 @@
 import type { Candle } from "../types";
 import { fetchCandles } from "../services/marketData";
 import { fetchLiveQuote } from "../services/liveQuotes";
-import { M5_MS, m5FloorMs } from "../strategies/probebEngine";
+import { m5FloorMs } from "../strategies/probebEngine";
 
 const MAX_BARS = 2500;
 

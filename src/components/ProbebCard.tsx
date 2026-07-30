@@ -252,7 +252,10 @@ export function ProbebCard() {
 
       {settled.length > 0 && (
         <div style={{ marginTop: "1.25rem" }}>
-          <h3>Result (5 min baad) — SAHI / GALAT</h3>
+          <h3>
+            Result (5 min baad) — SAHI / GALAT
+            <span className="muted"> · actual = green/red candle</span>
+          </h3>
           <table className="history-table">
             <thead>
               <tr>
