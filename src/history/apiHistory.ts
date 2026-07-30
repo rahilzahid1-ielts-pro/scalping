@@ -8,6 +8,10 @@ import { getLiveProDb, listProRows } from "../pro/store";
 import { getLiveIntra30Db, listIntra30Rows } from "../intra30/store";
 import { getLivePulseDb, listPulseRows } from "../pulse/store";
 import { getLiveStrategyDb, listStrategyRows } from "../strategyCompare/store";
+import {
+  ensureDemoAccount,
+  listDemoPositions,
+} from "../demoAccount/store";
 
 const KARACHI_OFFSET_MS = 5 * 60 * 60 * 1000;
 
@@ -19,7 +23,8 @@ export type HistoryModuleId =
   | "pro"
   | "intra30"
   | "cipher_b"
-  | "fractal";
+  | "fractal"
+  | "probeb";
 
 export interface HistoryTrade {
   id: string;
@@ -84,6 +89,7 @@ const LABELS: Record<HistoryModuleId, string> = {
   intra30: "Intra30",
   cipher_b: "Cipher B",
   fractal: "TTrades Fractal",
+  probeb: "Probeb",
 };
 
 function pad2(n: number): string {
@@ -555,6 +561,35 @@ export async function buildHistoryPayload(opts: {
     });
   }
 
+  // Probeb demo autos (±$2) — full entry/SL/TP/P&L for History.
+  try {
+    ensureDemoAccount();
+  } catch {
+    /* demo db may be unavailable */
+  }
+  for (const p of safeCollect(() => listDemoPositions(200))) {
+    if (p.module !== "probeb") continue;
+    const outcome = p.status === "OPEN" ? "OPEN" : p.outcome;
+    if (!includeTrade(p.openedAt, p.openedAt, outcome)) continue;
+    if (seen.has(p.id)) continue;
+    seen.add(p.id);
+    pushTrade(all, {
+      id: p.id,
+      module: "probeb",
+      side: p.side,
+      entry: p.entry,
+      sl: p.sl,
+      tp1: p.tp1,
+      tp2: p.tp2,
+      outcome,
+      realizedR: p.realizedR,
+      lockedAt: p.openedAt,
+      executedAt: p.openedAt,
+      resolvedAt: p.closedAt,
+      regime: p.regime,
+    });
+  }
+
   all.sort((a, b) => b.at - a.at);
 
   const filtered =
@@ -571,6 +606,7 @@ export async function buildHistoryPayload(opts: {
     "pro",
     "cipher_b",
     "fractal",
+    "probeb",
   ];
   const byModule = modules
     .map((m) => summarize(m, all.filter((t) => t.module === m)))

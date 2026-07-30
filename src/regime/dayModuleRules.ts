@@ -22,7 +22,7 @@ import { gateLearnedLock } from "../learn/runtime";
 import { isFridayCloseOrWeekend } from "../utils/marketHours";
 import { findLeanOpenSameSide } from "./leanOpenSameSide";
 
-export type RegimeModule = HistoryModuleId;
+export type RegimeModule = Exclude<HistoryModuleId, "probeb">;
 
 export type RegimeTier =
   | "prefer"
@@ -234,7 +234,9 @@ export function scoreModulesFromTrades(
   for (const t of trades) {
     if (!t.executed) continue;
     if (!isWin(t.outcome) && !isLoss(t.outcome)) continue;
-    const s = out[t.module];
+    const mod = normalizeRegimeModule(t.module);
+    if (!mod) continue;
+    const s = out[mod];
     if (!s) continue;
     s.executed += 1;
     s.lastSide = t.side;

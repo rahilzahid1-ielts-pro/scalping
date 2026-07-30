@@ -9,7 +9,8 @@ type ModuleId =
   | "pro"
   | "intra30"
   | "cipher_b"
-  | "fractal";
+  | "fractal"
+  | "probeb";
 
 type ExecutionFilter = "all" | "executed" | "not_executed";
 type ResultFilter = "all" | "open" | "tp1" | "sl" | "invalidated";
@@ -172,6 +173,7 @@ const MODULES: { id: ModuleId; label: string }[] = [
   { id: "quick_scalp", label: "Quick Scalp" },
   { id: "qs_pro", label: "QS Pro" },
   { id: "pro", label: "Pro" },
+  { id: "probeb", label: "Probeb" },
   { id: "cipher_b", label: "Cipher B" },
   { id: "fractal", label: "Fractal" },
 ];
