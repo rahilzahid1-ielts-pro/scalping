@@ -344,6 +344,9 @@ export function diagnoseProbeb(
     (side === "BUY" && lastBd === "dn") || (side === "SELL" && lastBd === "up");
 
   let quality: ProbebQuality = "weak";
+  // Impulse path does not require HTF agree — local body already matches the
+  // lean (strongImpulse). HTF-agree stayed on the bucket path so we don't mark
+  // thin buckets STRONG against the higher TF.
   const strongImpulse =
     impulseWithSide && impulse >= 0.55 && atrOn && rawP >= 0.62 && confidencePct >= 40;
   if (
@@ -353,7 +356,7 @@ export function diagnoseProbeb(
       confidencePct >= STRONG_CONF &&
       htfAgree &&
       momOk) ||
-      (strongImpulse && (htfAgree || htf === "flat") && momOk))
+      (strongImpulse && momOk))
   ) {
     quality = "strong";
   } else if (

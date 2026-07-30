@@ -135,6 +135,7 @@ export function tryProbebAutoTrade(
     tp2: tp1,
     module: "probeb",
     sourceId,
+    riskUsd: d,
     note: `Probeb STRONG auto ±$${d} · win ${pred.probabilityPct}% · conf ${pred.confidencePct}%`,
     regime: null,
   });

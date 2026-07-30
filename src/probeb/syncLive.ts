@@ -14,7 +14,6 @@ import {
 import { voidProbebQuoteSpikeTrades } from "../demoAccount/engine";
 import { refreshProbebLiveM5 } from "./liveM5";
 import {
-  isProbebAutoTradeSetup,
   tryProbebAutoTrade,
   type ProbebAutoTradeResult,
 } from "./autoTrade";
@@ -148,7 +147,7 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
 
   let autoTrade: ProbebAutoTradeResult | null = null;
   const tradePred = inserted ?? diag.signal;
-  if (tradePred && isProbebAutoTradeSetup(tradePred)) {
+  if (tradePred) {
     autoTrade = tryProbebAutoTrade(tradePred, livePrice, { primary });
   }
 
