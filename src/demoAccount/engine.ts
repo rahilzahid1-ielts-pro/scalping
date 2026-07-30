@@ -53,10 +53,12 @@ const money2 = (n: number) => Math.round(n * 100) / 100;
 /**
  * Exit plan for a position. Rows opened before the runner shipped have no
  * `policy`, so they keep finishing under the rules they were opened with.
+ * For fixed_tp1, prefer the stored TP1 so SL:TP distance stays 1:1 (or
+ * whatever the desk set) instead of a hard-coded 0.85R bank.
  */
 export function planForPosition(pos: DemoPositionRow): ExitPlan {
   const policy = (pos.policy as ExitPolicyId | null) ?? "fixed_tp1";
-  return buildExitPlan({
+  const base = buildExitPlan({
     policy,
     side: pos.side,
     entry: pos.entry,
@@ -64,6 +66,16 @@ export function planForPosition(pos: DemoPositionRow): ExitPlan {
     regime: pos.regime,
     tune: DEFAULT_RUNNER_TUNE,
   });
+  if (policy !== "fixed_tp1") return base;
+  const risk = Math.abs(pos.entry - pos.sl);
+  if (!(risk > 0) || !Number.isFinite(pos.tp1)) return base;
+  const rr = Math.abs(pos.tp1 - pos.entry) / risk;
+  if (!(rr > 0) || !Number.isFinite(rr)) return base;
+  return {
+    ...base,
+    legs: [{ fraction: 1, rr, label: "TP1" }],
+    levels: [pos.tp1],
+  };
 }
 
 export function runnerStateOf(pos: DemoPositionRow): RunnerState {
