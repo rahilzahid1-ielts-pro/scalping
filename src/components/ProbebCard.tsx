@@ -162,10 +162,10 @@ export function ProbebCard() {
             </div>
           </div>
           <p className="probeb-strong-note">
-            {live.quality === "strong" && live.probabilityPct > 60 && live.confidencePct >= 40
-              ? `STRONG win ${live.probabilityPct.toFixed(1)}% — demo auto ±$2.`
+            {live.probabilityPct > 60 && live.confidencePct >= 40 && live.quality !== "weak"
+              ? `Desk gate OK win ${live.probabilityPct.toFixed(1)}% conf ${live.confidencePct}% — demo auto ±$2.`
               : live.probabilityPct > 60
-                ? `Win ${live.probabilityPct.toFixed(1)}% — auto nahi (STRONG+conf≥40 chahiye).`
+                ? `Win ${live.probabilityPct.toFixed(1)}% — auto nahi (conf≥40 + non-weak chahiye).`
                 : live.quality === "normal"
                   ? "Normal lean — track only; auto trade nahi."
                   : "Weak lean — predict track; auto trade nahi."}

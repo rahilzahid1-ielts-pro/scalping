@@ -349,14 +349,18 @@ export function diagnoseProbeb(
   // thin buckets STRONG against the higher TF.
   const strongImpulse =
     impulseWithSide && impulse >= 0.55 && atrOn && rawP >= 0.62 && confidencePct >= 40;
+  // Desk / UI rule: win>60 + conf≥40 + local mom (not fade) → STRONG + auto.
+  const deskStrong =
+    !fading && momOk && rawP > 0.6 && confidencePct >= STRONG_CONF;
   if (
-    !fading &&
-    ((n >= MIN_BUCKET_N &&
-      rawP >= STRONG_EDGE_P &&
-      confidencePct >= STRONG_CONF &&
-      htfAgree &&
-      momOk) ||
-      (strongImpulse && momOk))
+    deskStrong ||
+    (!fading &&
+      ((n >= MIN_BUCKET_N &&
+        rawP >= STRONG_EDGE_P &&
+        confidencePct >= STRONG_CONF &&
+        htfAgree &&
+        momOk) ||
+        (strongImpulse && momOk)))
   ) {
     quality = "strong";
   } else if (

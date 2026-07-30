@@ -1,9 +1,7 @@
 /**
  * Probeb → demo auto ±$2.
  *
- * Gate: win%>60 + quality strong + conf≥40.
- * No chase block — STRONG impulse near extremes is the setup (chase was
- * skipping the exact strong candles the desk wants filled).
+ * Gate (matches UI): win%>60 + conf≥40. Quality "weak" never autos.
  * Day stop (−3R) does not apply here — Probeb is its own ±$2 desk; day lock
  * (+5R) still banks a green day.
  */
@@ -19,6 +17,8 @@ import {
 } from "../regime/positiveDayDesk";
 import type { Candle } from "../types";
 import type { ProbebPrediction } from "../strategies/probebEngine";
+import { M5_MS } from "../strategies/probebEngine";
+import type { ProbebRow } from "./store";
 
 /** Price distance for SL and TP1 (XAUUSD $). */
 export const PROBEB_AUTO_DISTANCE = 2;
@@ -33,13 +33,45 @@ export function probebAutoTradeEnabled(): boolean {
   return !(v === "0" || v === "false" || v === "off");
 }
 
-/** Full gate — STRONG only. */
+/** UI rule: win>60 + conf≥40 — weak leans never auto. */
 export function isProbebAutoTradeSetup(pred: ProbebPrediction): boolean {
   return (
     pred.probabilityPct > PROBEB_AUTO_WIN_MIN &&
-    pred.quality === "strong" &&
-    pred.confidencePct >= PROBEB_AUTO_CONF_MIN
+    pred.confidencePct >= PROBEB_AUTO_CONF_MIN &&
+    pred.quality !== "weak"
   );
+}
+
+/** Rebuild a prediction from a locked DB row (retry auto mid-slot). */
+export function predictionFromLockedRow(row: ProbebRow): ProbebPrediction {
+  let reason: string[] = [];
+  try {
+    const arr = JSON.parse(row.reason) as unknown;
+    if (Array.isArray(arr)) reason = arr.map(String);
+  } catch {
+    reason = row.reason ? [row.reason] : [];
+  }
+  const note = reason[1] ?? "";
+  const quality: ProbebPrediction["quality"] = /^STRONG/i.test(note)
+    ? "strong"
+    : /^Normal/i.test(note)
+      ? "normal"
+      : "weak";
+  // Locked Normal with win/conf already at desk thresholds still qualifies.
+  const deskOk =
+    row.probabilityPct > PROBEB_AUTO_WIN_MIN &&
+    row.confidencePct >= PROBEB_AUTO_CONF_MIN;
+  return {
+    side: row.predictedSide,
+    probabilityPct: row.probabilityPct,
+    confidencePct: row.confidencePct,
+    bucket: row.bucket,
+    sampleN: row.sampleN,
+    barTime: row.barTime,
+    targetBarTime: row.barTime + M5_MS,
+    quality: deskOk && quality === "normal" ? "strong" : quality,
+    reason,
+  };
 }
 
 export type ProbebAutoTradeResult =

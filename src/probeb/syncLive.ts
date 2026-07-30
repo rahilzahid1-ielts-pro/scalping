@@ -14,6 +14,7 @@ import {
 import { voidProbebQuoteSpikeTrades } from "../demoAccount/engine";
 import { refreshProbebLiveM5 } from "./liveM5";
 import {
+  predictionFromLockedRow,
   tryProbebAutoTrade,
   type ProbebAutoTradeResult,
 } from "./autoTrade";
@@ -156,15 +157,17 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
       ? latest
       : null;
 
-  // Auto only on the first lock of this M5 — re-diagnose must not flip-fire.
+  // Auto on fresh insert; also retry locked row if no demo fill yet (e.g. was
+  // locked as Normal before deskStrong rule — still in the same M5 slot).
   let autoTrade: ProbebAutoTradeResult | null = null;
   if (inserted) {
     autoTrade = tryProbebAutoTrade(inserted, livePrice, { primary });
   } else if (locked) {
-    autoTrade = {
-      ok: false,
-      reason: `locked ${locked.predictedSide} this M5 · win ${locked.probabilityPct}% · conf ${locked.confidencePct}%`,
-    };
+    autoTrade = tryProbebAutoTrade(
+      predictionFromLockedRow(locked),
+      livePrice,
+      { primary },
+    );
   } else if (diag.signal) {
     autoTrade = tryProbebAutoTrade(diag.signal, livePrice, { primary });
   }
