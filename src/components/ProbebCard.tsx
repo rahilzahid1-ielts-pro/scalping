@@ -117,7 +117,7 @@ export function ProbebCard() {
         <h2>Probeb</h2>
         <p className="muted">
           Har M5 close pe predict · STRONG (win&gt;60 + conf≥40) → demo ±$2 ·
-          1 SL/din pe auto pause · 5 min baad SAHI/GALAT
+          5 min baad SAHI/GALAT
         </p>
       </div>
 
@@ -153,9 +153,9 @@ export function ProbebCard() {
           </div>
           <p className="probeb-strong-note">
             {live.quality === "strong" && live.probabilityPct > 60 && live.confidencePct >= 40
-              ? `STRONG win ${live.probabilityPct.toFixed(1)}% — demo auto ±$2 (1 SL/din pause).`
+              ? `STRONG win ${live.probabilityPct.toFixed(1)}% — demo auto ±$2.`
               : live.probabilityPct > 60
-                ? `Win ${live.probabilityPct.toFixed(1)}% — auto nahi (STRONG+conf≥40 chahiye; ±$2 noise se SL bachao).`
+                ? `Win ${live.probabilityPct.toFixed(1)}% — auto nahi (STRONG+conf≥40 chahiye).`
                 : live.quality === "normal"
                   ? "Normal lean — track only; auto trade nahi."
                   : "Weak lean — predict track; auto trade nahi."}

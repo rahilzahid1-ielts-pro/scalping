@@ -1,5 +1,5 @@
 /**
- * Probeb worker — live M5 sync + STRONG auto ±$2 (1 SL/day pause).
+ * Probeb worker — live M5 sync + STRONG auto ±$2.
  */
 import { syncProbebLive } from "../src/probeb/syncLive";
 import {
@@ -10,7 +10,6 @@ import {
 import {
   isProbebAutoTradeSetup,
   PROBEB_AUTO_DISTANCE,
-  PROBEB_AUTO_MAX_SL_TODAY,
   PROBEB_AUTO_WIN_MIN,
 } from "../src/probeb/autoTrade";
 import { karachiYmd } from "../src/history/apiHistory";
@@ -52,7 +51,7 @@ async function maybeAlertAuto(pred: {
     `Winning ${pred.probabilityPct.toFixed(1)}% · conf ${pred.confidencePct}% · ${pred.quality ?? ""}`,
     pred.autoOpened
       ? `Demo AUTO OPENED${levels}`
-      : `STRONG setup — demo ±$${PROBEB_AUTO_DISTANCE} (1 SL/day pause)`,
+      : `STRONG setup — demo ±$${PROBEB_AUTO_DISTANCE}`,
   ].join("\n");
   log(
     "AUTO ALERT",
@@ -142,7 +141,7 @@ export function startProbebWorker(): void {
   }
   workerRunning = true;
   log(
-    `started — STRONG+win>${PROBEB_AUTO_WIN_MIN} → demo ±$${PROBEB_AUTO_DISTANCE} · pause after ${PROBEB_AUTO_MAX_SL_TODAY} SL/day`,
+    `started — STRONG+win>${PROBEB_AUTO_WIN_MIN} → demo ±$${PROBEB_AUTO_DISTANCE}`,
   );
   try {
     const n = purgeUnstablePending(getLiveProbebDb());

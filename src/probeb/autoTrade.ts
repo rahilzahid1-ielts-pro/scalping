@@ -2,24 +2,21 @@
  * Probeb → demo auto ±$2 — protected after 2 SL autopsy (30 Jul).
  *
  * Failure mode: next-candle CLOSE lean was opened as immediate ±$2 scalp;
- * gold M5 noise + wrong direction → fast SL. Guards below cut that.
+ * gold M5 noise + wrong direction → fast SL.
  *
- * Gate: win%>60 + quality strong + conf≥40 + no chase + ≤1 Probeb SL today.
+ * Gate: win%>60 + quality strong + conf≥40 + no chase.
  */
 import { takeDemoTrade } from "../demoAccount/engine";
 import {
-  DEMO_ACCOUNT_ID,
   DEMO_STARTING_BALANCE,
   ensureDemoAccount,
   findDemoBySourceId,
-  getDemoDb,
 } from "../demoAccount/store";
 import {
   DEMO_DAY_LOCK_R,
   DEMO_DAY_STOP_R,
   demoDayClosedPnl,
 } from "../regime/positiveDayDesk";
-import { karachiDayBounds, karachiYmd } from "../history/apiHistory";
 import { isExtendedChase } from "../utils/entryFilters";
 import type { Candle } from "../types";
 import type { ProbebPrediction } from "../strategies/probebEngine";
@@ -31,9 +28,6 @@ export const PROBEB_AUTO_DISTANCE = 2;
 export const PROBEB_AUTO_WIN_MIN = Number(process.env.PROBEB_AUTO_WIN_MIN) || 60;
 
 export const PROBEB_AUTO_CONF_MIN = Number(process.env.PROBEB_AUTO_CONF_MIN) || 40;
-
-/** After this many Probeb SL hits today, no more auto opens. */
-export const PROBEB_AUTO_MAX_SL_TODAY = Number(process.env.PROBEB_AUTO_MAX_SL) || 1;
 
 export function probebAutoTradeEnabled(): boolean {
   const v = (process.env.ENABLE_PROBEB_AUTO_TRADE ?? "1").toLowerCase();
@@ -47,23 +41,6 @@ export function isProbebAutoTradeSetup(pred: ProbebPrediction): boolean {
     pred.quality === "strong" &&
     pred.confidencePct >= PROBEB_AUTO_CONF_MIN
   );
-}
-
-export function countProbebSlToday(date = karachiYmd()): number {
-  ensureDemoAccount();
-  const { start, end } = karachiDayBounds(date);
-  const row = getDemoDb()
-    .prepare(
-      `SELECT COUNT(*) AS n FROM demo_positions
-       WHERE account_id = ?
-         AND module = 'probeb'
-         AND status = 'CLOSED'
-         AND outcome = 'SL_HIT'
-         AND closed_at IS NOT NULL
-         AND closed_at >= ? AND closed_at <= ?`,
-    )
-    .get(DEMO_ACCOUNT_ID, start, end) as { n: number };
-  return Number(row?.n ?? 0);
 }
 
 export type ProbebAutoTradeResult =
@@ -81,7 +58,7 @@ export type ProbebAutoTradeOpts = {
 };
 
 /**
- * Open demo ±$2 only on STRONG lean, with chase + 1-SL day pause.
+ * Open demo ±$2 only on STRONG lean, with chase block.
  */
 export function tryProbebAutoTrade(
   pred: ProbebPrediction,
@@ -99,14 +76,6 @@ export function tryProbebAutoTrade(
   }
   if (!(Number.isFinite(livePrice) && livePrice > 0)) {
     return { ok: false, reason: "no live price" };
-  }
-
-  const slToday = countProbebSlToday();
-  if (slToday >= PROBEB_AUTO_MAX_SL_TODAY) {
-    return {
-      ok: false,
-      reason: `Probeb already ${slToday} SL aaj — auto pause (max ${PROBEB_AUTO_MAX_SL_TODAY})`,
-    };
   }
 
   const sourceId = `probeb-auto-${pred.barTime}`;
