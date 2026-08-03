@@ -1,38 +1,35 @@
 /**
- * Probeb SMC / Cipher-B style levels — swing structure SL + R-multiple TPs.
- * Same idea as cipherBLive: structure stop beyond recent swing, TP1 @ 0.9R, TP2 @ 1.6R.
+ * Probeb reach target — where price can run on a lean (not SL/TP).
+ * Strong rules: ATR + recent swing extreme, scaled by quality/confidence.
+ * Example: SELL strong @ 4052 → target ~4040.
  */
 import type { Candle } from "../types";
 import { atr, roundPrice, swingHighsLows } from "../strategies/indicators";
+import type { ProbebQuality } from "../strategies/probebEngine";
 
-export type ProbebLevels = {
-  entry: number;
-  sl: number;
-  tp1: number;
-  tp2: number;
-  /** Price-action band (SL ↔ far target) — "kahan se kahan tak". */
-  from: number;
-  to: number;
-  risk: number;
-  rrTp1: number;
-  method: "smc_swing";
+export type ProbebReach = {
+  /** Live / lean price now. */
+  now: number;
+  /** Predicted level market can reach in favor of the lean. */
+  target: number;
+  /** $ distance |target − now|. */
+  moveUsd: number;
+  side: "BUY" | "SELL";
+  /** Short line for UI: "SELL → ~4040 tak". */
+  label: string;
+  method: "swing_atr";
 };
 
-const RR_TP1 = 0.9;
-const RR_TP2 = 1.6;
-const SWING_LOOKBACK = 12;
-const ATR_SL_MULT = 0.85;
-const ATR_FLOOR_MULT = 0.45;
 const DECIMALS = 2;
+const SWING_LOOKBACK = 18;
 
-function recentSwingLevel(
+function favorSwing(
   candles: Candle[],
   side: "BUY" | "SELL",
-  lookback = SWING_LOOKBACK,
 ): number | null {
   if (candles.length < 5) return null;
-  const slice = candles.slice(-lookback);
-  if (side === "BUY") {
+  const slice = candles.slice(-SWING_LOOKBACK);
+  if (side === "SELL") {
     const lo = Math.min(...slice.map((c) => c.low));
     return Number.isFinite(lo) ? lo : null;
   }
@@ -40,12 +37,12 @@ function recentSwingLevel(
   return Number.isFinite(hi) ? hi : null;
 }
 
-function lastSwingGuard(
+function lastStructureTarget(
   candles: Candle[],
   side: "BUY" | "SELL",
 ): number | null {
   const { highs, lows } = swingHighsLows(candles, 2, 2);
-  if (side === "BUY") {
+  if (side === "SELL") {
     const last = lows[lows.length - 1];
     return last?.price ?? null;
   }
@@ -53,68 +50,89 @@ function lastSwingGuard(
   return last?.price ?? null;
 }
 
+/** How far (ATR mult) a lean can stretch — stronger = farther. */
+function atrReachMult(
+  quality: ProbebQuality,
+  confidencePct: number,
+): number {
+  const conf = Math.max(0, Math.min(100, confidencePct)) / 100;
+  if (quality === "strong") return 1.05 + conf * 0.55; // ~1.05–1.60 ATR
+  if (quality === "normal") return 0.7 + conf * 0.35; // ~0.7–1.05 ATR
+  return 0.4 + conf * 0.25; // weak: small advisory only
+}
+
 /**
- * Build advisory SL/TP for a Probeb lean — Cipher B + SMC structure style.
+ * Build "market kis level pe ja sakti hai" for the current Probeb lean.
  */
-export function buildProbebSmcLevels(
+export function buildProbebReachTarget(
   candles: Candle[],
   side: "BUY" | "SELL",
-  entryPrice: number,
-): ProbebLevels | null {
-  if (!(Number.isFinite(entryPrice) && entryPrice > 0)) return null;
+  livePrice: number,
+  confidencePct = 50,
+  quality: ProbebQuality = "normal",
+): ProbebReach | null {
+  if (!(Number.isFinite(livePrice) && livePrice > 0)) return null;
   if (candles.length < 30) return null;
 
   const atrSeries = atr(candles, 14);
   const atrVal = atrSeries[atrSeries.length - 1];
   if (!(Number.isFinite(atrVal) && atrVal > 0)) return null;
 
-  const entry = roundPrice(entryPrice, DECIMALS);
-  const swing = recentSwingLevel(candles, side);
-  const guard = lastSwingGuard(candles, side);
-  const atrSl =
-    side === "BUY" ? entry - atrVal * ATR_SL_MULT : entry + atrVal * ATR_SL_MULT;
-  const atrFloor =
-    side === "BUY"
-      ? entry - atrVal * ATR_FLOOR_MULT
-      : entry + atrVal * ATR_FLOOR_MULT;
+  const now = roundPrice(livePrice, DECIMALS);
+  const mult = atrReachMult(quality, confidencePct);
+  const atrTarget =
+    side === "SELL" ? now - atrVal * mult : now + atrVal * mult;
 
-  let sl: number;
-  if (side === "BUY") {
-    sl = atrSl;
-    if (swing != null) sl = Math.min(sl, swing - atrVal * 0.15);
-    if (guard != null) sl = Math.min(sl, guard - atrVal * 0.2);
-    sl = Math.min(sl, atrFloor);
-  } else {
-    sl = atrSl;
-    if (swing != null) sl = Math.max(sl, swing + atrVal * 0.15);
-    if (guard != null) sl = Math.max(sl, guard + atrVal * 0.2);
-    sl = Math.max(sl, atrFloor);
+  const swing = favorSwing(candles, side);
+  const structure = lastStructureTarget(candles, side);
+
+  let target = atrTarget;
+  // Prefer a real swing/structure level in the favor direction when it sits
+  // between now and the ATR stretch (or slightly beyond on strong).
+  const candidates = [swing, structure].filter(
+    (x): x is number => x != null && Number.isFinite(x),
+  );
+  for (const c of candidates) {
+    if (side === "SELL") {
+      if (c < now && c >= atrTarget - atrVal * 0.25) {
+        target = Math.min(target, c);
+      }
+    } else if (c > now && c <= atrTarget + atrVal * 0.25) {
+      target = Math.max(target, c);
+    }
   }
 
-  sl = roundPrice(sl, DECIMALS);
-  const risk = Math.abs(entry - sl);
-  if (!(risk >= 0.5)) return null;
+  // Strong: if a deeper swing exists within 2×ATR, use it as stretch target.
+  if (quality === "strong" && swing != null) {
+    if (side === "SELL" && swing < now && now - swing <= atrVal * 2.2) {
+      target = Math.min(target, swing);
+    }
+    if (side === "BUY" && swing > now && swing - now <= atrVal * 2.2) {
+      target = Math.max(target, swing);
+    }
+  }
 
-  const tp1 = roundPrice(
-    side === "BUY" ? entry + risk * RR_TP1 : entry - risk * RR_TP1,
-    DECIMALS,
-  );
-  const tp2 = roundPrice(
-    side === "BUY" ? entry + risk * RR_TP2 : entry - risk * RR_TP2,
-    DECIMALS,
-  );
-  const from = roundPrice(Math.min(sl, tp2), DECIMALS);
-  const to = roundPrice(Math.max(sl, tp2), DECIMALS);
+  target = roundPrice(target, DECIMALS);
+  const moveUsd = roundPrice(Math.abs(target - now), DECIMALS);
+  if (!(moveUsd >= 0.4)) return null;
+
+  const label =
+    side === "SELL"
+      ? `SELL → ~${target.toFixed(0)} tak (−$${moveUsd.toFixed(0)})`
+      : `BUY → ~${target.toFixed(0)} tak (+$${moveUsd.toFixed(0)})`;
 
   return {
-    entry,
-    sl,
-    tp1,
-    tp2,
-    from,
-    to,
-    risk: roundPrice(risk, DECIMALS),
-    rrTp1: RR_TP1,
-    method: "smc_swing",
+    now,
+    target,
+    moveUsd,
+    side,
+    label,
+    method: "swing_atr",
   };
 }
+
+/** @deprecated use buildProbebReachTarget — kept name for older imports. */
+export const buildProbebSmcLevels = buildProbebReachTarget;
+
+/** @deprecated */
+export type ProbebLevels = ProbebReach;

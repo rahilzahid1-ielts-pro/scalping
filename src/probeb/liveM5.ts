@@ -9,7 +9,7 @@ import type { Candle } from "../types";
 import { fetchCandles } from "../services/marketData";
 import { fetchLiveQuote } from "../services/liveQuotes";
 import { m5FloorMs, M5_MS } from "../strategies/probebEngine";
-import { isSpikeVsAnchor, robustPriceMid } from "./sanePrice";
+import { pickTapeAnchor, robustPriceMid } from "./sanePrice";
 
 const MAX_BARS = 2500;
 const SPIKE_USD = 25;
@@ -22,6 +22,9 @@ let seedPromise: Promise<void> | null = null;
 const closed: Bucket[] = [];
 /** Forming M5 slot (wall-clock). */
 let forming: Bucket | null = null;
+/** Last Yahoo/1m-resync close — cross-check TV spikes (4144 vs ~4100). */
+let lastFeedClose = 0;
+let lastResyncAt = 0;
 
 function pushClosed(b: Bucket): void {
   const last = closed[closed.length - 1];
@@ -174,12 +177,10 @@ export function aggregateM1ToM5(m1: Candle[]): Candle[] {
 export function scrubSpikedClosedBars(livePrice: number): void {
   if (!(Number.isFinite(livePrice) && livePrice > 0)) return;
   const mid = recentCloseMedian(12);
-  // Prefer live when it's near the peer mid; otherwise mid; else live.
-  let anchor = livePrice;
-  if (mid != null) {
-    if (Math.abs(livePrice - mid) <= SPIKE_USD) anchor = livePrice;
-    else anchor = mid;
-  }
+  // Prefer live when mid is a sticky spike cluster (4104 mid vs 4035 live).
+  // Feed close breaks the tie — never trust mid alone when live matches feed.
+  const feed = lastFeedClose > 0 ? lastFeedClose : null;
+  const anchor = pickTapeAnchor(livePrice, mid, feed, SPIKE_USD);
 
   const scrubOne = (b: Bucket): Bucket => {
     const farClose = Math.abs(b.close - anchor) > SPIKE_USD;
@@ -308,10 +309,6 @@ export function probebClosedM5(): Candle[] {
   return closed.filter((c) => c.time < slot).map((c) => ({ ...c }));
 }
 
-let lastResyncAt = 0;
-/** Last Yahoo/1m-resync close — cross-check TV spikes (4144 vs ~4100). */
-let lastFeedClose = 0;
-
 export function probebSaneMid(): number | null {
   const closes = closed.slice(-24).map((c) => c.close);
   if (lastFeedClose > 0) closes.push(lastFeedClose);
@@ -345,10 +342,14 @@ export async function refreshProbebLiveM5(): Promise<{
   const primary = probebClosedM5();
   const closes = primary.slice(-24).map((c) => c.close);
   if (lastFeedClose > 0) closes.push(lastFeedClose);
-  const saneMid = robustPriceMid(closes, 30);
-  // Prefer sane mid for downstream entry if TV live is spiked.
-  const usePrice = isSpikeVsAnchor(livePrice, saneMid, 20)
-    ? (saneMid ?? livePrice)
-    : livePrice;
+  const peerMid = robustPriceMid(closes, 30);
+  const feed = lastFeedClose > 0 ? lastFeedClose : null;
+  const usePrice = pickTapeAnchor(livePrice, peerMid, feed, 20);
+  const saneMid = pickTapeAnchor(
+    peerMid ?? livePrice,
+    usePrice,
+    feed,
+    20,
+  );
   return { primary, livePrice: usePrice, saneMid };
 }

@@ -10,6 +10,7 @@ import {
   DEMO_STARTING_BALANCE,
   ensureDemoAccount,
   findDemoBySourceId,
+  listOpenDemoPositions,
 } from "../demoAccount/store";
 import {
   DEMO_DAY_LOCK_R,
@@ -132,6 +133,9 @@ export function tryProbebAutoTrade(
   const sourceId = `probeb-auto-${pred.barTime}`;
   if (findDemoBySourceId(sourceId)) {
     return { ok: false, reason: "already opened this M5" };
+  }
+  if (listOpenDemoPositions().some((p) => p.module === "probeb")) {
+    return { ok: false, reason: "probeb already open — wait exit" };
   }
 
   const acct = ensureDemoAccount();

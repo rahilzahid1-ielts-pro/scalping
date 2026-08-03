@@ -370,6 +370,33 @@ export function listDemoPositions(limit = 50): DemoPositionRow[] {
   return rows.map(positionFromRow);
 }
 
+/** Recent closed only — so Probeb flood doesn't hide QS Pro / Cipher. */
+export function listClosedDemoPositions(limit = 40): DemoPositionRow[] {
+  const db = getDemoDb();
+  const rows = db
+    .prepare(
+      `SELECT * FROM demo_positions
+        WHERE account_id = ? AND status = 'CLOSED' AND closed_at IS NOT NULL
+        ORDER BY closed_at DESC LIMIT ?`,
+    )
+    .all(DEMO_ACCOUNT_ID, limit) as Record<string, unknown>[];
+  return rows.map(positionFromRow);
+}
+
+/** All closed Probeb rows in a lookback (void / repair). */
+export function listClosedProbebSince(sinceMs: number): DemoPositionRow[] {
+  const db = getDemoDb();
+  const rows = db
+    .prepare(
+      `SELECT * FROM demo_positions
+        WHERE account_id = ? AND module = 'probeb' AND status = 'CLOSED'
+          AND closed_at IS NOT NULL AND closed_at >= ?
+        ORDER BY closed_at DESC`,
+    )
+    .all(DEMO_ACCOUNT_ID, sinceMs) as Record<string, unknown>[];
+  return rows.map(positionFromRow);
+}
+
 export function listDemoLedger(limit = 40): DemoLedgerRow[] {
   const db = getDemoDb();
   const rows = db
@@ -378,6 +405,14 @@ export function listDemoLedger(limit = 40): DemoLedgerRow[] {
     )
     .all(DEMO_ACCOUNT_ID, limit) as Record<string, unknown>[];
   return rows.map(ledgerFromRow);
+}
+
+export function demoLedgerHasId(id: string): boolean {
+  const db = getDemoDb();
+  const r = db.prepare(`SELECT 1 AS ok FROM demo_ledger WHERE id = ?`).get(id) as
+    | { ok: number }
+    | undefined;
+  return Boolean(r);
 }
 
 export function findDemoBySourceId(sourceId: string): DemoPositionRow | null {
@@ -490,6 +525,8 @@ export function rewriteClosedDemoPosition(
 /**
  * Credit / debit the balance and log it. `tag` distinguishes the ledger rows a
  * single position writes when a runner banks legs separately.
+ * Idempotent: stable ledger id (no timestamp) — concurrent resolve ticks must
+ * not double-credit the same fill (was: dozens of +$2 banked TP1 rows).
  */
 export function applyPnlToBalance(
   positionId: string,
@@ -499,25 +536,35 @@ export function applyPnlToBalance(
   tag = "",
 ): number {
   const db = getDemoDb();
+  const ledgerId = `ledger-pnl-${positionId}-${tag || "PNL"}`;
+  const exists = db
+    .prepare(`SELECT 1 AS ok FROM demo_ledger WHERE id = ?`)
+    .get(ledgerId) as { ok: number } | undefined;
+  if (exists) {
+    return ensureDemoAccount().balance;
+  }
   const acct = ensureDemoAccount();
   const next = Math.round((acct.balance + pnlUsd) * 100) / 100;
-  db.prepare(
-    `UPDATE demo_accounts SET balance = ?, updated_at = ? WHERE id = ?`,
-  ).run(next, at, DEMO_ACCOUNT_ID);
-  db.prepare(
-    `INSERT OR REPLACE INTO demo_ledger
-      (id, account_id, position_id, kind, amount, balance_after, note, at)
-     VALUES (?, ?, ?, 'PNL', ?, ?, ?, ?)`,
-  ).run(
-    `ledger-pnl-${positionId}-${tag}-${at}`,
-    DEMO_ACCOUNT_ID,
-    positionId,
-    pnlUsd,
-    next,
-    note,
-    at,
-  );
-  return next;
+  const tx = db.transaction(() => {
+    db.prepare(
+      `UPDATE demo_accounts SET balance = ?, updated_at = ? WHERE id = ?`,
+    ).run(next, at, DEMO_ACCOUNT_ID);
+    db.prepare(
+      `INSERT OR IGNORE INTO demo_ledger
+        (id, account_id, position_id, kind, amount, balance_after, note, at)
+       VALUES (?, ?, ?, 'PNL', ?, ?, ?, ?)`,
+    ).run(
+      ledgerId,
+      DEMO_ACCOUNT_ID,
+      positionId,
+      pnlUsd,
+      next,
+      note,
+      at,
+    );
+  });
+  tx();
+  return ensureDemoAccount().balance;
 }
 
 export function assertDemoDbPath(path: string): void {

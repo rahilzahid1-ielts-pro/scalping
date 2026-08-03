@@ -16,15 +16,12 @@ interface DayAcc {
   hiAccuracyPct: number | null;
 }
 
-interface ProbebLevels {
-  entry: number;
-  sl: number;
-  tp1: number;
-  tp2: number;
-  from: number;
-  to: number;
-  risk: number;
-  rrTp1: number;
+interface ProbebReach {
+  now: number;
+  target: number;
+  moveUsd: number;
+  side: Side;
+  label: string;
   method: string;
 }
 
@@ -40,9 +37,11 @@ interface ProbebPayload {
     targetBarTime: number;
     quality: Quality;
     reason: string[];
-    levels?: ProbebLevels | null;
+    reach?: ProbebReach | null;
+    levels?: ProbebReach | null;
   } | null;
-  levels?: ProbebLevels | null;
+  reach?: ProbebReach | null;
+  levels?: ProbebReach | null;
   latest: {
     predictedSide: Side;
     probabilityPct: number;
@@ -227,7 +226,7 @@ export function ProbebCard() {
         <h2>Probeb</h2>
         <p className="muted">
           Har M5 close pe predict · win&amp;conf &gt;60 yellow · ≥70 green ·
-          SMC swing SL/TP (Cipher B style) · demo ±$2 · 5 min baad SAHI/GALAT
+          strong pe target level (kahan tak) · demo ±$2 · 5 min baad SAHI/GALAT
         </p>
       </div>
 
@@ -278,51 +277,34 @@ export function ProbebCard() {
               <strong>{live.quality.toUpperCase()}</strong>
             </div>
           </div>
-          {(live.levels ?? data?.levels) && (
-            <div className="probeb-levels">
-              <div className="probeb-levels-title">
-                Price path (SMC swing · Cipher B style)
-              </div>
-              <div className="probeb-levels-grid">
-                <div>
-                  <span className="muted">Entry</span>
-                  <strong>{(live.levels ?? data!.levels)!.entry.toFixed(2)}</strong>
-                </div>
-                <div>
-                  <span className="muted">SL</span>
-                  <strong className="probeb-lvl-sl">
-                    {(live.levels ?? data!.levels)!.sl.toFixed(2)}
-                  </strong>
-                </div>
-                <div>
-                  <span className="muted">TP1</span>
-                  <strong className="probeb-lvl-tp">
-                    {(live.levels ?? data!.levels)!.tp1.toFixed(2)}
-                  </strong>
-                </div>
-                <div>
-                  <span className="muted">TP2</span>
-                  <strong className="probeb-lvl-tp">
-                    {(live.levels ?? data!.levels)!.tp2.toFixed(2)}
-                  </strong>
-                </div>
-              </div>
-              <p className="probeb-levels-range">
-                {live.side} path:{" "}
-                <strong>
-                  {(live.levels ?? data!.levels)!.from.toFixed(2)}
-                </strong>
-                {" → "}
-                <strong>
-                  {(live.levels ?? data!.levels)!.to.toFixed(2)}
-                </strong>
-                <span className="muted">
-                  {" "}
-                  · risk $
-                  {(live.levels ?? data!.levels)!.risk.toFixed(2)} · TP1 @{" "}
-                  {(live.levels ?? data!.levels)!.rrTp1}R
-                </span>
-              </p>
+          {(live.reach ?? live.levels ?? data?.reach ?? data?.levels) && (
+            <div className="probeb-reach">
+              {(() => {
+                const R = (live.reach ??
+                  live.levels ??
+                  data?.reach ??
+                  data!.levels)!;
+                const arrow = R.side === "BUY" ? "↑" : "↓";
+                return (
+                  <>
+                    <div className="probeb-reach-title">
+                      Market kis level pe ja sakti hai
+                    </div>
+                    <p className="probeb-reach-line">
+                      <span className="probeb-reach-arrow">{arrow}</span>
+                      <strong className="probeb-reach-label">{R.label}</strong>
+                    </p>
+                    <p className="probeb-reach-detail muted">
+                      Abhi {R.now.toFixed(2)} → target{" "}
+                      <strong>{R.target.toFixed(2)}</strong>
+                      {" · "}
+                      {live.quality.toUpperCase()} · conf {live.confidencePct}%
+                      {" · "}
+                      swing+ATR
+                    </p>
+                  </>
+                );
+              })()}
             </div>
           )}
           {tier && (

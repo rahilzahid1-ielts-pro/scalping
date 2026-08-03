@@ -24,7 +24,7 @@ import {
   ensureDemoAccount,
   findDemoBySourceId,
   insertDemoPosition,
-  listDemoPositions,
+  listClosedProbebSince,
   listOpenDemoPositions,
   rewriteClosedDemoPosition,
   updateDemoRunnerState,
@@ -283,6 +283,7 @@ function runnerOutcome(
  */
 let lastSaneResolvePrice = 0;
 const RESOLVE_SPIKE_USD = 20;
+let resolvingOpen = false;
 
 /**
  * Resolve OPEN positions against the latest polled price.
@@ -295,15 +296,33 @@ export function resolveOpenAgainstPrice(live: number): {
   closed: DemoPositionRow[];
   account: DemoAccountRow;
 } {
+  // Single-flight: /api/demo + demoRunnerBot must not double-bank the same tick.
+  if (resolvingOpen) {
+    return { closed: [], account: ensureDemoAccount() };
+  }
+  resolvingOpen = true;
+  try {
+    return resolveOpenAgainstPriceInner(live);
+  } finally {
+    resolvingOpen = false;
+  }
+}
+
+function resolveOpenAgainstPriceInner(live: number): {
+  closed: DemoPositionRow[];
+  account: DemoAccountRow;
+} {
   const closed: DemoPositionRow[] = [];
   if (!Number.isFinite(live) || live <= 0) {
     return { closed, account: ensureDemoAccount() };
   }
 
-  if (
-    lastSaneResolvePrice > 0 &&
-    Math.abs(live - lastSaneResolvePrice) > RESOLVE_SPIKE_USD
-  ) {
+  if (lastSaneResolvePrice <= 0) {
+    // Cold start: don't lock onto a lone spike — wait for a second tick.
+    lastSaneResolvePrice = live;
+    return { closed, account: ensureDemoAccount() };
+  }
+  if (Math.abs(live - lastSaneResolvePrice) > RESOLVE_SPIKE_USD) {
     return { closed, account: ensureDemoAccount() };
   }
   lastSaneResolvePrice = live;
@@ -319,7 +338,14 @@ export function resolveOpenAgainstPrice(live: number): {
       Math.abs(live - pos.entry) > RESOLVE_SPIKE_USD
     ) {
       const now = Date.now();
+      const voidNote = `${pos.note} · VOID quote-spike entry ${pos.entry} vs live ${live.toFixed(2)}`;
       closeDemoPositionInDb(pos.id, "MANUAL", 0, 0, now);
+      rewriteClosedDemoPosition(pos.id, {
+        outcome: "MANUAL",
+        realizedR: 0,
+        pnlUsd: 0,
+        note: voidNote,
+      });
       closed.push({
         ...pos,
         status: "CLOSED",
@@ -327,7 +353,7 @@ export function resolveOpenAgainstPrice(live: number): {
         realizedR: 0,
         pnlUsd: 0,
         closedAt: now,
-        note: `${pos.note} · VOID quote-spike entry ${pos.entry} vs live ${live.toFixed(2)}`,
+        note: voidNote,
       });
       continue;
     }
@@ -467,7 +493,7 @@ const SPIKE_PEER_USD = 25;
 /**
  * Void Probeb fills opened on TV spikes (entry far from sane gold mid).
  * Open: flat close. Closed today: rewrite to VOID + refund booked P&L so
- * History stops showing fake 4144/4177 TP1 wins.
+ * History stops showing fake 4104/4144 TP1 wins.
  */
 export function voidProbebQuoteSpikeTrades(refClose?: number | null): number {
   if (refClose == null || !Number.isFinite(refClose) || refClose <= 0) return 0;
@@ -480,13 +506,18 @@ export function voidProbebQuoteSpikeTrades(refClose?: number | null): number {
     if (p.module !== "probeb") continue;
     if (Math.abs(p.entry - refClose) <= SPIKE_PEER_USD) continue;
     if (p.note?.includes("VOID quote-spike")) continue;
+    const voidNote = `${p.note} · VOID quote-spike entry ${p.entry} vs sane ${refClose.toFixed(2)}`;
     closeDemoPositionInDb(p.id, "MANUAL", 0, 0, now);
+    rewriteClosedDemoPosition(p.id, {
+      outcome: "MANUAL",
+      realizedR: 0,
+      pnlUsd: 0,
+      note: voidNote,
+    });
     n += 1;
   }
 
-  for (const p of listDemoPositions(80)) {
-    if (p.module !== "probeb" || p.status !== "CLOSED") continue;
-    if (p.closedAt != null && p.closedAt < dayAgo) continue;
+  for (const p of listClosedProbebSince(dayAgo)) {
     if (Math.abs(p.entry - refClose) <= SPIKE_PEER_USD) continue;
     if (p.note?.includes("VOID quote-spike")) continue;
     const priorPnl = p.pnlUsd ?? 0;

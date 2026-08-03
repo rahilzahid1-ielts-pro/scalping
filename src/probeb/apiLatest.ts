@@ -120,7 +120,8 @@ export async function buildProbebLatestPayload() {
     live: live
       ? {
           ...live,
-          levels: synced.levels,
+          reach: synced.reach,
+          levels: synced.reach,
         }
       : null,
     latest,
@@ -129,7 +130,8 @@ export async function buildProbebLatestPayload() {
     walkAccuracy,
     recent,
     waitReason,
-    levels: synced.levels,
+    reach: synced.reach,
+    levels: synced.reach,
     synced: {
       resolved: synced.resolved,
       inserted: Boolean(synced.inserted),

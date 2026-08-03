@@ -13,7 +13,7 @@ import {
 } from "../strategies/probebEngine";
 import { voidProbebQuoteSpikeTrades } from "../demoAccount/engine";
 import { probebFormingM5, refreshProbebLiveM5 } from "./liveM5";
-import { buildProbebSmcLevels, type ProbebLevels } from "./levels";
+import { buildProbebReachTarget, type ProbebReach } from "./levels";
 import {
   predictionFromLockedRow,
   tryProbebAutoTrade,
@@ -42,8 +42,10 @@ export type ProbebSyncResult = {
   signal: ProbebPrediction | null;
   /** DB-locked lean for the current closed M5 — UI must prefer this (no flip). */
   locked: ProbebRow | null;
-  /** Cipher-B / SMC style SL·TP band for the live lean. */
-  levels: ProbebLevels | null;
+  /** Predicted reach level — where lean says price can go (not SL/TP). */
+  reach: ProbebReach | null;
+  /** @deprecated alias of reach */
+  levels: ProbebReach | null;
   waitReason: string;
   autoTrade: ProbebAutoTradeResult | null;
 };
@@ -136,7 +138,7 @@ function maybeInsert(pred: ProbebPrediction): boolean {
 export async function syncProbebLive(): Promise<ProbebSyncResult> {
   const { primary, livePrice, saneMid } = await refreshProbebLiveM5();
   try {
-    voidProbebQuoteSpikeTrades(saneMid ?? livePrice);
+    voidProbebQuoteSpikeTrades(livePrice);
   } catch {
     /* demo repair optional */
   }
@@ -272,9 +274,25 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
     inserted?.side ??
     (spikeVsLive ? null : diag.signal?.side) ??
     null;
-  const levels =
+  const leanConf =
+    displayLocked?.confidencePct ??
+    inserted?.confidencePct ??
+    diag.signal?.confidencePct ??
+    50;
+  const leanQuality =
+    inserted?.quality ??
+    (displayLocked ? predictionFromLockedRow(displayLocked).quality : null) ??
+    diag.signal?.quality ??
+    "normal";
+  const reach =
     leanSide != null
-      ? buildProbebSmcLevels(primary, leanSide, livePrice)
+      ? buildProbebReachTarget(
+          primary,
+          leanSide,
+          livePrice,
+          leanConf,
+          leanQuality,
+        )
       : null;
 
   return {
@@ -296,7 +314,8 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
         }
       : inserted ?? diag.signal,
     locked: displayLocked,
-    levels,
+    reach,
+    levels: reach,
     waitReason: diag.waitReason,
     autoTrade,
   };

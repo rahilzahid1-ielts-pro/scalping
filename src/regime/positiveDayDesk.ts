@@ -49,7 +49,8 @@ export function demoDayClosedPnl(date = karachiYmd()): {
        WHERE account_id = ?
          AND status = 'CLOSED'
          AND closed_at IS NOT NULL
-         AND closed_at >= ? AND closed_at <= ?`,
+         AND closed_at >= ? AND closed_at <= ?
+         AND (note IS NULL OR note NOT LIKE '%VOID quote-spike%')`,
     )
     .get(DEMO_ACCOUNT_ID, start, end) as { pnl: number; n: number };
   return {

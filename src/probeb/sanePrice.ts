@@ -28,3 +28,32 @@ export function isSpikeVsAnchor(
   if (anchor == null || !Number.isFinite(anchor) || anchor <= 0) return false;
   return Math.abs(price - anchor) > maxUsd;
 }
+
+/**
+ * When live and peer-mid disagree by >maxDev, pick the one nearer to an
+ * external feed close. Never trust a contaminated mid over a fresh live that
+ * matches the feed (was: mid stuck at 4104 while live was 4035).
+ */
+export function pickTapeAnchor(
+  live: number,
+  mid: number | null | undefined,
+  feed: number | null | undefined,
+  maxDevUsd = 20,
+): number {
+  if (!(Number.isFinite(live) && live > 0)) {
+    if (mid != null && Number.isFinite(mid) && mid > 0) return mid;
+    return live;
+  }
+  if (mid == null || !Number.isFinite(mid) || mid <= 0) return live;
+  if (Math.abs(live - mid) <= maxDevUsd) return live;
+
+  if (feed != null && Number.isFinite(feed) && feed > 0) {
+    const dLive = Math.abs(live - feed);
+    const dMid = Math.abs(mid - feed);
+    if (dLive <= maxDevUsd) return live;
+    if (dMid <= maxDevUsd) return mid;
+    return dLive <= dMid ? live : mid;
+  }
+  // No feed — peer mid is multi-bar consensus; a lone TV tick is more often the spike.
+  return mid;
+}

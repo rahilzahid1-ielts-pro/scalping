@@ -4,8 +4,8 @@
 import { fetchTradingViewQuoteCached } from "../services/liveQuotes";
 import {
   ensureDemoAccount,
+  listClosedDemoPositions,
   listDemoLedger,
-  listDemoPositions,
   listOpenDemoPositions,
   resetDemoAccount,
   updateDemoAccountSettings,
@@ -19,6 +19,7 @@ import {
   resolveOpenAgainstPrice,
   takeDemoTrade,
   unrealizedR,
+  voidProbebQuoteSpikeTrades,
   type TakeTradeInput,
 } from "./engine";
 import { syncDemoFromHistory } from "./syncFromHistory";
@@ -50,6 +51,12 @@ export async function buildDemoAccountPayload() {
 
   let priceClosed: DemoPositionRow[] = [];
   if (live != null) {
+    // Scrub spiked Probeb history (4104 vs live ~4035) before resolve/day PnL.
+    try {
+      voidProbebQuoteSpikeTrades(live);
+    } catch {
+      /* optional */
+    }
     const res = resolveOpenAgainstPrice(live);
     priceClosed = res.closed;
   }
@@ -59,14 +66,28 @@ export async function buildDemoAccountPayload() {
   const floating = opens.reduce((a, p) => a + (p.floatingPnl ?? 0), 0);
   const equity = money(refreshed.balance + floating);
 
-  const closedToday = listDemoPositions(200).filter((p) => {
-    if (p.status !== "CLOSED" || p.closedAt == null) return false;
-    const age = Date.now() - p.closedAt;
-    return age < 36 * 60 * 60 * 1000;
+  const closedRecent = listClosedDemoPositions(60).filter(
+    (p) => !p.note?.includes("VOID quote-spike"),
+  );
+  const closedToday = closedRecent.filter((p) => {
+    if (p.closedAt == null) return false;
+    return Date.now() - p.closedAt < 36 * 60 * 60 * 1000;
   });
   const dayPnl = money(
     closedToday.reduce((a, p) => a + (p.pnlUsd ?? 0), 0),
   );
+
+  // Diversify recent closed: max 4 probeb so QS Pro / Cipher stay visible.
+  const recentClosed: DemoPositionRow[] = [];
+  let probebN = 0;
+  for (const p of closedRecent) {
+    if (p.module === "probeb") {
+      if (probebN >= 4) continue;
+      probebN += 1;
+    }
+    recentClosed.push(p);
+    if (recentClosed.length >= 20) break;
+  }
 
   return {
     ok: true as const,
@@ -76,8 +97,22 @@ export async function buildDemoAccountPayload() {
     dayPnl,
     livePrice: live,
     openPositions: opens,
-    recentPositions: listDemoPositions(30),
-    ledger: listDemoLedger(30),
+    recentPositions: [...opens, ...recentClosed],
+    ledger: (() => {
+      const raw = listDemoLedger(60);
+      const out: typeof raw = [];
+      let probebBank = 0;
+      for (const l of raw) {
+        if (l.note?.includes("VOID spike refund")) continue;
+        if (/probeb .* banked TP1/i.test(l.note ?? "")) {
+          if (probebBank >= 3) continue;
+          probebBank += 1;
+        }
+        out.push(l);
+        if (out.length >= 20) break;
+      }
+      return out;
+    })(),
     sync: {
       ...sync,
       priceClosed: priceClosed.length,

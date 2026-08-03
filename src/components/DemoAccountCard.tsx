@@ -328,7 +328,11 @@ export function DemoAccountCard() {
           <h3 className="demo-section">Recent closed</h3>
           <ul className="demo-list compact">
             {(data?.recentPositions ?? [])
-              .filter((p) => p.status === "CLOSED")
+              .filter(
+                (p) =>
+                  p.status === "CLOSED" &&
+                  !p.note?.includes("VOID quote-spike"),
+              )
               .slice(0, 12)
               .map((p) => (
                 <li key={p.id}>
