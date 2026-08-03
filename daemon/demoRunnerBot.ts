@@ -1,13 +1,17 @@
 /**
- * Demo runner tick — keeps demo exits moving without a UI request.
+ * Demo runner tick — auto-follow history + resolve exits without UI.
  *
- * The trend runner trails its stop behind the best price seen, so it needs the
- * price polled regularly. Before this, `resolveOpenAgainstPrice` only ran when
- * something hit `/api/demo/account`, which means a runner could sit unmanaged
- * for as long as nobody had the app open.
+ * Before: syncDemoFromHistory only ran inside `/api/demo/account`, which only
+ * mounts on the Demo $ tab. Staying on Probeb/QS Pro meant no module follows.
+ * Also the tick early-returned when no OPEN positions, so an empty book never
+ * picked up new EXECUTED locks.
  */
 import { fetchTradingViewQuoteCached } from "../src/services/liveQuotes";
-import { resolveOpenAgainstPrice } from "../src/demoAccount/engine";
+import {
+  resolveOpenAgainstPrice,
+  voidProbebQuoteSpikeTrades,
+} from "../src/demoAccount/engine";
+import { syncDemoFromHistory } from "../src/demoAccount/syncFromHistory";
 import { listOpenDemoPositions } from "../src/demoAccount/store";
 
 const TICK_MS = 60_000;
@@ -18,8 +22,6 @@ let running = false;
 export function shouldAutoStartDemoRunner(): boolean {
   const v = (process.env.ENABLE_DEMO_RUNNER ?? "").toLowerCase();
   if (v === "0" || v === "false" || v === "off") return false;
-  // Poller resolves fixed_tp1 SL/TP1 (and archived runner if opted in). Default ON
-  // so exits are not UI-gated.
   return true;
 }
 
@@ -27,10 +29,28 @@ async function tick(): Promise<void> {
   if (running) return;
   running = true;
   try {
-    if (listOpenDemoPositions().length === 0) return;
+    // Always mirror EXECUTED module locks — even when the book is empty.
+    const sync = await syncDemoFromHistory();
+    if (sync.opened > 0 || sync.closed > 0) {
+      console.log(
+        `[demoRunner] sync opened=${sync.opened} closed=${sync.closed} skipped=${sync.skipped} dayR=${sync.dayBudget?.netR ?? "?"}`,
+      );
+    }
+    for (const err of sync.errors.slice(0, 3)) {
+      console.warn(`[demoRunner] sync err: ${err}`);
+    }
+
     const quote = await fetchTradingViewQuoteCached("XAUUSD");
     const price = quote?.price;
     if (price == null || !Number.isFinite(price)) return;
+
+    try {
+      voidProbebQuoteSpikeTrades(price);
+    } catch {
+      /* optional */
+    }
+
+    if (listOpenDemoPositions().length === 0) return;
     const { closed } = resolveOpenAgainstPrice(price);
     for (const p of closed) {
       console.log(
@@ -46,7 +66,9 @@ async function tick(): Promise<void> {
 
 export function startDemoRunnerWorker(): void {
   if (timer) return;
-  console.log(`[demoRunner] ON — resolving demo exits every ${TICK_MS / 1000}s`);
+  console.log(
+    `[demoRunner] ON — auto-follow + exits every ${TICK_MS / 1000}s (UI not required)`,
+  );
   void tick();
   timer = setInterval(() => void tick(), TICK_MS);
 }

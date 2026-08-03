@@ -35,24 +35,33 @@ export type DemoDayBudget = {
   riskMult: number;
 };
 
-export function demoDayClosedPnl(date = karachiYmd()): {
+export function demoDayClosedPnl(
+  date = karachiYmd(),
+  opts?: { excludeModules?: string[] },
+): {
   pnlUsd: number;
   closed: number;
 } {
   const db = getDemoDb();
   ensureDemoAccount();
   const { start, end } = karachiDayBounds(date);
-  const row = db
-    .prepare(
-      `SELECT COALESCE(SUM(pnl_usd), 0) AS pnl, COUNT(*) AS n
+  const exclude = (opts?.excludeModules ?? [])
+    .map((m) => m.trim().toLowerCase())
+    .filter(Boolean);
+
+  let sql = `SELECT COALESCE(SUM(pnl_usd), 0) AS pnl, COUNT(*) AS n
        FROM demo_positions
        WHERE account_id = ?
          AND status = 'CLOSED'
          AND closed_at IS NOT NULL
          AND closed_at >= ? AND closed_at <= ?
-         AND (note IS NULL OR note NOT LIKE '%VOID quote-spike%')`,
-    )
-    .get(DEMO_ACCOUNT_ID, start, end) as { pnl: number; n: number };
+         AND (note IS NULL OR note NOT LIKE '%VOID quote-spike%')`;
+  const params: (string | number)[] = [DEMO_ACCOUNT_ID, start, end];
+  if (exclude.length) {
+    sql += ` AND lower(module) NOT IN (${exclude.map(() => "?").join(",")})`;
+    params.push(...exclude);
+  }
+  const row = db.prepare(sql).get(...params) as { pnl: number; n: number };
   return {
     pnlUsd: Math.round(Number(row.pnl || 0) * 100) / 100,
     closed: Number(row.n || 0),
@@ -76,7 +85,10 @@ export function evaluateDemoFollowBudget(
 ): DemoDayBudget {
   const account = acct ?? ensureDemoAccount();
   const unit = riskUnitUsd(account);
-  const { pnlUsd } = demoDayClosedPnl(snap.date);
+  // Probeb is its own ±$2 desk — fake/stack PnL must not day-lock QS Pro / Cipher.
+  const { pnlUsd } = demoDayClosedPnl(snap.date, {
+    excludeModules: ["probeb"],
+  });
   const dayNetR = unit > 0 ? Math.round((pnlUsd / unit) * 1000) / 1000 : 0;
   const baseMult = demoRiskMultForModule(module, snap);
 

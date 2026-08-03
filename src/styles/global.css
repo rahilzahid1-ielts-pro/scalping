@@ -1611,6 +1611,11 @@ button.active {
   font-size: 0.88rem;
   color: var(--text);
 }
+.demo-sync-status {
+  margin: -0.35rem 0 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
 .demo-toggle {
   display: flex;
   gap: 0.45rem;

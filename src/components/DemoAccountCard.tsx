@@ -48,6 +48,19 @@ interface DemoPayload {
   openPositions?: DemoPosition[];
   recentPositions?: DemoPosition[];
   ledger?: DemoLedger[];
+  sync?: {
+    opened?: number;
+    closed?: number;
+    skipped?: number;
+    errors?: string[];
+  };
+  dayBudget?: {
+    pnlUsd: number;
+    netR: number;
+    stopR: number;
+    lockR: number;
+  } | null;
+  regime?: { date: string; lines: string[] } | null;
   error?: string;
 }
 
@@ -124,9 +137,9 @@ export function DemoAccountCard() {
           <p className="demo-kicker">PAPER / DEMO</p>
           <h2>Demo Account</h2>
           <p className="demo-sub">
-            Auto trades (default ON): Intraday · Intra30 · Cipher · QS Pro · Quick Scalp ·
-            Fractal. Main Scalp kabhi nahi. Har naya setup lete hain — balance / running
-            trades se block nahi. P&amp;L track hota rehta hai.
+            Auto-follow (default ON): Intraday · Intra30 · Cipher · QS Pro · Quick
+            Scalp · Pro. Scalp / Fractal nahi. Worker har 60s History EXECUTED
+            mirror karta hai — Demo tab khula hona zaroori nahi.
           </p>
         </div>
         <button
@@ -190,7 +203,8 @@ export function DemoAccountCard() {
                   void post("/api/demo/settings", { autoFollow: e.target.checked })
                 }
               />
-            Auto-follow ON — Intraday · Intra30 · Cipher · QS Pro · Quick Scalp · Fractal (Scalp nahi). Har setup lo — balance / open count block nahi.
+            Auto-follow ON — Intraday · Intra30 · Cipher · QS Pro · Quick Scalp · Pro
+            (Scalp / Fractal nahi). Sirf History pe EXECUTED locks.
             </label>
             <label className="demo-risk">
               Risk %
@@ -209,6 +223,18 @@ export function DemoAccountCard() {
               </select>
             </label>
           </div>
+
+          {data?.dayBudget && (
+            <p className="demo-sync-status muted">
+              Day desk {data.dayBudget.netR.toFixed(2)}R (lock {data.dayBudget.lockR}R
+              / stop {data.dayBudget.stopR}R)
+              {data.sync
+                ? ` · last sync +${data.sync.opened ?? 0} open / ${data.sync.skipped ?? 0} skip`
+                : ""}
+              {" · "}
+              follow needs module EXECUTED lock — aaj QS Pro empty ho to demo bhi empty.
+            </p>
+          )}
 
           <div className="demo-open-block">
             <div className="demo-open-head">
