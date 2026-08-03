@@ -278,6 +278,53 @@ export function ProbebCard() {
               <strong>{live.quality.toUpperCase()}</strong>
             </div>
           </div>
+          {(live.levels ?? data?.levels) && (
+            <div className="probeb-levels">
+              <div className="probeb-levels-title">
+                Price path (SMC swing · Cipher B style)
+              </div>
+              <div className="probeb-levels-grid">
+                <div>
+                  <span className="muted">Entry</span>
+                  <strong>{(live.levels ?? data!.levels)!.entry.toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span className="muted">SL</span>
+                  <strong className="probeb-lvl-sl">
+                    {(live.levels ?? data!.levels)!.sl.toFixed(2)}
+                  </strong>
+                </div>
+                <div>
+                  <span className="muted">TP1</span>
+                  <strong className="probeb-lvl-tp">
+                    {(live.levels ?? data!.levels)!.tp1.toFixed(2)}
+                  </strong>
+                </div>
+                <div>
+                  <span className="muted">TP2</span>
+                  <strong className="probeb-lvl-tp">
+                    {(live.levels ?? data!.levels)!.tp2.toFixed(2)}
+                  </strong>
+                </div>
+              </div>
+              <p className="probeb-levels-range">
+                {live.side} path:{" "}
+                <strong>
+                  {(live.levels ?? data!.levels)!.from.toFixed(2)}
+                </strong>
+                {" → "}
+                <strong>
+                  {(live.levels ?? data!.levels)!.to.toFixed(2)}
+                </strong>
+                <span className="muted">
+                  {" "}
+                  · risk $
+                  {(live.levels ?? data!.levels)!.risk.toFixed(2)} · TP1 @{" "}
+                  {(live.levels ?? data!.levels)!.rrTp1}R
+                </span>
+              </p>
+            </div>
+          )}
           {tier && (
             <p className={`probeb-lite-banner ${tier}`}>
               {tier === "green"

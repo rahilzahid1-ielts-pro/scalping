@@ -2306,6 +2306,43 @@ html[data-theme="light"] .cmd-box {
 .probeb-hero-metrics strong {
   font-size: 1.15rem;
 }
+.probeb-levels {
+  margin-top: 0.85rem;
+  padding: 0.7rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid var(--mod-line);
+  background: color-mix(in srgb, var(--chip) 88%, transparent);
+}
+.probeb-levels-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.45rem;
+}
+.probeb-levels-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.probeb-levels-grid .muted {
+  display: block;
+  font-size: 0.7rem;
+  margin-bottom: 0.1rem;
+}
+.probeb-levels-grid strong {
+  font-size: 1.05rem;
+}
+.probeb-lvl-sl {
+  color: var(--sell);
+}
+.probeb-lvl-tp {
+  color: var(--buy);
+}
+.probeb-levels-range {
+  margin: 0.55rem 0 0;
+  font-size: 0.88rem;
+}
 .probeb-strong-note {
   margin: 0.75rem 0 0;
   font-size: 0.85rem;
@@ -2354,7 +2391,8 @@ html[data-theme="light"] .cmd-box {
 
 @media (max-width: 720px) {
   .probeb-hero-metrics,
-  .probeb-day-grid {
+  .probeb-day-grid,
+  .probeb-levels-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
