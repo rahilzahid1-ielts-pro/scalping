@@ -16,6 +16,18 @@ interface DayAcc {
   hiAccuracyPct: number | null;
 }
 
+interface ProbebLevels {
+  entry: number;
+  sl: number;
+  tp1: number;
+  tp2: number;
+  from: number;
+  to: number;
+  risk: number;
+  rrTp1: number;
+  method: string;
+}
+
 interface ProbebPayload {
   ok: boolean;
   live: {
@@ -28,7 +40,9 @@ interface ProbebPayload {
     targetBarTime: number;
     quality: Quality;
     reason: string[];
+    levels?: ProbebLevels | null;
   } | null;
+  levels?: ProbebLevels | null;
   latest: {
     predictedSide: Side;
     probabilityPct: number;
@@ -212,8 +226,8 @@ export function ProbebCard() {
       <div className="card-head">
         <h2>Probeb</h2>
         <p className="muted">
-          Har M5 close pe predict · win&amp;conf &gt;60 yellow alert · ≥70 green ·
-          demo ±$2 · 5 min baad SAHI/GALAT
+          Har M5 close pe predict · win&amp;conf &gt;60 yellow · ≥70 green ·
+          SMC swing SL/TP (Cipher B style) · demo ±$2 · 5 min baad SAHI/GALAT
         </p>
       </div>
 

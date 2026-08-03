@@ -13,6 +13,7 @@ import {
 } from "../strategies/probebEngine";
 import { voidProbebQuoteSpikeTrades } from "../demoAccount/engine";
 import { probebFormingM5, refreshProbebLiveM5 } from "./liveM5";
+import { buildProbebSmcLevels, type ProbebLevels } from "./levels";
 import {
   predictionFromLockedRow,
   tryProbebAutoTrade,
@@ -41,6 +42,8 @@ export type ProbebSyncResult = {
   signal: ProbebPrediction | null;
   /** DB-locked lean for the current closed M5 — UI must prefer this (no flip). */
   locked: ProbebRow | null;
+  /** Cipher-B / SMC style SL·TP band for the live lean. */
+  levels: ProbebLevels | null;
   waitReason: string;
   autoTrade: ProbebAutoTradeResult | null;
 };
@@ -264,6 +267,15 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
   }
 
   const displayLocked = spikeVsLive ? null : lockedNow;
+  const leanSide =
+    displayLocked?.predictedSide ??
+    inserted?.side ??
+    (spikeVsLive ? null : diag.signal?.side) ??
+    null;
+  const levels =
+    leanSide != null
+      ? buildProbebSmcLevels(primary, leanSide, livePrice)
+      : null;
 
   return {
     primary,
@@ -284,6 +296,7 @@ export async function syncProbebLive(): Promise<ProbebSyncResult> {
         }
       : inserted ?? diag.signal,
     locked: displayLocked,
+    levels,
     waitReason: diag.waitReason,
     autoTrade,
   };

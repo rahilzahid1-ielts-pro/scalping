@@ -117,13 +117,19 @@ export async function buildProbebLatestPayload() {
   return {
     ok: true as const,
     module: "probeb",
-    live,
+    live: live
+      ? {
+          ...live,
+          levels: synced.levels,
+        }
+      : null,
     latest,
     today,
     lifetime,
     walkAccuracy,
     recent,
     waitReason,
+    levels: synced.levels,
     synced: {
       resolved: synced.resolved,
       inserted: Boolean(synced.inserted),
