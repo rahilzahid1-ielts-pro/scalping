@@ -1,51 +1,46 @@
 #property copyright "Scalping desk"
 #property strict
-#property version   "2.02"
-#property description "VERY FINAL v2.02: executedAt-only fill detect (no historyOpen false fill). +Fractal."
+#property version   "1.03"
+#property description "FINAL: QS Pro + Pro + Cipher B + Intra30. Portal SL/TP1 (not fixed $3)."
 
 #include <Trade/Trade.mqh>
 
 //--- desk / trade -----------------------------------------------------------
 input string ApiBaseUrl            = "https://scalping-production.up.railway.app";
-input string TradeSymbol           = "";          // empty = chart symbol
+input string TradeSymbol           = "";          // empty = chart symbol (use broker suffix if needed)
 input double FixedLots             = 0.01;
-input int    PollSeconds           = 1;           // fastest practical timer
-input int    HttpTimeoutMs         = 8000;
-input double MarketEntryTolerance  = 0.15;
-input double FixedTpSlDistance     = 3.00;        // FALLBACK only if portal SL/TP missing
-input bool   UsePortalStops        = true;        // ALWAYS portal sl+tp1 when present
-input double MaxLateEntryDistance  = 3.00;
-input double MaxContinuationChase  = 10.00;       // gold moves fast — join if still in band
-input int    MaxDeviationPoints    = 100;
+input int    PollSeconds           = 5;
+input int    HttpTimeoutMs         = 10000;
+input double MarketEntryTolerance  = 0.05;
+input double FixedTpSlDistance     = 3.00;        // fallback only if portal SL/TP missing
+input bool   UsePortalStops        = true;        // use desk/API sl + tp1 (Cipher/Pro/etc)
+input double MaxLateEntryDistance  = 1.50;
+input double MaxContinuationChase  = 3.00;
+input int    MaxDeviationPoints    = 50;
 input bool   RequireHedgingAccount = true;
 
 //--- live safety ------------------------------------------------------------
-input double MaxSpreadUsd          = 1.50;
-input int    MaxSignalAgeMinutes   = 180;
+input double MaxSpreadUsd          = 0.80;
+input int    MaxSignalAgeMinutes   = 90;
 input bool   RequireAlgoTradingOn  = true;
 input bool   ForceChartM5          = false;
-input int    TickPollMs            = 800;         // poll on ticks for timely fill
-input bool   JoinIfInsidePortalBand = true;       // if live still between portal SL..TP → market
 
-//--- modules (VERY FINAL pack) ----------------------------------------------
+//--- modules (FINAL pack) ---------------------------------------------------
 input bool   EnableQsPro           = true;
 input bool   EnablePro             = true;
 input bool   EnableCipherB         = true;
 input bool   EnableIntra30         = true;
-input bool   EnableFractal         = true;
 
 input ulong  MagicQsPro            = 26072202;
 input ulong  MagicPro              = 26072203;
 input ulong  MagicCipherB          = 26072204;
 input ulong  MagicIntra30          = 26072206;
-input ulong  MagicFractal          = 26072205;
 
 CTrade trade;
 string g_sym;
 int    g_digits;
 double g_point;
 datetime g_lastHttpErrAt = 0;
-ulong  g_lastPollMs = 0;
 
 //--- JSON -------------------------------------------------------------------
 bool ExtractObject(const string json, const string key, string &object)
@@ -382,19 +377,6 @@ bool CanLateMarket(const string side, const double entry)
    return (MathAbs(px - entry) <= MaxLateEntryDistance);
 }
 
-/** Portal trade still alive: live price between SL and TP1 → safe to join now. */
-bool InsidePortalBand(const string side, const double portalSl, const double portalTp,
-                      const double px)
-{
-   if(!(portalSl > 0.0 && portalTp > 0.0 && px > 0.0)) return false;
-   double pad = 0.10;
-   if(side == "BUY")
-      return (px > portalSl + pad && px < portalTp - pad);
-   if(side == "SELL")
-      return (px < portalSl - pad && px > portalTp + pad);
-   return false;
-}
-
 bool OrderOk(const bool submitted)
 {
    if(!submitted) return false;
@@ -413,7 +395,7 @@ string BuildComment(const string tag, const long timestamp)
 
 string SeenKey(const string tag)
 {
-   return "ScalpingEA.VeryFinal.v201." + tag + "." +
+   return "ScalpingEA.Final.v101." + tag + "." +
           IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN));
 }
 
@@ -609,43 +591,29 @@ void PollModule(const string path, const string tag, const ulong magic,
       return;
    }
 
-   // Only real zone-touch stamp counts as filled. Do NOT map historyOpen→executed
-   // (that flag is just "History has an OPEN row" — it caused Cipher pending misses).
+   // Only real zone-touch stamp counts as filled. Do NOT map historyOpen→executed:
+   // that flag is merely "History has an OPEN row" and was forcing late-market +
+   // permanent MarkHandled while price was still adversed (Cipher miss pattern).
    bool executed = !JsonValueIsNull(latest, "executedAt");
 
    if(AlreadyHandled(tag, stamp) || HasExposure(magic)) return;
-
-   double pxNow = LivePx(side);
-
-   // TIMELY JOIN: portal lock still OPEN and price still between portal SL..TP1
-   // → market now (fixes Cipher miss when poll lagged but trade not done yet).
-   if(JoinIfInsidePortalBand &&
-      InsidePortalBand(side, portalSl, portalTp, pxNow))
-   {
-      DeletePendingOrders(magic);
-      if(SubmitMarketLive(side, magic, tag, stamp, entry, portalSl, portalTp))
-      {
-         MarkHandled(tag, stamp);
-         Print(tag, " JOIN portal-band MARKET @~", pxNow,
-               " entry=", entry, " SL=", portalSl, " TP=", portalTp);
-      }
-      return;
-   }
 
    if(!executed)
    {
       DeletePendingOrders(magic);
       if(SubmitAtLockedEntry(side, entry, magic, tag, stamp, portalSl, portalTp))
          MarkHandled(tag, stamp);
+      // Do NOT MarkHandled on chase-miss — price often snaps back; one spike
+      // used to lock the id forever and MT5 never retried while portal stayed OPEN.
       return;
    }
 
-   if(!CanLateMarket(side, entry) &&
-      !(JoinIfInsidePortalBand && InsidePortalBand(side, portalSl, portalTp, pxNow)))
+   if(!CanLateMarket(side, entry))
    {
+      // Only permanent-skip when History already EXECUTED and we are adversed/far.
       MarkHandled(tag, stamp);
-      Print(tag, " late skip — adversed/far and outside portal band. entry=",
-            entry, " live=", pxNow, " SL=", portalSl, " TP=", portalTp);
+      Print(tag, " late skip — adversed or >", MaxLateEntryDistance,
+            " from ", entry, " live=", LivePx(side));
       return;
    }
    DeletePendingOrders(magic);
@@ -664,17 +632,14 @@ void PollAll()
       PollModule("/api/cipherbclone/latest", "CIB", MagicCipherB, "time");
    if(EnableIntra30)
       PollModule("/api/intra30/latest", "I30", MagicIntra30, "timestamp");
-   if(EnableFractal)
-      PollModule("/api/fractal/latest", "FRA", MagicFractal, "time");
 }
 
 bool MagicsUnique()
 {
-   ulong m[5];
-   m[0] = MagicQsPro; m[1] = MagicPro; m[2] = MagicCipherB;
-   m[3] = MagicIntra30; m[4] = MagicFractal;
-   for(int i = 0; i < 5; i++)
-      for(int j = i + 1; j < 5; j++)
+   ulong m[4];
+   m[0] = MagicQsPro; m[1] = MagicPro; m[2] = MagicCipherB; m[3] = MagicIntra30;
+   for(int i = 0; i < 4; i++)
+      for(int j = i + 1; j < 4; j++)
          if(m[i] == m[j]) return false;
    return true;
 }
@@ -696,7 +661,7 @@ int OnInit()
    if(RequireHedgingAccount &&
       AccountInfoInteger(ACCOUNT_MARGIN_MODE) != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
    {
-      Print("Hedging account required for multi-module EA on one symbol.");
+      Print("Hedging account required for 4 modules on one symbol.");
       return INIT_FAILED;
    }
 
@@ -718,24 +683,22 @@ int OnInit()
          Print("Warn: could not switch chart to ", g_sym, " M5");
    }
    else if(_Period != PERIOD_M5)
-      Print("Note: attach on M5 recommended. Chart TF=",
+      Print("Note: attach on M5 recommended (signals still from API). Chart TF=",
             EnumToString((ENUM_TIMEFRAMES)_Period));
 
    trade.SetDeviationInPoints(MaxDeviationPoints);
    SetFillingMode();
-   g_lastPollMs = 0;
 
-   Print("DeskVeryFinalAutoEA v2.02 | symbol=", g_sym,
+   Print("DeskFinalAutoEA v1.03 FINAL | symbol=", g_sym,
          " lots=", FixedLots,
-         UsePortalStops ? " stops=PORTAL" : " stops=FIXED",
-         " poll=", PollSeconds, "s tickMs=", TickPollMs,
-         JoinIfInsidePortalBand ? " join=BAND" : "");
-   Print("ON: QS Pro + Pro + Cipher B + Intra30 + Fractal");
-   Print("OFF: Scalp / Quick Scalp / Intraday / Probeb");
+         UsePortalStops ? " stops=PORTAL sl/tp1" : " stops=FIXED",
+         " spreadMax $", MaxSpreadUsd);
+   Print("ON: QS Pro + Pro + Cipher B + Intra30");
+   Print("OFF pack: Scalp / Fractal / Quick Scalp (not in this EA)");
    Print("Magics QSP=", MagicQsPro, " PRO=", MagicPro,
-         " CIB=", MagicCipherB, " I30=", MagicIntra30, " FRA=", MagicFractal);
-   Print("Comments QSP:/PRO:/CIB:/I30:/FRA: + lock id");
-   Print("IMPORTANT: remove ALL other desk EAs from chart (DeskFinal/DeskFour/QSPro).");
+         " CIB=", MagicCipherB, " I30=", MagicIntra30);
+   Print("Comments QSP:/PRO:/CIB:/I30: + lock id");
+   Print("IMPORTANT: remove DeskFour / QSPro / MainIntraday from chart first.");
 
    EventSetTimer((int)MathMax(1, PollSeconds));
    PollAll();
@@ -749,15 +712,5 @@ void OnDeinit(const int reason)
 
 void OnTimer()
 {
-   g_lastPollMs = GetTickCount();
-   PollAll();
-}
-
-void OnTick()
-{
-   if(TickPollMs <= 0) return;
-   ulong now = GetTickCount();
-   if(g_lastPollMs != 0 && (now - g_lastPollMs) < (ulong)TickPollMs) return;
-   g_lastPollMs = now;
    PollAll();
 }

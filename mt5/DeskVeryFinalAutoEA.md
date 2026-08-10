@@ -1,4 +1,4 @@
-# DeskVeryFinalAutoEA v2.00
+# DeskVeryFinalAutoEA v2.02
 
 **One EA. Portal SL/TP. Fast entry. Fractal included.**
 
@@ -19,7 +19,8 @@ Scalp · Quick Scalp · Intraday · Probeb
 - Fixed $3 only if API levels missing/invalid
 - Poll every **2s** + tick poll **1.5s** (timely)
 - No permanent skip on one chase spike
-- `historyOpen` treated as EXECUTED (Cipher/Fractal)
+- Fill detect = **`executedAt` only** (not `historyOpen` — that caused Cipher pending misses)
+- Join-if-inside portal SL..TP1 band when still OPEN
 
 ## Install
 1. Remove old EAs from chart (DeskFinal / DeskFour / QSPro / MainIntraday)
@@ -28,4 +29,4 @@ Scalp · Quick Scalp · Intraday · Probeb
 4. WebRequest allow: `https://scalping-production.up.railway.app`
 5. VPS migrate after attach
 
-Experts log must show: `DeskVeryFinalAutoEA v2.00` and `stops=PORTAL`
+Experts log must show: `DeskVeryFinalAutoEA v2.02` and `stops=PORTAL`
