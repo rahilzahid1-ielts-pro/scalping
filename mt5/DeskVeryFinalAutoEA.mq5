@@ -398,7 +398,7 @@ bool InsidePortalBand(const string side, const double portalSl, const double por
                       const double px)
 {
    if(!(portalSl > 0.0 && portalTp > 0.0 && px > 0.0)) return false;
-   const double pad = 0.10;
+   double pad = 0.10;
    if(side == "BUY")
       return (px > portalSl + pad && px < portalTp - pad);
    if(side == "SELL")
