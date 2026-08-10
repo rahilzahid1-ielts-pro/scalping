@@ -147,6 +147,9 @@ export async function buildLatestPayload(strategy: CompareStrategy) {
           reason: latest.reason,
           outcome: latest.outcome,
           time: latest.time,
+          /** Alias for MT5 EAs that read timestamp (pulse/pro shape). */
+          timestamp: latest.time,
+          executedAt: latest.executedAt ?? null,
         }
       : null,
     live,
