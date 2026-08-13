@@ -34,6 +34,19 @@ function mapBinanceInterval(interval: string): string {
   return map[interval] ?? "15m";
 }
 
+/** Fresh cache — collapse workers + /latest hammering Yahoo. */
+const CANDLE_CACHE_TTL_MS = 20_000;
+/** On 429, keep serving last good bars so desk modules don't go fully dark. */
+const CANDLE_STALE_MAX_MS = 15 * 60_000;
+
+type CandleCacheEntry = { at: number; candles: Candle[] };
+const candleCache = new Map<string, CandleCacheEntry>();
+const candleInflight = new Map<string, Promise<Candle[]>>();
+
+function cacheKey(assetId: string, interval: string): string {
+  return `${assetId}|${interval}`;
+}
+
 async function fetchYahooCandles(symbol: string, interval: string): Promise<Candle[]> {
   const { interval: yi, range } = mapYahooInterval(interval);
   const url = `/api/yahoo/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${yi}&range=${range}`;
@@ -172,28 +185,58 @@ export function rebaseCandlesToLive(candles: Candle[], livePrice: number): Candl
 }
 
 export async function fetchCandles(assetId: AssetId, interval: string): Promise<Candle[]> {
-  const asset = ASSETS[assetId];
-  const errors: string[] = [];
+  const key = cacheKey(assetId, interval);
+  const hit = candleCache.get(key);
+  const now = Date.now();
+  if (hit && now - hit.at <= CANDLE_CACHE_TTL_MS && hit.candles.length > 0) {
+    return hit.candles;
+  }
 
-  if (asset.binanceSymbol) {
-    try {
-      return await fetchBinanceCandles(asset.binanceSymbol, interval);
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e));
+  const pending = candleInflight.get(key);
+  if (pending) return pending;
+
+  const run = (async (): Promise<Candle[]> => {
+    const asset = ASSETS[assetId];
+    const errors: string[] = [];
+
+    if (asset.binanceSymbol) {
+      try {
+        const candles = await fetchBinanceCandles(asset.binanceSymbol, interval);
+        candleCache.set(key, { at: Date.now(), candles });
+        return candles;
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
     }
-  }
-  if (asset.yahooSymbol) {
-    try {
-      return await fetchYahooCandles(asset.yahooSymbol, interval);
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : String(e));
+    if (asset.yahooSymbol) {
+      try {
+        const candles = await fetchYahooCandles(asset.yahooSymbol, interval);
+        candleCache.set(key, { at: Date.now(), candles });
+        return candles;
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+        // Soft-fail: keep desk alive through Yahoo rate limits.
+        if (hit && now - hit.at <= CANDLE_STALE_MAX_MS && hit.candles.length > 0) {
+          return hit.candles;
+        }
+      }
     }
+    if (hit && hit.candles.length > 0 && now - hit.at <= CANDLE_STALE_MAX_MS) {
+      return hit.candles;
+    }
+    throw new Error(
+      errors.length
+        ? `No candle source for ${assetId}: ${errors.join(" | ")}`
+        : `No data source for ${assetId}`,
+    );
+  })();
+
+  candleInflight.set(key, run);
+  try {
+    return await run;
+  } finally {
+    candleInflight.delete(key);
   }
-  throw new Error(
-    errors.length
-      ? `No candle source for ${assetId}: ${errors.join(" | ")}`
-      : `No data source for ${assetId}`,
-  );
 }
 
 export async function fetchMultiTimeframe(

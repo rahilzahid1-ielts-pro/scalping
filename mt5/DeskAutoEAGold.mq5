@@ -1,7 +1,7 @@
 #property copyright "Scalping desk"
 #property strict
-#property version   "2.02"
-#property description "DeskAutoEAGold: QS Pro+Pro+Cipher B+Intra30+Fractal. Portal SL/TP1. Fast join."
+#property version   "2.04"
+#property description "DeskAutoEAGold: QS Pro+Pro+Cipher B+Intra30+Fractal. Portal SL/TP1. API self-test."
 
 #include <Trade/Trade.mqh>
 
@@ -162,8 +162,11 @@ bool HttpGet(const string path, string &body)
       if(TimeCurrent() - g_lastHttpErrAt >= 60)
       {
          g_lastHttpErrAt = TimeCurrent();
-         Print("WebRequest failed err=", GetLastError(),
-               " — allow URL: ", ApiBaseUrl);
+         int err = GetLastError();
+         Print("WebRequest FAILED err=", err,
+               " — Tools→Options→Expert Advisors→Allow WebRequest: ", ApiBaseUrl);
+         if(err == 4014)
+            Print("HINT: URL not allowed (4014). Add exact base URL, then re-Migrate VPS.");
       }
       return false;
    }
@@ -172,7 +175,10 @@ bool HttpGet(const string path, string &body)
       if(TimeCurrent() - g_lastHttpErrAt >= 60)
       {
          g_lastHttpErrAt = TimeCurrent();
-         Print("API HTTP ", code, " path=", path);
+         Print("API HTTP ", code, " path=", path,
+               " — portal unreachable; EA cannot see locks (no trades).");
+         if(code == 1003 || code == 502 || code == 503)
+            Print("HINT: VPS/network/SSL or Railway blip. Confirm URL allow-list + Migrate; watch until HTTP 200.");
       }
       return false;
    }
@@ -265,12 +271,29 @@ bool ResolveStops(const string side,
    return ApplyFixedStops(side, orderAnchor, sl, tp);
 }
 
+bool FreshTick(MqlTick &tick)
+{
+   if(!SymbolInfoTick(g_sym, tick))
+      return false;
+   if(!(tick.ask > 0.0 && tick.bid > 0.0))
+      return false;
+   // VPS sometimes keeps a stale SYMBOL_ASK/BID (~hours old). Refuse if tick age > 10s.
+   long ageSec = (long)TimeCurrent() - (long)tick.time;
+   if(ageSec < 0) ageSec = -ageSec;
+   if(ageSec > 10)
+   {
+      Print("Stale tick age=", ageSec, "s bid=", tick.bid, " ask=", tick.ask,
+            " — waiting for fresh quote");
+      return false;
+   }
+   return true;
+}
+
 double CurrentSpreadUsd()
 {
-   double ask = SymbolInfoDouble(g_sym, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(g_sym, SYMBOL_BID);
-   if(!(ask > 0.0 && bid > 0.0)) return 999.0;
-   return ask - bid;
+   MqlTick tick;
+   if(!FreshTick(tick)) return 999.0;
+   return tick.ask - tick.bid;
 }
 
 bool SpreadOk()
@@ -363,9 +386,9 @@ void DeletePendingOrders(const ulong magic)
 
 double LivePx(const string side)
 {
-   return (side == "BUY")
-          ? SymbolInfoDouble(g_sym, SYMBOL_ASK)
-          : SymbolInfoDouble(g_sym, SYMBOL_BID);
+   MqlTick tick;
+   if(!FreshTick(tick)) return 0.0;
+   return (side == "BUY") ? tick.ask : tick.bid;
 }
 
 bool IsAdversed(const string side, const double entry, const double px)
@@ -449,6 +472,11 @@ bool SubmitMarketLive(const string side, const ulong magic,
    trade.SetExpertMagicNumber(magic);
    SetFillingMode();
    double px = LivePx(side);
+   if(!(px > 0.0))
+   {
+      Print(tag, " market wait — no fresh tick");
+      return false;
+   }
    double sl = 0.0, tp = 0.0;
    double geomEntry = (lockEntry > 0.0) ? lockEntry : px;
    if(!ResolveStops(side, geomEntry, px, portalSl, portalTp, sl, tp)) return false;
@@ -510,8 +538,15 @@ bool SubmitAtLockedEntry(const string side, double entry, const ulong magic,
    double lots = NormalizeLots(FixedLots);
    if(!(lots > 0.0)) return false;
 
-   double ask = SymbolInfoDouble(g_sym, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(g_sym, SYMBOL_BID);
+   double ask = 0.0, bid = 0.0;
+   MqlTick tick;
+   if(!FreshTick(tick))
+   {
+      Print(tag, " pending wait — no fresh tick");
+      return false;
+   }
+   ask = tick.ask;
+   bid = tick.bid;
    bool ok = false;
    string comment = BuildComment(tag, timestamp);
 
@@ -616,6 +651,12 @@ void PollModule(const string path, const string tag, const ulong magic,
    if(AlreadyHandled(tag, stamp) || HasExposure(magic)) return;
 
    double pxNow = LivePx(side);
+   if(!(pxNow > 0.0))
+   {
+      // Do not MarkHandled — retry next poll when tick is fresh.
+      Print(tag, " wait — no fresh tick yet for ", side, " entry=", entry);
+      return;
+   }
 
    // TIMELY JOIN: portal lock still OPEN and price still between portal SL..TP1
    // → market now (fixes Cipher miss when poll lagged but trade not done yet).
@@ -643,6 +684,16 @@ void PollModule(const string path, const string tag, const ulong magic,
    if(!CanLateMarket(side, entry) &&
       !(JoinIfInsidePortalBand && InsidePortalBand(side, portalSl, portalTp, pxNow)))
    {
+      // Only burn the lock if quote is clearly real and far. Huge portal↔broker
+      // gap often meant a stale tick on VPS — keep retrying briefly.
+      double gap = MathAbs(pxNow - entry);
+      if(gap > 20.0)
+      {
+         Print(tag, " price gap $", DoubleToString(gap, 2),
+               " entry=", entry, " live=", pxNow,
+               " — not marking handled (possible stale/feed mismatch)");
+         return;
+      }
       MarkHandled(tag, stamp);
       Print(tag, " late skip — adversed/far and outside portal band. entry=",
             entry, " live=", pxNow, " SL=", portalSl, " TP=", portalTp);
@@ -725,17 +776,36 @@ int OnInit()
    SetFillingMode();
    g_lastPollMs = 0;
 
-   Print("DeskAutoEAGold v2.02 | symbol=", g_sym,
+   Print("DeskAutoEAGold v2.04 | symbol=", g_sym,
          " lots=", FixedLots,
          UsePortalStops ? " stops=PORTAL" : " stops=FIXED",
          " poll=", PollSeconds, "s tickMs=", TickPollMs,
-         JoinIfInsidePortalBand ? " join=BAND" : "");
-   Print("ON: QS Pro + Pro + Cipher B + Intra30 + Fractal");
-   Print("OFF: Scalp / Quick Scalp / Intraday / Probeb");
+         JoinIfInsidePortalBand ? " join=BAND" : "",
+         " freshTick=ON");
+
+   string onMods = "";
+   if(EnableQsPro) onMods += " QSPro";
+   if(EnablePro) onMods += " Pro";
+   if(EnableCipherB) onMods += " CipherB";
+   if(EnableIntra30) onMods += " Intra30";
+   if(EnableFractal) onMods += " Fractal";
+   if(onMods == "") onMods = " (none!)";
+   Print("ON:", onMods);
+   Print("OFF: Scalp / Quick Scalp / Intraday / Probeb",
+         EnableFractal ? "" : " + Fractal(input=false)");
    Print("Magics QSP=", MagicQsPro, " PRO=", MagicPro,
          " CIB=", MagicCipherB, " I30=", MagicIntra30, " FRA=", MagicFractal);
    Print("Comments QSP:/PRO:/CIB:/I30:/FRA: + lock id");
    Print("IMPORTANT: remove other desk EAs from chart before attaching this one.");
+
+   // Startup self-test — if this fails, every trade will be missed.
+   {
+      string probe;
+      if(HttpGet("/api/pulse/latest", probe))
+         Print("API SELF-TEST OK — portal reachable (HTTP 200).");
+      else
+         Print("API SELF-TEST FAIL — fix WebRequest URL allow-list + VPS Migrate BEFORE expecting fills.");
+   }
 
    EventSetTimer((int)MathMax(1, PollSeconds));
    PollAll();
